@@ -64,12 +64,15 @@ jobs:
 
       # 【版本号必须与标签一致】"v0.3.0 的 Release 里躺着 0.2.2 的 jar"是发版最贵的一种错：
       # 它不报错、不红，只是把旧字节发给了所有人。这条闸在这里拦。
+      # `${expected%%-*}` 是给预发布演练留的：v0.2.2-rc1 该对着 mod_version=0.2.2 过闸
+      # （后缀只表示"这次是演练/预发布"，不是版本差异）。
       # tr -d '\r' 是必须的：Windows 上 gradle.properties 可能带 \r，比对会假红。
       - name: 断言 mod_version 与标签一致
         if: startsWith(github.ref, 'refs/tags/v')
         run: |
           set -euo pipefail
           expected="${GITHUB_REF_NAME#v}"
+          expected="${expected%%-*}"
           actual=$(grep '^mod_version=' gradle.properties | cut -d= -f2 | tr -d '\r')
           echo "标签=$GITHUB_REF_NAME  期望=$expected  gradle.properties=$actual"
           if [ "$expected" != "$actual" ]; then
