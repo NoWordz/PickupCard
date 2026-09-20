@@ -37,6 +37,13 @@ RarityCore 传说以上）停稳后有一道白光扫过卡面一次；稀有度
 档位越高越亮。性能上给渲染路径加了硬预算护栏（5 卡稳态实测绘制 ~0.9ms），并做
 了三处热路径清理。全量审计见 `docs/audit-2026-09-20.md`。
 
+这一版（第 9 次就地替换）新增**镜像卡片**：一个开关把竖条搬到卡片最右缘，往左依次
+是图标、名字和数量，入场退场动画也跟着反向——适合把信息贴着屏幕右缘读的玩家。
+出厂默认对齐改为**右缘对齐**（右缘齐、左缘随卡宽参差；已保存过设置的不受影响）。
+稀有光圈现在会随卡片入场淡入、跟随内容移动，不再生硬地凭空出现。英文配置文案
+全量重写（统一句式与术语），并修正静音名单的说明。配置界面拆出独立的行模型类，
+渲染入口拆出内容路类（行为不变）。全量审计增补见 `docs/audit-2026-09-20.md`。
+
 纯客户端，服务端不用装；不依赖 ApricityUI。从 0.2.1 直接覆盖即可，
 配置文件兼容（旧的贴边/竖条位置键会被忽略，锚点在配置界面里拖）。
 
@@ -79,6 +86,16 @@ budget guardrails (5 settled cards measure ~0.9 ms paint) plus three hot-path
 cleanups. Full audit: see docs/audit-2026-09-20.md.
 
 Client-side only, no hard dependencies; drop-in upgrade from 0.2.1.
+
+This pass (9th in-place replacement) adds a **mirror card** option: one switch
+moves the rarity bar to the right edge and runs the row right to left - icon,
+then name and count - with entrance and exit animations mirroring too, for
+reading against the screen's right side. The factory default alignment is now
+**right edge** (saved settings are untouched), the rarity glow fades in with the
+card's entrance and follows the content instead of popping in, and the English
+config text was rewritten for consistent wording, including an honest
+description of the mute list. Under the hood the config screen and the render
+entry were split into smaller classes with no behavior change.
 
 ## v0.2.1
 

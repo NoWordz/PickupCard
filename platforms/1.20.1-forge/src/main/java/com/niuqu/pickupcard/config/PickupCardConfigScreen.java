@@ -50,8 +50,6 @@ public final class PickupCardConfigScreen extends Screen {
     /** 底部说明被截断时补在末尾的省略号。 */
     private static final String ELLIPSIS = "…";
     /** 全界面统一的行距/行高：放不下就滚，节奏不随内容变。 */
-    private static final int ROW_STEP = 20;
-    private static final int ROW_H = 18;
     /**
      * 短动画的时长（毫秒）：只在"我按了东西"的那一瞬间回答问题。超过 200ms 它就开始和
      * 玩家的下一次操作抢时间；短于 80ms 就等于没有。
@@ -73,8 +71,8 @@ public final class PickupCardConfigScreen extends Screen {
                 lo.previewVisible() ? String.format(java.util.Locale.ROOT, "w%.0f", lo.preview().w())
                         : "收起",
                 lo.previewVisible() ? (lo.switcherVisible() ? " 切样例行" : " 无切样例行") : "",
-                rows.size(),
-                Math.max(1, (int) (lo.items().h() / ROW_STEP)),
+                rowsModel.all().size(),
+                Math.max(1, (int) (lo.items().h() / ConfigRows.ROW_STEP)),
                 itemsScroll == null ? 0f : itemsScroll.offset());
     }
 
@@ -93,7 +91,7 @@ public final class PickupCardConfigScreen extends Screen {
         ConfigLayout lo = layout();
         ConfigLayout.Rect card = lo.previewCard();
         float hover = 0f;
-        for (Row row : rows) {
+        for (ConfigRows.Row row : rowsModel.all()) {
             hover = Math.max(hover, row.hover.at(now));
         }
         return String.format(java.util.Locale.ROOT,
@@ -146,7 +144,7 @@ public final class PickupCardConfigScreen extends Screen {
 
     /** 这一帧配置项内容有多高（滚动的依据）。 */
     private float itemsContentHeight() {
-        return rows.size() * (float) ROW_STEP;
+        return rowsModel.contentHeight();
     }
 
     /** 当前页。 */
@@ -156,7 +154,7 @@ public final class PickupCardConfigScreen extends Screen {
     /** 本页的配置行（重建时从 {@link ConfigPageSpec} 现取；恢复默认按它跑）。 */
     private List<ConfigPageSpec.Row> specRows = List.of();
     /** 一行 = 一个标签 + 一个自绘控件 + 一句悬停提示 + 这一行的悬停进度。 */
-    private final List<Row> rows = new ArrayList<>();
+    private final ConfigRows rowsModel = new ConfigRows();
     private final List<NvgWidget> tabButtons = new ArrayList<>();
     /** 预览底下那排「切样例」按钮（预览收起时它们是零矩形，点不到）。 */
     private final List<NvgWidget> sampleButtons = new ArrayList<>();
@@ -213,43 +211,6 @@ public final class PickupCardConfigScreen extends Screen {
             pendingRebuild = true;
         }
     };
-
-    /**
-     * 一行：标签 + 控件 + 悬停提示 + 悬停进度。
-     * <p>【为什么不是 record】悬停进度是这一行的<b>状态</b>，每行一份；record 装不下。
-     * <p>【小节头也是一行】{@code widget == null} 的行是小节头：占同样的行距、画暗色小字、
-     * 没有控件也不接悬停 —— 分组信息用"节奏"表达，不引入第二种行高。
-     */
-    private static final class Row {
-        private final String label;
-        private final NvgWidget widget;
-        private final String hint;
-        private final Tween hover = Tween.at(0f, 0L);
-        /** 这一帧的行顶 y（小节头画字用；选项行以控件位置为准）。 */
-        private float yAt;
-
-        Row(String label, NvgWidget widget, String hint) {
-            this.label = label;
-            this.widget = widget;
-            this.hint = hint;
-        }
-
-        boolean isHeader() {
-            return widget == null;
-        }
-
-        String label() {
-            return label;
-        }
-
-        NvgWidget widget() {
-            return widget;
-        }
-
-        String hint() {
-            return hint;
-        }
-    }
 
     /**
      * 分段按钮（标签列与样例切换共用）：<b>选中态自己会亮</b>。
@@ -334,7 +295,7 @@ public final class PickupCardConfigScreen extends Screen {
     private void rebuild() {
         boolean keep = preserveScroll;
         preserveScroll = false;
-        rows.clear();
+        rowsModel.all().clear();
         tabButtons.clear();
         sampleButtons.clear();
         palette = NvgPalette.of(CardStage.INSTANCE.previewStyle());
@@ -484,12 +445,12 @@ public final class PickupCardConfigScreen extends Screen {
     }
 
     private void cell(String label, NvgWidget widget, String hint) {
-        rows.add(new Row(label, widget, hint));
+        rowsModel.cell(label, widget, hint);
     }
 
     /** 小节头：占一行、不接控件，把"这几行是一伙的"画出来。 */
     private void header(String title) {
-        rows.add(new Row(title, null, null));
+        rowsModel.header(title);
     }
 
     /** 逐行摆：**一行一项**（标签左、控件右），行距全界面恒 20px，放不下就滚。 */
@@ -498,16 +459,8 @@ public final class PickupCardConfigScreen extends Screen {
             return;
         }
         itemsScroll.reflow(itemsContentHeight());
-        float offset = itemsScroll.offset();
-        for (int i = 0; i < rows.size(); i++) {
-            Row row = rows.get(i);
-            // 扣掉滚动偏移：控件与它画出来的位置必须是同一个坐标系，否则点了会"选错行"
-            float y = rowsTop() + i * (float) ROW_STEP - Math.round(offset);
-            row.yAt = y;
-            if (!row.isHeader()) {
-                row.widget().at(controlX(), y, controlW(), ROW_H);
-            }
-        }
+        // 逐行摆：行模型（ConfigRows）只认几何，屏幕把滚动偏移与列顶交给它
+        rowsModel.layout(layout(), itemsScroll.offset(), rowsTop());
     }
 
     // ------------------------------------------------------------------
@@ -541,11 +494,11 @@ public final class PickupCardConfigScreen extends Screen {
                 if (itemsScroll != null) {
                     itemsScroll.pushClip(ui);
                 }
-                for (Row row : rows) {
+                for (ConfigRows.Row row : rowsModel.all()) {
                     drawRowHighlight(ui, row);
                 }
                 drawLabels(ui);
-                for (Row row : rows) {
+                for (ConfigRows.Row row : rowsModel.all()) {
                     if (!row.isHeader()) {
                         row.widget().draw(ui);
                     }
@@ -632,7 +585,7 @@ public final class PickupCardConfigScreen extends Screen {
     private void driveAnimations(int mouseX, int mouseY) {
         preview.drive(now, sample);
         tabAccentAnim.retarget(page.ordinal(), now, TAB_MS);
-        for (Row row : rows) {
+        for (ConfigRows.Row row : rowsModel.all()) {
             if (row.isHeader()) {
                 continue;
             }
@@ -721,7 +674,7 @@ public final class PickupCardConfigScreen extends Screen {
     }
 
     /** 悬停那一行的底：一条横贯整行的浅色带，是"这一行可以被拨"的提示。 */
-    private void drawRowHighlight(NvgUi ui, Row row) {
+    private void drawRowHighlight(NvgUi ui, ConfigRows.Row row) {
         if (row.isHeader()) {
             return;
         }
@@ -737,7 +690,7 @@ public final class PickupCardConfigScreen extends Screen {
     }
 
     private void drawLabels(NvgUi ui) {
-        for (Row row : rows) {
+        for (ConfigRows.Row row : rowsModel.all()) {
             if (row.isHeader()) {
                 // 小节头：一根强调色小刺 + 暗色小字 —— 只用字号一种手段的话，它会和
                 // "没接控件的标签"混成一团（2026-09-19 真机截图抓过）。
@@ -769,7 +722,7 @@ public final class PickupCardConfigScreen extends Screen {
         // 不做这个判断的话，鼠标划过页眉时会说"这张卡的说明"，而那一行根本看不见。
         ConfigLayout.Rect items = layout().items();
         if (hint == null && mouseY >= items.y() && mouseY < items.bottom()) {
-            for (Row row : rows) {
+            for (ConfigRows.Row row : rowsModel.all()) {
                 if (!row.isHeader() && row.widget().hit(mouseX, mouseY)) {
                     hint = row.hint();
                     break;
@@ -872,7 +825,7 @@ public final class PickupCardConfigScreen extends Screen {
     /** 所有自绘控件：事件遍历、悬停刷新、重建时都用这一份（小节头没有控件，不在其中）。 */
     private List<NvgWidget> widgets() {
         List<NvgWidget> all = chips();
-        for (Row row : rows) {
+        for (ConfigRows.Row row : rowsModel.all()) {
             if (!row.isHeader()) {
                 all.add(row.widget());
             }
@@ -906,7 +859,7 @@ public final class PickupCardConfigScreen extends Screen {
         ConfigLayout.Rect items = layout().items();
         for (NvgWidget w : widgets()) {
             // 滚出视口的行不该还能被点到（它们的位置在视口外，只有 x 可能重合）
-            boolean rowWidget = rows.stream().anyMatch(r -> !r.isHeader() && r.widget() == w);
+            boolean rowWidget = rowsModel.all().stream().anyMatch(r -> !r.isHeader() && r.widget() == w);
             if (rowWidget && (mouseY < items.y() || mouseY >= items.bottom())) {
                 continue;
             }
@@ -945,7 +898,7 @@ public final class PickupCardConfigScreen extends Screen {
             return super.mouseScrolled(mouseX, mouseY, delta);
         }
         // 一格滚三行（按行不按像素：跨缩放档手感一致，见 ScrollMath）
-        itemsScroll.wheel(delta, itemsContentHeight(), ROW_STEP * 3f);
+        itemsScroll.wheel(delta, itemsContentHeight(), ConfigRows.ROW_STEP * 3f);
         layoutRows();
         return true;
     }
@@ -986,7 +939,7 @@ public final class PickupCardConfigScreen extends Screen {
                 return b;
             }
         }
-        for (Row row : rows) {
+        for (ConfigRows.Row row : rowsModel.all()) {
             if (!row.isHeader() && row.label().equals(label)) {
                 return row.widget();
             }
@@ -1048,12 +1001,12 @@ public final class PickupCardConfigScreen extends Screen {
 
     /** 当前这一页有哪些选项（按玩家看到的顺序；小节头不是选项，不列）。日志里留一份。 */
     public List<String> optionLabels() {
-        return rows.stream().filter(r -> !r.isHeader()).map(Row::label).toList();
+        return rowsModel.all().stream().filter(r -> !r.isHeader()).map(ConfigRows.Row::label).toList();
     }
 
     /** 选项名 + 位置 + 显示值。布局是算出来的，"框压到边上了"必须能不靠眼睛查出来。 */
     public List<String> optionDump() {
-        return rows.stream().filter(r -> !r.isHeader()).map(r -> {
+        return rowsModel.all().stream().filter(r -> !r.isHeader()).map(r -> {
             NvgWidget w = r.widget();
             return r.label() + "=" + Math.round(w.x()) + "," + Math.round(w.y())
                     + " " + Math.round(w.width()) + "x" + Math.round(w.height())
@@ -1067,13 +1020,12 @@ public final class PickupCardConfigScreen extends Screen {
 
     /** 控件那一格多宽：配置列宽的一部分，右对齐（一行一项，不再是一行两项）。 */
     private int controlW() {
-        int room = Math.round(layout().items().w()) - 12;
-        return Math.max(48, Math.min(130, room * 45 / 100));
+        return ConfigRows.controlW(layout());
     }
 
     /** 标签左缘：配置列左边留 6px。 */
     private int labelX() {
-        return Math.round(layout().items().x()) + 6;
+        return ConfigRows.labelX(layout());
     }
 
     /** 标签能用多宽：从标签左缘到控件左缘。 */
@@ -1083,7 +1035,7 @@ public final class PickupCardConfigScreen extends Screen {
 
     /** 控件左缘：右对齐到配置列右缘留 6px。 */
     private int controlX() {
-        return Math.round(layout().items().right()) - 6 - controlW();
+        return ConfigRows.controlX(layout());
     }
 
     private int rowsTop() {

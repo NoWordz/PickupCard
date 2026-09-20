@@ -4,6 +4,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -18,7 +19,8 @@ class LayoutSettingsTest {
         assertEquals(LayoutSettings.AUTO_ANCHOR, d.anchorX(), "横向自动 = 按对齐档解析");
         assertEquals(LayoutSettings.AUTO_ANCHOR, d.anchorY(), "纵向自动 = 贴 HUD 带上方");
         assertEquals(LayoutSettings.Exit.TRAIN, d.exitMode(), "消失方式默认火车退回（与入场对称，2026-09-19 定案）");
-        assertEquals(LayoutSettings.Side.LEFT, d.align(), "对齐默认竖条左缘锚定");
+        assertEquals(LayoutSettings.Side.RIGHT, d.align(), "对齐默认右缘（2026-09-20 定案：齐的该是靠屏幕边那侧）");
+        assertFalse(d.mirrorCard(), "镜像卡片默认关");
         assertEquals(LayoutSettings.Appear.SLIDE, d.appearMode());
         assertEquals(4f, d.separation(), 1e-6);
         assertEquals(LayoutSettings.AUTO_SCALE, d.scalePercent(), "默认是自动缩放");
@@ -56,8 +58,13 @@ class LayoutSettingsTest {
     @Test
     @DisplayName("锚点解析：-1 给公式/贴底，分数给比例")
     void anchorResolution() {
+        // 默认（右缘对齐）：自动横向锚线 = 贴右边距（MARGIN_X=16）
         LayoutSettings auto = LayoutSettings.defaults();
-        assertEquals(LayoutSettings.autoLeftEdge(426f), auto.anchorLeft(426f), 1e-6);
+        assertEquals(426f - 16f, auto.anchorLeft(426f), 1e-6);
+        // 左缘档的自动公式仍在：显式构造 LEFT 档验证竖条成线那条老公式
+        LayoutSettings left = new LayoutSettings(LayoutSettings.Appear.SLIDE, LayoutSettings.Exit.FADE,
+                LayoutSettings.Side.LEFT, 4f, LayoutSettings.AUTO_SCALE, -1f, -1f);
+        assertEquals(LayoutSettings.autoLeftEdge(426f), left.anchorLeft(426f), 1e-6);
         // 自动纵向 = 贴 HUD 带上方：240 高、卡高 20、留白 75 → 145
         assertEquals(240f - 75f - 20f, auto.anchorTop(240f, 20f, 75), 1e-6,
                 "自动纵向 = 最新那张贴 HUD 带上方");

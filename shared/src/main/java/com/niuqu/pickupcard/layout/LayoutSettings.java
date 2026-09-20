@@ -41,7 +41,13 @@ package com.niuqu.pickupcard.layout;
  * 它们管的事现在全部由 {@code anchorX}/{@code anchorY} 表达。
  */
 public record LayoutSettings(Appear appearMode, Exit exitMode, Side align, float separation,
-                             int scalePercent, float anchorX, float anchorY) {
+                             int scalePercent, float anchorX, float anchorY, boolean mirrorCard) {
+
+    /** 七参快捷构造（不镜像）：镜像默认关，测试与"只关心水平语义"的调用少写一个 false。 */
+    public LayoutSettings(Appear appearMode, Exit exitMode, Side align, float separation,
+                          int scalePercent, float anchorX, float anchorY) {
+        this(appearMode, exitMode, align, separation, scalePercent, anchorX, anchorY, false);
+    }
 
     /** 卡片间距的默认值（像素）。 */
     public static final float DEFAULT_SEPARATION = 4f;
@@ -80,9 +86,9 @@ public record LayoutSettings(Appear appearMode, Exit exitMode, Side align, float
 
     /** 水平对齐基准：锚线管的是卡的哪一条边。 */
     public enum Side {
-        /** 竖条左缘贴锚线：一摞卡的竖条成一条竖线（默认）。 */
+        /** 竖条左缘贴锚线：一摞卡的竖条成一条竖线。 */
         LEFT,
-        /** 卡片右缘贴锚线：右缘齐、左缘随卡宽参差（HTML 草稿的「右边缘对齐」）。 */
+        /** 卡片右缘贴锚线：右缘齐、左缘随卡宽参差（HTML 草稿的「右边缘对齐」；出厂默认）。 */
         RIGHT
     }
 
@@ -103,10 +109,12 @@ public record LayoutSettings(Appear appearMode, Exit exitMode, Side align, float
         return Math.max(0f, guiWidth - MARGIN_X - budget);
     }
 
-    /** 默认：火车入场、<b>火车退回</b>（与入场对称的退场，2026-09-19 用户定案）、左缘锚定、锚点自动（右下贴 HUD 带）。 */
+    /** 默认：火车入场、<b>火车退回</b>（与入场对称的退场，2026-09-19 用户定案）、右缘对齐
+     *  （2026-09-20 用户定案：卡宽随名字参差时，齐的该是靠屏幕边的那一侧）、锚点自动
+     *  （右下贴 HUD 带）、卡片不镜像。 */
     public static LayoutSettings defaults() {
-        return new LayoutSettings(Appear.SLIDE, Exit.TRAIN, Side.LEFT, DEFAULT_SEPARATION,
-                AUTO_SCALE, AUTO_ANCHOR, AUTO_ANCHOR);
+        return new LayoutSettings(Appear.SLIDE, Exit.TRAIN, Side.RIGHT, DEFAULT_SEPARATION,
+                AUTO_SCALE, AUTO_ANCHOR, AUTO_ANCHOR, false);
     }
 
     /**
@@ -135,13 +143,14 @@ public record LayoutSettings(Appear appearMode, Exit exitMode, Side align, float
         return new LayoutSettings(
                 appearMode == null ? Appear.SLIDE : appearMode,
                 exitMode == null ? Exit.FADE : exitMode,
-                align == null ? Side.LEFT : align,
+                align == null ? Side.RIGHT : align,
                 Math.max(0f, Math.min(32f, separation)),
                 // 0 = 自动；给了数值就夹进 50..200 —— 300% 会把卡顶出屏幕，10% 没人看得见
                 scalePercent == AUTO_SCALE ? AUTO_SCALE
                         : Math.max(MIN_SCALE_PERCENT, Math.min(MAX_SCALE_PERCENT, scalePercent)),
                 sanitizeAnchor(anchorX),
-                sanitizeAnchor(anchorY));
+                sanitizeAnchor(anchorY),
+                mirrorCard);
     }
 
     /** 锚点只许两种值：自动哨兵，或者 0..1 的比例。别的统统回自动 —— 宁可回默认也不猜。 */

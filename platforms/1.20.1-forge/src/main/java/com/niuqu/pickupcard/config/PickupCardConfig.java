@@ -74,7 +74,8 @@ public final class PickupCardConfig {
                 VALUES.separation.get().floatValue(),
                 VALUES.scalePercent.get(),
                 VALUES.anchorX.get().floatValue(),
-                VALUES.anchorY.get().floatValue()).sanitized();
+                VALUES.anchorY.get().floatValue(),
+                VALUES.mirrorCard.get()).sanitized();
     }
 
     /** 采样过滤三表。列表元素不做校验——坏规则由 FilterRule.parse 静默跳过。 */
@@ -212,6 +213,7 @@ public final class PickupCardConfig {
         final ForgeConfigSpec.EnumValue<LayoutSettings.Appear> appearMode;
         final ForgeConfigSpec.EnumValue<LayoutSettings.Exit> exitMode;
         final ForgeConfigSpec.EnumValue<LayoutSettings.Side> align;
+        final ForgeConfigSpec.BooleanValue mirrorCard;
         final ForgeConfigSpec.DoubleValue separation;
         final ForgeConfigSpec.IntValue scalePercent;
         final ForgeConfigSpec.DoubleValue anchorX;
@@ -312,10 +314,17 @@ public final class PickupCardConfig {
 
             align = builder
                     .comment("水平对齐：锚线（anchorX）管的是卡的哪一条边。",
-                            "  LEFT  = 竖条左缘贴锚线：一摞卡的竖条成一条竖线（默认）。",
-                            "  RIGHT = 卡片右缘贴锚线：右缘齐、左缘随卡宽参差。",
-                            "    —— 对应 HTML 草稿里的「右边缘对齐」预设。")
-                    .defineEnum("align", LayoutSettings.Side.LEFT);
+                            "  LEFT  = 竖条左缘贴锚线：一摞卡的竖条成一条竖线。",
+                            "  RIGHT = 卡片右缘贴锚线：右缘齐、左缘随卡宽参差（默认）。",
+                            "    —— 对应 HTML 草稿里的「右边缘对齐」预设。2026-09-20 起出厂默认 RIGHT：",
+                            "    已保存过本键的配置文件不会自动跟着变，想要右缘对齐请在界面里点一下。")
+                    .defineEnum("align", LayoutSettings.Side.RIGHT);
+
+            mirrorCard = builder
+                    .comment("镜像卡片：竖条移到卡片最右缘，往左依次是图标、名字、数量，",
+                            "  入场/退场动画的方向也跟着镜像（内容仍从竖条后面滑出/缩回）。",
+                            "  false = 常规：竖条在最左（默认）。")
+                    .define("mirrorCard", false);
 
             anchorX = builder
                     .comment("卡堆锚点的横坐标（0~1 = 屏幕宽度的比例）：第一张卡的竖条左缘停在这儿。",

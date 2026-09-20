@@ -43,13 +43,28 @@ tools/verify_targets.py    ← 结构守卫（CI 第一道闸）
 
 | 问题 | 答案在哪 | 性质 |
 | --- | --- | --- |
-| 一张卡怎么画 | `render/nvg/NvgCardPainter` | **唯一的画法**（NanoVG 矢量） |
+| 一张卡怎么画（外壳：矢量） | `render/nvg/NvgCardPainter` | **唯一的画法**（NanoVG 矢量：竖条/框/微光/扫光） |
+| 一张卡怎么画（内容：原版） | `render/nvg/NvgCardContent` | 图标原版现渲 + 原版字形（2026-09-20 从 Painter 拆出） |
 | 卡多大 | `render/CardMetrics` | 要字体，所以量文字宽度 |
 | 卡在哪 | `shared/layout/StackLayout` | 纯数学，有单测 |
 | 卡不能压到哪 | `shared/layout/HudSafeZone` | 原版 HUD 的矩形 + 底部留白，纯数学，有单测（含反例对照） |
 | 主题从哪来 | `render/StyleSource` | 懒加载 + 一秒热重读 |
 | 动画进度 | `shared/style/CardTimeline` + `render/CardCanvas` | 纯函数 + 每帧上下文 |
 | 事件 → 屏上的卡 | `render/CardStage` | 只调度，**不画一笔** |
+
+## 稀有度联动：一个交接面
+
+卡片强调色的"档位→颜色"知识住在 `rarity/RarityAccent`（vanilla 四档 → 主题四槽）。
+装了 [稀有度核心 RarityCore] 时，七档 + 玩家自定义色通过两层接管它：
+
+| 角色 | 在哪 | 说明 |
+| --- | --- | --- |
+| 交接面 | `layers/.../rarity/LinkedRarity`（接口） | `tierOf`（0=无档位，1~7）+ `colorOf` + `showcaseFrom`（特效门槛） |
+| 桥 | `platforms/.../compat/RarityCoreBridge` | 反射 + MethodHandle 懒解析；ModList 守卫；失败即解除联动 |
+| 注入 | `PickupCard` 构造器 | `RarityAccent.setLinked(...)`，与 `CardStage.setSources` 同款模式 |
+
+不引编译期依赖（CI 与开发机没有那个 jar）；卸载联动 = 不注入，渲染路径零感知。
+统一档位尺 1~7（vanilla 四档占前四格）同时供特效阶梯（微光强度、入场扫光门槛）使用。
 
 **渲染方案已定案（2026-09-17）：NanoVG 矢量自绘。** 曾经的"可替换插槽"
 （`render/CardPainter` 接口）连同它的第二实现一起删了：只有一个实现的接口不是接缝，
@@ -70,8 +85,8 @@ git 历史里翻到另外几个名字，得知道它们为什么没了：
 
 | 路径 | 状态 | 在哪 |
 | --- | --- | --- |
-| **NanoVG 矢量**（微光 / 竖条 / 两个框 / 入场裁剪） | **唯一的生产路径** | `layers/mapping/official/…/render/nvg/NvgCardPainter` |
-| 原版内容（物品图标 + 中文文字） | **活的，且必须有** | 同一个文件的 `content()` —— 那是 MC 自己的物品模型与字形图集，不是"第二种画法" |
+| **NanoVG 矢量**（微光 / 竖条 / 两个框 / 入场裁剪 / 扫光） | **唯一的生产路径** | `layers/mapping/official/…/render/nvg/NvgCardPainter` |
+| 原版内容（物品图标 + 中文文字） | **活的，且必须有** | `render/nvg/NvgCardContent`（2026-09-20 从 Painter 拆出）—— 那是 MC 自己的物品模型与字形图集，不是"第二种画法" |
 | DOM 草稿 | **活的，视觉真源** | `design/theme.css` + `measure.html` + `animation.html`：改外观**先动它** |
 | ~~SDF 形状层~~ | **已删**（2026-09-17） | 原 `render/shape/*` + `assets/*/shaders/core/gui_shape.*` |
 | ~~投影 + 顶部高光~~ | **已删**（2026-09-17，用户："直接把影子和高光删了"） | 参数整组从 `tokens.css` → 主题 JSON → `StyleModel` / `StyleOverrides` → 配置界面删掉，不是"默认设成 0" |

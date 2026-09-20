@@ -70,4 +70,43 @@ class RevealWindowTest {
             }
         }
     }
+
+    // ------------------------------------------------------------------
+    // 镜像卡片（2026-09-20）：竖条在右缘，窗口贴竖条左缘、从右往左长
+    // ------------------------------------------------------------------
+
+    @Test
+    @DisplayName("镜像：窗口右缘贴着竖条左侧，全宽时左缘抵到卡左缘")
+    void mirroredWindowHugsTheBarOnTheRight() {
+        float full = RevealWindow.contentWidth(CARD, BAR, GAP);
+        var w = RevealWindow.of(BAR, GAP, CARD, false, 1f, true);
+        assertEquals(CARD - (BAR + GAP), w.right(), 1e-6, "锚定边是窗口右缘（贴竖条）");
+        assertEquals(CARD - (BAR + GAP) - full, w.left(), 1e-6, "全宽时窗口一直伸到卡左缘");
+    }
+
+    @Test
+    @DisplayName("镜像拉幕：从竖条侧往左展开，锚定边不动")
+    void mirroredClipGrowsLeftward() {
+        float full = RevealWindow.contentWidth(CARD, BAR, GAP);
+        for (float rise : new float[]{0f, 0.25f, 0.5f, 1f}) {
+            var w = RevealWindow.of(BAR, GAP, CARD, true, rise, true);
+            assertEquals(full * rise, w.width(), 1e-6, "宽度与非镜像同公式");
+            assertEquals(CARD - (BAR + GAP), w.right(), 1e-6, "锚定边（右缘）不许动");
+        }
+        var closed = RevealWindow.of(BAR, GAP, CARD, true, 0f, true);
+        assertEquals(0f, closed.width(), 1e-6, "rise=0 全挡住");
+    }
+
+    @Test
+    @DisplayName("镜像窗口同样不越界、不压竖条")
+    void mirroredWindowStaysInsideAndOffTheBar() {
+        for (boolean clip : new boolean[]{false, true}) {
+            for (float rise : new float[]{0f, 0.33f, 1f}) {
+                var w = RevealWindow.of(BAR, GAP, CARD, clip, rise, true);
+                assertTrue(w.left() >= 0f && w.right() <= CARD + 1e-6f, "越界：" + w);
+                assertTrue(w.right() <= CARD - BAR + 1e-6f,
+                        "窗口右边压到竖条（镜像时竖条在右缘）：" + w);
+            }
+        }
+    }
 }

@@ -213,6 +213,11 @@ public final class ConfigPageSpec {
                 tr("pickupcard.config.row.align.hint"),
                 () -> cycle(v.align, LayoutSettings.Side.values(), ConfigPageSpec::sideName),
                 restore(v.align)));
+        // 镜像卡片：竖条搬到最右、内容左右反转、动画方向跟着翻（2026-09-20 用户新增）
+        rows.add(new Row(Page.LAYOUT, tr("pickupcard.config.row.mirror.name"),
+                tr("pickupcard.config.row.mirror.hint"),
+                () -> bool(v.mirrorCard, PickupCardConfig.layoutSnapshot().mirrorCard()),
+                restore(v.mirrorCard)));
         rows.add(new Row(Page.LAYOUT, tr("pickupcard.config.row.scale.name"),
                 tr("pickupcard.config.row.scale.hint"),
                 () -> percent(v.scalePercent, PickupCardConfig.layoutSnapshot().scalePercent()),

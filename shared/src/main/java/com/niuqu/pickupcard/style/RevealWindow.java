@@ -42,9 +42,23 @@ public record RevealWindow(float left, float width) {
      */
     public static RevealWindow of(float barWidth, float gap, float cardWidth,
                                   boolean clip, float rise) {
-        float left = contentLeft(barWidth, gap);
+        return of(barWidth, gap, cardWidth, clip, rise, false);
+    }
+
+    /**
+     * 同上，带镜像：竖条在<b>右</b>缘时，窗口贴着竖条的左缘、从右往左长。
+     * <p>【镜像不是把 left 简单取反】窗口的"锚定边"从左换到右：非镜像时窗口左边贴着
+     * {@code contentLeft}、往右长；镜像时窗口右边贴着 {@code cardWidth - contentLeft}、
+     * 往左长 —— 拉幕档的展开/收拢方向因此自动跟着翻，调用方不用各写一份。
+     */
+    public static RevealWindow of(float barWidth, float gap, float cardWidth,
+                                  boolean clip, float rise, boolean mirror) {
+        float contentLeft = contentLeft(barWidth, gap);
         float full = contentWidth(cardWidth, barWidth, gap);
-        return new RevealWindow(left, clip ? full * Easing.clamp01(rise) : full);
+        float width = clip ? full * Easing.clamp01(rise) : full;
+        return mirror
+                ? new RevealWindow(cardWidth - contentLeft - width, width)
+                : new RevealWindow(contentLeft, width);
     }
 
     /** 窗口右边。 */

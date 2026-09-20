@@ -6,21 +6,13 @@ import com.niuqu.pickupcard.pickup.CardContent;
 import com.niuqu.pickupcard.pickup.Inbox;
 import com.niuqu.pickupcard.rarity.RarityAccent;
 import com.niuqu.pickupcard.render.CardCanvas;
-import com.niuqu.pickupcard.render.CardMetrics;
 import com.niuqu.pickupcard.render.CardSlot;
-import com.niuqu.pickupcard.render.CardView;
-import com.niuqu.pickupcard.render.FadingItemBuffers;
 import com.niuqu.pickupcard.style.Easing;
 import com.niuqu.pickupcard.style.RevealWindow;
 import com.niuqu.pickupcard.style.StyleModel;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
-import net.minecraft.world.item.ItemStack;
-import net.minecraft.world.item.Items;
-import com.mojang.blaze3d.vertex.PoseStack;
-import org.joml.Matrix4f;
-import org.joml.Vector3f;
 import org.lwjgl.nanovg.NVGColor;
 import org.lwjgl.nanovg.NVGPaint;
 import org.lwjgl.system.MemoryStack;
@@ -86,27 +78,9 @@ import static org.lwjgl.nanovg.NanoVG.nvgStrokeWidth;
  */
 public final class NvgCardPainter {
 
-    /** 名字被截断时补的那个字符（跟 {@code CardMetrics#ELLIPSIS} 同一个字符）。 */
-    private static final String ELLIPSIS = "\u2026";
-
     /** 稀有度微光往外扩的量与软边宽度。 */
     private static final float GLOW_SPREAD = 2f;
     private static final float GLOW_FEATHER = 3f;
-
-    /**
-     * 经验卡的图标：下界之星。
-     * <p>
-     * 【为什么是它】经验没有 ItemStack，原先画一块强调色方块占位。但"是什么"这件事
-     * 不能靠形状猜 —— 卡片上得有个一眼认得出的记号。设计稿一直用的是下界之星贴图，
-     * 参考图里经验卡那一格的主导色也正好是 nether_star.png 的三个主色
-     * （#556B6B / #88A4A4 / #B9C9C9），所以照它来。
-     * <p>
-     * 只用来画，不动它，所以是共享的一份 —— 渲染路径不会改栈。
-     */
-    private static final ItemStack XP_ICON = new ItemStack(Items.NETHER_STAR);
-
-    /** pose 变换用的复用向量，避免逐顶点分配。 */
-    private static final Vector3f POS = new Vector3f();
 
     /** "引擎没了"这件事每次会话只该在屏幕上说一次，日志里也只需要一条。 */
     private boolean reportedMissing;
@@ -182,6 +156,7 @@ public final class NvgCardPainter {
                         accentOf(card, style.accents()), canvas.barOf(slot.view()),
                         bodyShiftOf(canvas, slot, style, rise), rise, glowStrengthOf(card),
                         glowScaleOf(canvas, slot), shimmerOf(canvas, slot),
+                        canvas.layout().mirrorCard(),
                         windowOf(canvas, slot, style, rise));
                 nvgRestore(vg);
             }
@@ -190,22 +165,10 @@ public final class NvgCardPainter {
         }
 
         // 内容排在 NanoVG 之后：它画在卡面之上（用的是同一批屏幕坐标）。
-        // 图标与文字都在这一路 —— 图标每帧原版现渲（见 content 里的说明），文字走原版字形。
+        // 图标与文字都在这一路 —— 图标每帧原版现渲，文字走原版字形（见 NvgCardContent）。
         for (CardSlot slot : slots) {
-            content(gui, canvas, slot, font);
+            NvgCardContent.paint(gui, canvas, slot, font);
         }
-    }
-
-    /** 这张卡该画的图标栈：普通物品 / 溢出卡的轮换图标 / 经验卡的固定替代。 */
-    private static ItemStack iconStackOf(CardCanvas canvas, CardSlot slot) {
-        Inbox.Card card = slot.view().notice().payload();
-        if (card.content() instanceof CardContent.Item item) {
-            return item.stack();
-        }
-        if (card.content() instanceof CardContent.Overflow overflow) {
-            return cycleIcon(overflow, canvas.now());
-        }
-        return XP_ICON;
     }
 
     // ------------------------------------------------------------------
@@ -220,57 +183,70 @@ public final class NvgCardPainter {
      * @param barFill  竖条展开比例 0~1
      * @param bodyShift 两个内容框的横向偏移（内容从竖条后面滑出来用）；竖条自己不动，
      *                  它是"洞口"，所以只有内容偏移。退场「火车退回」的位移也从这里进。
+     *                  镜像卡片时位移方向已由 {@link #bodyShiftOf} 翻转。
      * @param rise     内容出现进度 0~1。影子浓度与微光都按它给 —— 用户报过"影子一出来就是
      *                 满的，看着像影子先到、卡片后到"
      * @param glowStrength 微光强度 0~1（{@link #glowStrengthOf} 给：按稀有度档位爬阶梯）。
      *                     0 = 这张卡没有微光
      * @param glowScale 微光呼吸系数（0.4~1.0，关闭呼吸恒为 1）
      * @param shimmer  入场扫光进度：0 = 不画；(0,1) = 光带走到哪（{@link #shimmerOf} 给）
+     * @param mirror   镜像卡片（2026-09-20 用户定的开关）：竖条在最右，往左依次是图标格、
+     *                 信息框；内容区的几何全部以卡右缘为基准反算
      * @param window   隧道口：内容能被看见的那一段。**偏移必须有它配套**：只有偏移没有裁剪，
      *                 两个框就会从竖条前面滑过去 —— 真机上看就是"卡片穿透竖条"。
-     *                 消失方式「拉幕收拢」也从这里进：退场时窗口从右往左收。
+     *                 消失方式「拉幕收拢」也从这里进：退场时窗口朝竖条那侧收。
      */
     public static void paintShell(long vg, StyleModel style, float x, float y, float cardW, float cardH,
                                   int accent, float barFill, float bodyShift, float rise,
-                                  float glowStrength, float glowScale, float shimmer, RevealWindow window) {
+                                  float glowStrength, float glowScale, float shimmer, boolean mirror,
+                                  RevealWindow window) {
         float gap = style.gap();
         float barW = style.barWidth();
-        float bodyX = barW + gap;
-        float bodyW = Math.max(0f, cardW - bodyX);
+        float bodyW = Math.max(0f, cardW - barW - gap);
+        // 内容区的两条边：非镜像时从竖条右侧开始；镜像时贴卡左缘、到竖条左侧为止
+        float bodyLeft = mirror ? x : x + barW + gap;
         float radius = Math.min(style.cornerRadius(), cardH / 2f);
 
         try (MemoryStack stack = MemoryStack.stackPush()) {
-            // 竖条在窗口左边，是"洞口"，不受窗口影响，单独画
-            bar(vg, stack, style, x, y, cardH, radius, accent, barFill);
+            // 竖条在"洞口"那侧，不受窗口影响，单独画
+            bar(vg, stack, style, mirror ? x + cardW - barW : x, y, cardH, radius, accent, barFill);
 
-            // 【两个内容框必须在窗口里画】偏移让框往左走，窗口把左边多出来的那截切掉，
+            // 【两个内容框必须在窗口里画】偏移让框朝洞口回缩，窗口把多出来的那截切掉，
             // 合起来才是"从隧道口冒出来"。用 save/restore 包住：scissor 是 NanoVG 的
             // 状态，留着会影响后面每一张卡。
             nvgSave(vg);
             nvgScissor(vg, x + window.left(), y, window.width(), cardH);
             if (window.width() > 0.01f) {
-                box(vg, stack, style, x + bodyX + bodyShift, y, cardH, cardH, radius);
-                float infoX = x + bodyX + cardH + gap;
-                float infoW = Math.max(0f, x + cardW - infoX);
+                // 图标格贴着竖条那侧；镜像时从卡右缘反算。信息框占据剩下的宽度
+                float iconX = mirror ? bodyLeft + bodyW - cardH : bodyLeft;
+                box(vg, stack, style, iconX + bodyShift, y, cardH, cardH, radius);
+                float infoX = mirror ? bodyLeft : iconX + cardH + gap;
+                float infoW = Math.max(0f, bodyW - cardH - gap);
                 if (infoW > 0f) {
                     box(vg, stack, style, infoX + bodyShift, y, infoW, cardH, radius);
                 }
                 // 扫光在框之后、微光之前：它要照亮的是框面（在框上才读得出"掠过"），
-                // 又必须被窗口裁着（入场未完成时不许越出洞口）
+                // 又必须被窗口裁着（入场未完成时不许越出洞口）。镜像时进度取反，
+                // 光带就从右往左扫——与"从竖条侧出发"的镜像语义一致
                 if (shimmer > 0f) {
-                    shimmerBand(vg, stack, style, x + bodyX, y, bodyW, cardH, radius, shimmer);
+                    shimmerBand(vg, stack, style, bodyLeft, y, bodyW, cardH, radius,
+                            mirror ? 1f - shimmer : shimmer);
                 }
             }
             nvgRestore(vg);
 
             // 微光叠在外壳之"上"：画在框之前会被底色盖掉，看起来就是没画。
-            // glowScale 是呼吸系数（0.4~1.0，关闭呼吸时恒 1）—— 见 glowScaleOf。
-            // glowStrength 是档位阶梯（见 glowStrengthOf）：强度 = 基础 alpha × 档位 × 呼吸。
-            if (glowStrength > 0f && rise > 0.5f && style.glowAlpha() > 0) {
-                softBox(vg, stack, x + bodyX - GLOW_SPREAD, y - GLOW_SPREAD,
+            // glowScale 是呼吸系数（0.4~1.0，关闭呼吸时恒 1）；glowStrength 是档位阶梯；
+            // ramp 让微光在入场后半程淡入——从前 rise 过 0.5 直接满亮弹出，生硬
+            // （2026-09-20 用户报"光圈没有跟随动画、没有淡入淡出"）。
+            // 【x 跟随 bodyShift】内容滑出时光圈跟着框走，而不是钉在原地等内容撞进来。
+            // 退场的淡出不用这里管：整张卡的外壳在 nvgGlobalAlpha 里，随退场一起淡。
+            if (glowStrength > 0f && rise > 0.45f && style.glowAlpha() > 0) {
+                float ramp = Easing.clamp01((rise - 0.45f) / 0.4f);
+                softBox(vg, stack, bodyLeft + bodyShift - GLOW_SPREAD, y - GLOW_SPREAD,
                         bodyW + GLOW_SPREAD * 2f, cardH + GLOW_SPREAD * 2f, radius + GLOW_SPREAD,
                         GLOW_FEATHER, withAlpha(accent,
-                                Math.round(style.glowAlpha() * glowScale * glowStrength)));
+                                Math.round(style.glowAlpha() * glowScale * glowStrength * ramp)));
             }
         }
     }
@@ -376,82 +352,6 @@ public final class NvgCardPainter {
     }
 
     // ------------------------------------------------------------------
-    // 内容：物品图标 + 名字 + 数量（原版批次，画在卡面之上）
-    // ------------------------------------------------------------------
-
-    /** 只画原版那部分，带入场裁剪。 */
-    private static void content(GuiGraphics gui, CardCanvas canvas, CardSlot slot, Font font) {
-        StyleModel style = canvas.style();
-        CardView view = slot.view();
-        Inbox.Card card = view.notice().payload();
-        // 【内容全部在"未缩放单位"里算】缩放交给 pose；文字因此跟着一起缩，
-        // 而字形按 100% 栅格化后重采样 —— 缩小时略有锯齿，但比"卡小了字还在外面"强。
-        // 尺寸按布局缩放换算（见 paint 里那段：S 与脉冲 p 是两回事）
-        float cardScale = canvas.scale();
-        float h = slot.height() / cardScale;
-        float cardW = slot.width() / cardScale;
-        float gap = style.gap();
-        float barW = style.barWidth();
-        float bodyX = barW + gap;
-        float rise = canvas.contentOf(view);
-        RevealWindow win = windowOf(canvas, slot, style, rise);
-        float shift = bodyShiftOf(canvas, slot, style, rise);
-        float alpha = exitAlphaOf(canvas, slot);
-        float x = bodyX + shift;
-        int accent = accentOf(card, style.accents());
-
-        gui.pose().pushPose();
-        // 与外壳同一个变换：以卡心为原点、按 S·p 缩放（脉冲内外一致，见 paint 里那段说明）
-        float effScale = cardScale * canvas.pulseOf(view);
-        gui.pose().translate(slot.x() + slot.width() / 2f, slot.y() + slot.height() / 2f, 0f);
-        if (effScale != 1f) {
-            gui.pose().scale(effScale, effScale, 1f);
-        }
-        gui.pose().translate(-cardW / 2f, -h / 2f, 0f);
-        // 裁剪在两种情况下都要在：入场还没走完（隧道口在开），或者退场选了带位移/收拢的类型
-        //（淡出不需要——它没有几何变化，裁着白费）。
-        boolean clipped = rise < 1f
-                || (view.exiting() && canvas.layout().exitMode() != LayoutSettings.Exit.FADE);
-        if (clipped) {
-            scissor(gui, gui.pose(), win, h);
-        }
-
-        // 【图标：每帧原版现渲 + 退场换层淡出（2026-09-19 治本定案）】烘焙快照路线
-        // （ItemIconCache，本版已删）拿到过真 alpha 淡出，但快照冻住了活的东西：附魔光
-        // 不再滚动（动效丢失）、分辨率钉死在离屏贴图（锯齿）、glint 亮条纹烘丢（变暗）、
-        // 读回行翻转账（颠倒）。根治 = 不再快照：图标永远原版 renderItem，只在退场
-        // alpha<1 的帧里由 FadingItemBuffers 把 NO_BLEND 实体层换到开混合的等价层提交 ——
-        // setShaderColor 的 alpha 从此数学上有效。几何（窗口/位移/缩放/裁剪）与外壳同源，
-        // 三档退场都跟着卡走。
-        ItemStack iconStack = iconStackOf(canvas, slot);
-        if (!iconStack.isEmpty()) {
-            FadingItemBuffers.drawIcon(gui, iconStack, x + h / 2f, h / 2f, style.iconSize(), alpha,
-                    clipped);
-        }
-
-        // 文字：alpha 直接乘进颜色里（原版字形用的就是这个色的 alpha），不走全局色。
-        // 【alpha 字节掉到 4 以下就整段不画】原版 Font.adjustColor（1.20.1 Font.java:109）
-        // 会把 alpha 字节 0~3 的颜色强制改成完全 opaque —— 退场末尾 alpha 单调下穿这个区间，
-        // 那几帧文字会「闪回不透明」，一帧后整卡才被摘掉（用户连报两次的末帧闪就是它）。
-        String count = canvas.countText(view.notice().count());
-        float textY = (h - font.lineHeight) / 2f;
-        if (canvas.settings().showItemName() && textVisible(style.nameColor(), alpha)) {
-            String name = CardMetrics.fittedName(canvas, font, card, view.notice().count());
-            float nameX = x + h + gap;
-            gui.drawString(font, name, Math.round(nameX + style.paddingH()), Math.round(textY),
-                    fade(style.nameColor(), alpha), true);
-        }
-        drawCount(gui, canvas, view, font, cardW + shift - style.paddingH(), textY, accent, alpha);
-
-        if (clipped) {
-            // 原版内容还在 bufferSource 里排队：不在这里冲掉，它会在裁剪失效之后才画出来
-            gui.bufferSource().endBatch();
-            gui.disableScissor();
-        }
-        gui.pose().popPose();
-    }
-
-    // ------------------------------------------------------------------
     // 配置界面的实时预览
     // ------------------------------------------------------------------
 
@@ -467,13 +367,16 @@ public final class NvgCardPainter {
     // ------------------------------------------------------------------
 
     /** 这一帧这张卡的隧道口：入场展开 + 消失收拢都从它进（两种方式只差宽度与方向）。 */
-    private static RevealWindow windowOf(CardCanvas canvas, CardSlot slot, StyleModel style, float rise) {
+    static RevealWindow windowOf(CardCanvas canvas, CardSlot slot, StyleModel style, float rise) {
         // 窗口是"卡内坐标"，所以要用未缩放的宽度（它在变换后的空间里被解释）
         float w0 = slot.width() / canvas.scale();
+        // 【镜像卡片】竖条在右缘：窗口贴着竖条左缘、从右往左长（RevealWindow 的镜像分支）
+        boolean mirror = canvas.layout().mirrorCard();
         RevealWindow win = RevealWindow.of(style.barWidth(), style.gap(), w0,
-                canvas.layout().appearMode() == LayoutSettings.Appear.CLIP, rise);
-        // 【消失方式＝拉幕收拢】可见范围从右往左收窄：拉幕入场的逆放。与入场窗口取 min ——
-        // 万一"还没展开完就开始退"也不会越宽。
+                canvas.layout().appearMode() == LayoutSettings.Appear.CLIP, rise, mirror);
+        // 【消失方式＝拉幕收拢】可见范围收窄：拉幕入场的逆放。与入场窗口取 min ——
+        // 万一"还没展开完就开始退"也不会越宽。收拢永远朝竖条那侧合拢（镜像时锚定边
+        // 是窗口右缘，RevealWindow 的镜像分支已经把方向算对了）。
         if (canvas.layout().exitMode() == LayoutSettings.Exit.WIPE && slot.view().exiting()) {
             float full = RevealWindow.contentWidth(w0, style.barWidth(), style.gap());
             win = new RevealWindow(win.left(), Math.min(win.width(),
@@ -483,14 +386,18 @@ public final class NvgCardPainter {
     }
 
     /** 内容横向滑动量：CLIP 是"窗口变宽、内容不动"，另一模式是内容从竖条后面平移出来。 */
-    private static float bodyShiftOf(CardCanvas canvas, CardSlot slot, StyleModel style, float rise) {
+    static float bodyShiftOf(CardCanvas canvas, CardSlot slot, StyleModel style, float rise) {
+        boolean mirror = canvas.layout().mirrorCard();
         float bodyW = Math.max(0f, slot.width() / canvas.scale() - style.barWidth() - style.gap());
+        // 【镜像=方向因子】非镜像内容从竖条（左）后面往右冒，位移是负的；镜像竖条在右，
+        // 内容往左冒，位移取正。退场「火车退回」同样乘这个因子，一份公式两种朝向。
+        int dir = mirror ? 1 : -1;
         float shift = canvas.layout().appearMode() == LayoutSettings.Appear.CLIP
-                ? 0f : -(1f - rise) * bodyW;
-        // 【消失方式＝火车退回】内容整块平移回竖条后面：火车入场的逆放。窗口把左边裁住，
-        // 视觉就是"倒车回隧道"。
+                ? 0f : dir * (1f - rise) * bodyW;
+        // 【消失方式＝火车退回】内容整块平移回竖条后面：火车入场的逆放。窗口把靠竖条
+        // 那侧裁住，视觉就是"倒车回隧道"。
         if (canvas.layout().exitMode() == LayoutSettings.Exit.TRAIN && slot.view().exiting()) {
-            shift -= canvas.exitOf(slot.view()) * bodyW;
+            shift += dir * canvas.exitOf(slot.view()) * bodyW;
         }
         return shift;
     }
@@ -518,32 +425,17 @@ public final class NvgCardPainter {
      * {@code CardMove} 再用 340ms 把它推上去。这里要是再加一段位移，它就要动两格了。
      * 曲线取 easeOutCubic：快出慢停，{@code Easing} 里本来就注着"透明度的默认选择"。
      */
-    private static float exitAlphaOf(CardCanvas canvas, CardSlot slot) {
+    static float exitAlphaOf(CardCanvas canvas, CardSlot slot) {
         return canvas.exitAlphaOf(slot.view());
     }
 
-    private static int accentOf(Inbox.Card card, StyleModel.Accents accents) {
+    static int accentOf(Inbox.Card card, StyleModel.Accents accents) {
         // 【为什么用 if 而不是 switch】1.20.1 这一支是 Java 17，模式匹配的 switch 还是预览特性
         if (card.content() instanceof CardContent.Item item) {
             return RarityAccent.of(item.stack(), accents);
         }
         return card.content() instanceof CardContent.Overflow
                 ? RarityAccent.overflow(accents) : RarityAccent.xp(accents);
-    }
-
-    /**
-     * 溢出卡的图标轮播：在成员之间轮流显示。
-     * <p>
-     * 【间隔为什么随张数变慢】3 个图标时快点没问题，8 个时再快就成了闪烁。常量是我们自己定的
-     * （下限 1/4 秒、每多一个成员再慢 40ms），只借"成员越多、轮得越慢"这个行为。
-     */
-    private static ItemStack cycleIcon(CardContent.Overflow overflow, long nowMs) {
-        List<ItemStack> stacks = overflow.stacks();
-        if (stacks.isEmpty()) {
-            return ItemStack.EMPTY;
-        }
-        long interval = Math.max(250L, 900L - 40L * stacks.size());
-        return stacks.get((int) ((nowMs / interval) % stacks.size()));
     }
 
     /**
@@ -587,103 +479,6 @@ public final class NvgCardPainter {
                 + (style.enterEnabled() ? style.enterMs() : 0L);
         float p = (canvas.now() - start) / 480f;
         return p <= 0f || p >= 1f ? 0f : p;
-    }
-
-    /**
-     * 把局部坐标的裁剪窗按当前 pose 变换后交给 scissor。
-     * <p>
-     * 入场只有平移与缩放、没有旋转，所以四角包围盒是精确的。不这么做的话，动起来的那几帧
-     * 裁剪框会停在原地，卡片"从框里滑出去"。
-     */
-    private static void scissor(GuiGraphics gui, com.mojang.blaze3d.vertex.PoseStack pose,
-                                RevealWindow win, float h) {
-        Matrix4f m = pose.last().pose();
-        float minX = Float.MAX_VALUE, minY = Float.MAX_VALUE;
-        float maxX = -Float.MAX_VALUE, maxY = -Float.MAX_VALUE;
-        for (int i = 0; i < 4; i++) {
-            // 【左边是窗口的左边，不是卡片左缘】写 0 的话，内容在竖条那一段也照画不误
-            POS.set(i % 2 == 0 ? win.left() : win.right(), i < 2 ? 0f : h, 0f);
-            m.transformPosition(POS);
-            minX = Math.min(minX, POS.x);
-            minY = Math.min(minY, POS.y);
-            maxX = Math.max(maxX, POS.x);
-            maxY = Math.max(maxY, POS.y);
-        }
-        gui.enableScissor((int) Math.floor(minX), (int) Math.floor(minY),
-                (int) Math.ceil(maxX), (int) Math.ceil(maxY));
-    }
-
-    /**
-     * 数量：平时就是一行字；合并那一刻<b>从旧值滚到新值</b>（用户 2026-09-17 选的 C 档）。
-     * <p>【为什么要把两行字裁在一个框里】滚动是"旧的往上走、新的从下面上来"。不裁剪的话
-     * 两行会同时完整地叠在那儿，看着像重影；裁在数字这一行的高度里，才是"卷上去"。
-     * <p>【为什么整串滚，而不是逐位滚】逐位要在等宽数字上做进位对齐，而位数变化（9 → 10）
-     * 根本没有对应关系。整串滚在位数变化时一样成立，读起来也不差。
-     */
-    private static void drawCount(GuiGraphics gui, CardCanvas canvas, CardView view, Font font,
-                                  float right, float textY, int accent, float alpha) {
-        // 同「末帧闪」的闸：数量与名字走同一个原版 drawString，同一个坑
-        if (!textVisible(accent, alpha)) {
-            return;
-        }
-        String cur = canvas.countText(view.notice().count());
-        String prev = canvas.prevCountText(view);
-        float roll = canvas.rollOf(view);
-        if (prev == null || roll >= 1f) {
-            gui.drawString(font, cur, Math.round(right - font.width(cur)),
-                    Math.round(textY), fade(accent, alpha), true);
-            return;
-        }
-        float t = Easing.easeOutCubic(roll);
-        float lineH = font.lineHeight;
-        float left = right - Math.max(font.width(cur), font.width(prev));
-        // 【为什么先 flush】裁剪是"画的时候才生效"的，而前面几张卡的文字正排着队还没提交 ——
-        // 不冲掉的话它们会一起被这个框裁掉（同一批 buffer 共用同一个裁剪状态）。
-        gui.flush();
-        // 【坐标必须是屏幕坐标】这里的 left/right/textY 是"卡内未缩放单位"，而
-        // GuiGraphics#enableScissor 吃的是经当前 pose 变换后的屏幕像素 —— 直接把卡内坐标喂进去
-        // 会得到一个贴着画布左上角的小框，等于把这一行字整个裁没（2026-09-18 就这么错过一次：
-        // 合并之后数字从屏幕上彻底消失）。所以跟 scissor() 一样先过一遍矩阵。
-        scissorLocal(gui, gui.pose(), left, textY, right, textY + lineH);
-        gui.drawString(font, prev, Math.round(right - font.width(prev)),
-                Math.round(textY - t * lineH), fade(accent, alpha), true);
-        gui.drawString(font, cur, Math.round(right - font.width(cur)),
-                Math.round(textY + (1f - t) * lineH), fade(accent, alpha), true);
-        gui.flush();
-        gui.disableScissor();
-    }
-
-    /**
-     * 把一个<b>卡内未缩放单位</b>的矩形变成屏幕像素并开启裁剪。
-     * <p>与 {@link #scissor} 同一件事，区别只是它吃的是 {@code RevealWindow}、这里吃四个边。
-     */
-    private static void scissorLocal(GuiGraphics gui, PoseStack pose,
-                                     float x1, float y1, float x2, float y2) {
-        Matrix4f m = pose.last().pose();
-        Vector3f a = m.transformPosition(new Vector3f(x1, y1, 0f));
-        Vector3f b = m.transformPosition(new Vector3f(x2, y2, 0f));
-        gui.enableScissor((int) Math.floor(Math.min(a.x, b.x)), (int) Math.floor(Math.min(a.y, b.y)),
-                (int) Math.ceil(Math.max(a.x, b.x)), (int) Math.ceil(Math.max(a.y, b.y)));
-    }
-
-    /** 把颜色自带的 alpha 再乘一个系数：{@code fade(0x80FF0000, 0.5f)} → alpha 64。 */
-    private static int fade(int argb, float alpha) {
-        if (alpha >= 0.999f) {
-            return argb;
-        }
-        return withAlpha(argb, Math.round(((argb >>> 24) & 0xFF) * Easing.clamp01(alpha)));
-    }
-
-    /**
-     * 这一档不透明度还<b>该不该画字</b>：算出来的 alpha 字节一旦小于 4，原版
-     * {@code Font.adjustColor} 会把它强制改成完全不透明（见 {@link #content} 里的说明），
-     * 所以不是「画得淡」而是「干脆不画」—— 宁可让文字比外壳早没半帧，也不闪那一下。
-     */
-    private static boolean textVisible(int argb, float alpha) {
-        if (alpha >= 0.999f) {
-            return true;
-        }
-        return Math.round(((argb >>> 24) & 0xFF) * Easing.clamp01(alpha)) >= 4;
     }
 
     private static int withAlpha(int argb, int alpha) {

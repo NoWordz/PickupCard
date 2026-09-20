@@ -204,9 +204,9 @@ public final class DevCardScreen extends Screen {
                 float h = style.boxHeight();
                 RevealWindow open = RevealWindow.of(style.barWidth(), style.gap(), 150f, false, 1f);
                 NvgCardPainter.paintShell(vg, style, 20f, 190f, 150f, h,
-                        RarityAccent.xp(style.accents()), 1f, 0f, 1f, 1f, 1f, 0f, open);
+                        RarityAccent.xp(style.accents()), 1f, 0f, 1f, 1f, 1f, 0f, false, open);
                 NvgCardPainter.paintShell(vg, style, 190f, 190f, 150f, h,
-                        0xFF55EBFF, 0.45f, 0f, 1f, 1f, 1f, 0f, open);
+                        0xFF55EBFF, 0.45f, 0f, 1f, 1f, 1f, 0f, false, open);
             }
         } finally {
             nvg.end();

@@ -1,9 +1,0 @@
-Manifest-Version: 1.0
-Specification-Title: pickupcard
-Specification-Vendor: E33EPUS
-Specification-Version: 1
-Implementation-Title: pickupcard
-Implementation-Version: 0.1.0
-Implementation-Vendor: E33EPUS
-MixinConfigs: mixins.pickupcard.json
-

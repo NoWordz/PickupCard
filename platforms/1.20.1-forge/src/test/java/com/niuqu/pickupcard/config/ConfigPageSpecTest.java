@@ -119,7 +119,9 @@ class ConfigPageSpecTest {
     void factoryDefaultsComeFromTheKeyDefinitions() {
         assertEquals(LayoutSettings.Exit.TRAIN, PickupCardConfig.VALUES.exitMode.getDefault());
         assertEquals(LayoutSettings.Appear.SLIDE, PickupCardConfig.VALUES.appearMode.getDefault());
-        assertEquals(LayoutSettings.Side.LEFT, PickupCardConfig.VALUES.align.getDefault());
+        assertEquals(LayoutSettings.Side.RIGHT, PickupCardConfig.VALUES.align.getDefault(),
+                "2026-09-20 起出厂默认右缘对齐（齐的是靠屏幕边那侧）");
+        assertEquals(false, PickupCardConfig.VALUES.mirrorCard.getDefault());
         assertEquals(0, PickupCardConfig.VALUES.scalePercent.getDefault());
         assertEquals(4_000L, PickupCardConfig.VALUES.holdMs.getDefault());
         assertEquals(480L, PickupCardConfig.VALUES.exitMs.getDefault());

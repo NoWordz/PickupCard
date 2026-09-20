@@ -118,22 +118,24 @@ class StackLayoutTest {
     @Test
     @DisplayName("自动锚线按对齐档各自解析：左缘档=竖条成线公式，右缘档=贴右边距")
     void autoAnchorResolvesPerAlignSide() {
-        LayoutSettings left = LayoutSettings.defaults();
-        assertEquals(LayoutSettings.autoLeftEdge(GUI_W), left.anchorLeft(GUI_W), EPS);
-
-        LayoutSettings right = new LayoutSettings(Appear.SLIDE, LayoutSettings.Exit.FADE,
-                LayoutSettings.Side.RIGHT, 4f, LayoutSettings.AUTO_SCALE,
-                LayoutSettings.AUTO_ANCHOR, LayoutSettings.AUTO_ANCHOR);
+        // 2026-09-20 起默认是右缘档：defaults() 解析为贴右边距
+        LayoutSettings right = LayoutSettings.defaults();
         assertEquals(GUI_W - MARGIN, right.anchorLeft(GUI_W), EPS,
                 "右缘档的自动锚线贴右边距 —— 不再错拿左缘公式（卡会瞬移到屏幕中左的那个错）");
+
+        LayoutSettings left = new LayoutSettings(Appear.SLIDE, LayoutSettings.Exit.FADE,
+                LayoutSettings.Side.LEFT, 4f, LayoutSettings.AUTO_SCALE,
+                LayoutSettings.AUTO_ANCHOR, LayoutSettings.AUTO_ANCHOR);
+        assertEquals(LayoutSettings.autoLeftEdge(GUI_W), left.anchorLeft(GUI_W), EPS,
+                "左缘档的竖条成线公式仍在");
     }
 
     @Test
-    @DisplayName("默认锚点：横向 = 左缘自动公式，纵向 = 贴 HUD 带上方")
+    @DisplayName("默认锚点：横向 = 右缘贴右边距（2026-09-20 默认改右缘），纵向 = 贴 HUD 带上方")
     void defaultAnchorSitsAboveTheHudBand() {
         var s = StackLayout.stack(List.of(new StackLayout.Size(120, 30)), GUI_W, GUI_H,
                 LayoutSettings.defaults(), MARGIN, MARGIN_Y, 6f);
-        assertEquals(LayoutSettings.autoLeftEdge(GUI_W), s.get(0).x(), EPS, "竖条左缘停在自动锚点");
+        assertEquals(GUI_W - MARGIN - 120f, s.get(0).x(), EPS, "卡右缘贴右边距（MARGIN=16）：x = 右缘 − 卡宽");
         assertEquals(GUI_H - MARGIN_Y - 30f, s.get(0).y(), EPS, "最新那张顶边贴 HUD 带上方");
     }
 
