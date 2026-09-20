@@ -100,6 +100,15 @@ def main() -> int:
             if doc not in names:
                 fail(f"缺少 {doc} —— 它在仓库根有正本，由 processResources 拷进 jar")
 
+        # 7. mod 图标：jar 里的 logo.png 由 design/icon.png 改名而来，必须逐字节一致 ——
+        # "重跑图标脚本之后忘了重新构建"会让 jar 里躺着旧图标，而 mods.toml 照样指着它。
+        icon = ROOT / "design" / "icon.png"
+        if icon.is_file():
+            if "logo.png" not in names:
+                fail("jar 里没有 logo.png，而 mods.toml 的 logoFile 指着它")
+            elif zf.read("logo.png") != icon.read_bytes():
+                fail("jar 里的 logo.png 与 design/icon.png 不一致 —— 重跑 design/icon.py 之后要重新构建")
+
     print(f"verify_jars: {jar.name}（{len(names)} 个条目）")
     return report()
 
@@ -111,7 +120,7 @@ def report() -> int:
             print(f"  ✗ {p}", file=sys.stderr)
         return 1
     print("  全绿：无摊平类残留 / 嵌套成对同版 / 四平台 native 在主 jar / 构建戳与身份一致 / "
-          "mixin 与 refmap 齐 / 许可随产物")
+          "mixin 与 refmap 齐 / 许可随产物 / 图标与设计正本一致")
     return 0
 
 

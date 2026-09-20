@@ -8,6 +8,9 @@ issueTrackerURL = "https://github.com/E33EPUS/PickupCard/issues"
     version = "${mod_version}"
     displayName = "${mod_name}"
     authors = "${mod_authors}"
+    # 图标：logo.png 在资源根，由 design/icon.py 按 tokens.css 里的配色重新产出 ——
+    # 它是唯一一处没有门禁盯着的视觉资产，所以至少要能一键重来。
+    logoFile = "logo.png"
     description = '''${mod_description}'''
     # 纯客户端：这个 mod 不注册任何服务端内容，装了也不会让服务器拒绝原版客户端
     clientRequired = true

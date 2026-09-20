@@ -18,6 +18,8 @@
 | `*-draft.png` | `shot.py` 出的草稿截图，给不方便开浏览器时看。`animation-*.png` 来自更早一次会话，可能已经过时 |
 | `ref-vs-impl.png` | 参考图 vs 我们的构建，**同一尺度 1:1**，上下成对。看差异先看这张 |
 | `sheet.py` | 生成上面那张：不依赖"框的左右缘"，所以脏底也能裁 |
+| `icon.py` | 生成 mod 图标（`design/icon.png`，128×128）。配色**直接从 `tokens.css` 读** —— 改主题后重跑一次图标就跟着变，不像手画的那张会悄悄漂 |
+| `icon.png` | mod 图标的正本。构建时由 `processResources` 改名成 `logo.png` 进 jar（`mods.toml` 的 `logoFile` 指着它）—— **资源目录里没有第二份**；`tools/verify_jars.py` 盯着两者逐字节一致 |
 
 ## 规矩（Q4：限定子集，清单外报错）
 

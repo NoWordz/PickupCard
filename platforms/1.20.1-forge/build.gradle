@@ -305,6 +305,11 @@ tasks.named('processResources', ProcessResources).configure {
     // 再养一份会漂的副本（2026-09-20 仓库重构：原来那份就埋在 src/main/resources 里）。
     from(new File(pickupcardRepoRoot, 'LICENSE'))
     from(new File(pickupcardRepoRoot, 'THIRD_PARTY_NOTICES.md'))
+    // mod 图标同理：正本在 design/icon.png（由 design/icon.py 从 tokens.css 的配色产出），
+    // 进 jar 时改名成 mods.toml 里 logoFile 指的那个名字 —— 资源目录里不再养第二份。
+    from(new File(pickupcardRepoRoot, 'design/icon.png')) {
+        rename 'icon.png', 'logo.png'
+    }
     var replaceProperties = [
             minecraft_version      : minecraft_version, minecraft_version_range: minecraft_version_range,
             forge_version          : forge_version, forge_version_range: forge_version_range,
