@@ -1,5 +1,9 @@
 * text=auto eol=lf
 
+# Windows 批处理必须是 CRLF：cmd.exe 解析 LF 的 .bat 在标签/多行处会出错。
+# 上面那条全局 eol=lf 会把 gradlew.bat 也写成 LF —— 这条要压在它后面。
+*.bat text eol=crlf
+
 # 构建产物与二进制由各自的目标产出，仓库里不留
 *.jar binary
 gradle/wrapper/gradle-wrapper.jar binary
