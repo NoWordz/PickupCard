@@ -1,49 +1,120 @@
-name: build
+name: Build
+
+# 单分支多目标：支持哪些目标写在 versions/targets.json 里，**这个工作流里没有目标名**。
+# 新增一个目标 = 加一条 JSON + 建工程目录，不必碰这个文件。
 
 on:
   push:
-    branches: [main]
+    branches: ["main"]
+    paths-ignore:
+      - "**.md"
+      - "docs/**"
   pull_request:
+    branches: ["main"]
+    paths-ignore:
+      - "**.md"
+      - "docs/**"
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
-  # 结构自洽性先跑：矩阵矛盾、身份重复、层谓词不符，这些比编译失败更值得早发现。
-  # 它不需要 JDK，也就不会把网络/工具链问题混进来。
-  verify:
+  targets:
+    name: 校验矩阵
     runs-on: ubuntu-latest
+    outputs:
+      list: ${{ steps.matrix.outputs.list }}
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-      - name: Verify target matrix and layers
-        run: python tools/verify_targets.py
 
-  # 目标矩阵由 versions/targets.json 决定：工程目录存在就编它。
+      # 本地与 CI 跑的是同一个脚本：矩阵是规则、身份只有一份、工程目录与矩阵条目必须互相存在。
+      # 它不需要 JDK，所以工具链/网络问题不会混进这一道闸。
+      - name: 校验 versions/ 与各平台的身份来源
+        run: python3 tools/verify_targets.py --matrix-out "$RUNNER_TEMP/matrix.json"
+
+      - name: 导出矩阵
+        id: matrix
+        run: echo "list=$(cat "$RUNNER_TEMP/matrix.json")" >> "$GITHUB_OUTPUT"
+
   build:
-    needs: verify
+    name: 构建 ${{ matrix.target }}
+    needs: targets
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
-        target: [1.20.1-forge]
+        include: ${{ fromJSON(needs.targets.outputs.list) }}
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-java@v5
+      - name: 设置 JDK ${{ matrix.java }}
+        uses: actions/setup-java@v5
         with:
+          java-version: "${{ matrix.java }}"
           distribution: temurin
-          java-version: '17'
 
-      - uses: gradle/actions/setup-gradle@v4
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          # PR 只读缓存；推 main 才刷新它。
+          cache-read-only: ${{ github.event_name == 'pull_request' }}
 
-      - name: Build ${{ matrix.target }}
-        working-directory: platforms/${{ matrix.target }}
-        run: ./gradlew build --no-daemon
+      - name: 构建并测试
+        working-directory: ${{ matrix.project }}
+        run: |
+          chmod +x ./gradlew
+          ./gradlew build --no-daemon
 
-      - name: Upload jar
+      # 构建戳是拿到 jar 的人判断"这些字节来自哪次提交"的唯一依据，而它只在 checkout 真的
+      # 干净时才说真话。本仓库的 gradlew 在索引里**带着 exec 位**（100755），所以上面那句
+      # chmod 不会把自己变成"已跟踪文件被改动"。这条注释是防回归的：AtomChat 那边踩过 ——
+      # 索引里没有 exec 位时，每个发行 jar 都写着 +dirty，而 Windows 本地（core.fileMode=false）
+      # 永远看不到那个假标记。
+      - name: 断言构建戳没说谎
+        working-directory: ${{ matrix.project }}
+        run: |
+          set -euo pipefail
+          jar=$(find build/libs -name "*.jar" ! -name "*sources*" ! -name "*-slim*" | head -1)
+          test -n "$jar"
+          echo "构建戳（$jar）："
+          unzip -p "$jar" pickupcard-build.properties
+          if unzip -p "$jar" pickupcard-build.properties | grep -q '^git_dirty=true'; then
+            echo "::error::发行 jar 的构建戳写着 git_dirty=true，但 CI 是从干净的 checkout 构建的 —— 拿到它的人会以为这些字节来自未提交的源码"
+            exit 1
+          fi
+
+      # 产物级断言看的是 jar 里面：摊平类残留 / 嵌套不成对 / native 没进来 / 构建戳版本对不上，
+      # 这几条单测与结构闸都拦不住。规则在 tools/verify_jars.py 里，本地同一个命令能跑。
+      - name: 断言产物内容
+        run: python3 tools/verify_jars.py "${{ matrix.project }}"
+
+      # -slim 那个包不含内嵌依赖，发出去的表现是"缺库"而不是构建失败 ——
+      # 取件规则必须把排除写死，取完再断言一次，两道都要有。
+      - name: 取产物（-slim 与 sources 一律不要）
+        working-directory: ${{ matrix.project }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$GITHUB_WORKSPACE/dist"
+          find build/libs -name "*.jar" ! -name "*sources*" ! -name "*-slim*" \
+            -exec cp {} "$GITHUB_WORKSPACE/dist/" \;
+          ls -la "$GITHUB_WORKSPACE/dist"
+          count=$(find "$GITHUB_WORKSPACE/dist" -name "*.jar" | wc -l)
+          if [ "$count" -ne 1 ]; then
+            echo "::error::期望恰好一个发布 jar，实际 $count 个 —— 产物名有歧义时取件规则要重新定"
+            exit 1
+          fi
+          if find "$GITHUB_WORKSPACE/dist" -name "*-slim*" | grep -q .; then
+            echo "::error::取到的是 -slim 包（不含内嵌依赖）"
+            exit 1
+          fi
+
+      - name: 上传产物
         uses: actions/upload-artifact@v4
         with:
-          name: pickupcard-${{ matrix.target }}
-          path: platforms/${{ matrix.target }}/build/libs/*.jar
+          # buildable: false 但工程存在的目标照样编，名字上带出"未验证"。
+          # 后缀由 verify_targets.py 算好放进矩阵 —— 不在这里拼表达式（空串 falsy 会静默取错）。
+          name: pickupcard-${{ matrix.target }}${{ matrix.suffix }}
+          path: dist/*.jar
           if-no-files-found: error

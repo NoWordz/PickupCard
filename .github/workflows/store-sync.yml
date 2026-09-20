@@ -1,0 +1,43 @@
+name: 同步商店文案
+
+# 只手动触发：商店正文是"发布动作"，不该在推代码时被动发生。
+#
+# 【默认演练】不勾 apply 时只拉远端正文比差异、什么都不改；勾了才真的 PATCH。
+#
+# 【为什么只有 Modrinth】CurseForge 的官方 Upload API **没有改项目描述的端点**（只有上传
+# 文件的），所以那边只能人工贴 —— 见 tools/store_sync.py 的说明。别为它写自动化。
+#
+# 【token 没配会怎样】脚本会在 project_id 还是 UNSET 时直接报错退出（不是静默跳过）：
+# 这个工作流是手动触发的，报错比"跑了但什么都没做"更有用。
+
+on:
+  workflow_dispatch:
+    inputs:
+      apply:
+        description: "真的推上去（不勾 = 只演练、看差异）"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  modrinth:
+    name: Modrinth 正文
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: 演练（只看差异）
+        if: ${{ !inputs.apply }}
+        run: python3 tools/store_sync.py
+
+      - name: 同步
+        if: ${{ inputs.apply }}
+        env:
+          MODRINTH_TOKEN: ${{ secrets.MODRINTH_TOKEN }}
+        run: python3 tools/store_sync.py --apply

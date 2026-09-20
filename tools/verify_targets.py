@@ -8,8 +8,7 @@
 
   1. 矩阵是规则     每个 Minecraft 版本都要有 Fabric / NeoForge / Forge 三条（缺了要显式记 buildable:false）
   2. 身份只有一份   仓库根 gradle.properties 必须有全部身份键
-  3. 工程与条目互存 工程目录存在 → 矩阵里必须有它（或者列在 _reference 里当参照，
-                    那种不进构建）；矩阵里的 project → 目录必须存在
+  3. 工程与条目互存 工程目录存在 → 矩阵里必须有它；矩阵里的 project → 目录必须存在
   4. 谓词与挂载一致 挂了版本层就必须够得到那个版本；加载器层/映射层同理
   5. 层目录由声明   层的目录路径必须能从它钉的轴推出来
   6. populated 如实 声明 populated:true 的层不能是空的；声明 false 的不能有内容
@@ -90,15 +89,6 @@ def main() -> int:
     raw_targets = json.loads((ROOT / "versions/targets.json").read_text(encoding="utf-8"))
     targets = entries(raw_targets)
     layers = entries(json.loads((ROOT / "versions/layers.json").read_text(encoding="utf-8")))
-    # 参照实现（_reference.projects）：不参与构建、不发版，但"工程目录存在"必须有一处声明 ——
-    # 与层的 populated 同一条道理：**空/不建要是显式状态**，不能默认容忍孤儿源码。
-    reference = list((raw_targets.get("_reference") or {}).get("projects") or [])
-    for ref in reference:
-        ref_project = ref.get("project")
-        if not ref_project:
-            fail("_reference.projects 里有条目没写 project")
-        elif not (ROOT / ref_project).is_dir():
-            fail(f"_reference 声明了 {ref_project}，但那个目录不存在（参照没了就该把这条删掉）")
 
     # ---- 1. 身份只有一份 ----
     root_props = read_properties(ROOT / "gradle.properties")
@@ -143,11 +133,10 @@ def main() -> int:
                 fail(f"{project}/gradle.properties 定义了身份键 {key} —— "
                      f"身份的唯一来源是仓库根，各平台定义就是第二个真源")
 
-    # 反向：工程目录存在就必须有声明 —— 要么是矩阵里的目标，要么是 _reference 里的参照
+    # 反向：工程目录存在就必须在矩阵里有声明 —— 本地不编、CI 也跳过的源码不许躺着
     platforms_dir = ROOT / "platforms"
     if platforms_dir.is_dir():
         declared = {t.get("project") for t in targets.values()}
-        declared.update(ref.get("project") for ref in reference)
         for child in sorted(platforms_dir.iterdir()):
             if not child.is_dir():
                 continue
@@ -212,5 +201,41 @@ def main() -> int:
     return 0
 
 
+def matrix_entries(raw_targets: dict) -> list[dict]:
+    """给 CI 用的构建矩阵：**有工程目录的目标才编**（所以工作流里没有目标名）。
+
+    后缀也在这里算好放进矩阵，不在 workflow 里拼表达式 —— GitHub 表达式里
+    `a && '' || b` 会因为空串是 falsy 而静默取到 b，那种错只有真发版时才看得见
+    （AtomChat 那边踩过：把"未验证"后缀贴到了正式产物上）。
+    """
+    out = []
+    for name, t in sorted(entries(raw_targets).items()):
+        project = t.get("project")
+        if not project or not (ROOT / project).is_dir():
+            continue
+        out.append({
+            "target": name,
+            "project": project,
+            "java": t.get("java"),
+            "suffix": "" if t.get("buildable") else "-unverified",
+        })
+    return out
+
+
 if __name__ == "__main__":
-    sys.exit(main())
+    argv = sys.argv[1:]
+    matrix_out = None
+    if "--matrix-out" in argv:
+        idx = argv.index("--matrix-out")
+        if idx + 1 >= len(argv):
+            print("verify_targets: --matrix-out 后面要跟一个路径", file=sys.stderr)
+            sys.exit(2)
+        matrix_out = argv[idx + 1]
+    code = main()
+    if code == 0 and matrix_out:
+        raw = json.loads((ROOT / "versions/targets.json").read_text(encoding="utf-8"))
+        payload = matrix_entries(raw)
+        Path(matrix_out).write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+        print("  构建矩阵 -> {}（{} 个目标：{}）".format(
+            matrix_out, len(payload), ", ".join(e["target"] + e["suffix"] for e in payload)))
+    sys.exit(code)

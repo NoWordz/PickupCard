@@ -24,22 +24,6 @@
     "buildable: true 的目标不许留 unverified（CI 会拦）。"
   ],
 
-  "_reference": {
-    "_comment": [
-      "参照实现：**不参与构建、不发版**，只当『以前长什么样、什么手感』的正本参照（用户 2026-09-17 拍板）。",
-      "工程目录存在就必须在这里出现 —— 否则它是一份『本地不编、CI 也跳过』的孤儿源码（verify_targets 会红）。",
-      "但它在矩阵里【不是目标】：没有 buildable、不挂层、不进 Release。",
-      "它们允许自带 gradle.properties 身份键：那是『单独拷出去也能编』的冻结快照，不是第二个真源 ——",
-      "正式目标的身份仍然只在仓库根那一份里。"
-    ],
-    "projects": [
-      {
-        "project": "platforms/1.20.1-legacy",
-        "what": "2026-09-17 从发行 jar 恢复的 v0.1.0（烘焙皮肤 + SDF 圆角 + configui 预设 + StackSmoother）。源码能编过、jar 体积与原件对得上；但卡面路线已定案为 NanoVG 矢量（见 docs/decision-rendering.md），所以它只当参照：不编译、不部署。"
-      }
-    ]
-  },
-
   "1.20.1-forge": {
     "minecraft": "1.20.1",
     "loader": "Forge",

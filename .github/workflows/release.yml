@@ -1,0 +1,216 @@
+name: Release
+
+# 发版三步：改根 gradle.properties 的 mod_version → 在 RELEASE_NOTES.md 写一段（## vX.Y.Z）
+# → 打同名 tag 推上去。**顺序不能反**：本工作流拿 tag 名去 RELEASE_NOTES.md 找段，找不到就硬失败。
+#
+# 三种演练方式（都不碰商店）：
+#   1. 打带后缀的标签（vX.Y.Z-rc1）→ Release 标成预发布，publish job 整段跳过；
+#   2. workflow_dispatch 勾着 dry_run 跑 → 只构建与校验，不建 Release；
+#   3. 什么都不勾直接手动跑 → 同 build.yml，只构建。
+#
+# 注意：本文件的 build job 与 .github/workflows/build.yml 的 build job 是**刻意重复**的
+# （GitHub 没有"复用一个 workflow 的 job"这回事，做成 workflow_call 会把两边都变难读）。
+# 改构建步骤时两边都要改。
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "只构建校验，不建 Release、不发商店"
+        type: boolean
+        default: true
+
+permissions:
+  contents: write
+
+jobs:
+  targets:
+    name: 校验矩阵
+    runs-on: ubuntu-latest
+    outputs:
+      list: ${{ steps.matrix.outputs.list }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 校验 versions/ 与各平台的身份来源
+        run: python3 tools/verify_targets.py --matrix-out "$RUNNER_TEMP/matrix.json"
+
+      - name: 导出矩阵
+        id: matrix
+        run: echo "list=$(cat "$RUNNER_TEMP/matrix.json")" >> "$GITHUB_OUTPUT"
+
+  build:
+    name: 构建 ${{ matrix.target }}
+    needs: targets
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.targets.outputs.list) }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 设置 JDK ${{ matrix.java }}
+        uses: actions/setup-java@v5
+        with:
+          java-version: "${{ matrix.java }}"
+          distribution: temurin
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      # 【版本号必须与标签一致】"v0.3.0 的 Release 里躺着 0.2.2 的 jar"是发版最贵的一种错：
+      # 它不报错、不红，只是把旧字节发给了所有人。这条闸在这里拦。
+      # tr -d '\r' 是必须的：Windows 上 gradle.properties 可能带 \r，比对会假红。
+      - name: 断言 mod_version 与标签一致
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          set -euo pipefail
+          expected="${GITHUB_REF_NAME#v}"
+          actual=$(grep '^mod_version=' gradle.properties | cut -d= -f2 | tr -d '\r')
+          echo "标签=$GITHUB_REF_NAME  期望=$expected  gradle.properties=$actual"
+          if [ "$expected" != "$actual" ]; then
+            echo "::error::标签 $GITHUB_REF_NAME 与 gradle.properties 的 mod_version=$actual 不一致 —— 打标签前先改版本号"
+            exit 1
+          fi
+
+      - name: 构建并测试
+        working-directory: ${{ matrix.project }}
+        run: |
+          chmod +x ./gradlew
+          ./gradlew build --no-daemon
+
+      - name: 断言构建戳没说谎
+        working-directory: ${{ matrix.project }}
+        run: |
+          set -euo pipefail
+          jar=$(find build/libs -name "*.jar" ! -name "*sources*" ! -name "*-slim*" | head -1)
+          test -n "$jar"
+          echo "构建戳（$jar）："
+          unzip -p "$jar" pickupcard-build.properties
+          if unzip -p "$jar" pickupcard-build.properties | grep -q '^git_dirty=true'; then
+            echo "::error::发行 jar 的构建戳写着 git_dirty=true，但 CI 是从干净的 checkout 构建的"
+            exit 1
+          fi
+
+      - name: 断言产物内容
+        run: python3 tools/verify_jars.py "${{ matrix.project }}"
+
+      - name: 取产物（-slim 与 sources 一律不要）
+        working-directory: ${{ matrix.project }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$GITHUB_WORKSPACE/dist"
+          find build/libs -name "*.jar" ! -name "*sources*" ! -name "*-slim*" \
+            -exec cp {} "$GITHUB_WORKSPACE/dist/" \;
+          ls -la "$GITHUB_WORKSPACE/dist"
+          count=$(find "$GITHUB_WORKSPACE/dist" -name "*.jar" | wc -l)
+          if [ "$count" -ne 1 ]; then
+            echo "::error::期望恰好一个发布 jar，实际 $count 个"
+            exit 1
+          fi
+          if find "$GITHUB_WORKSPACE/dist" -name "*-slim*" | grep -q .; then
+            echo "::error::取到的是 -slim 包（不含内嵌依赖）"
+            exit 1
+          fi
+
+      - name: 上传产物
+        uses: actions/upload-artifact@v4
+        with:
+          name: pickupcard-${{ matrix.target }}${{ matrix.suffix }}
+          path: dist/*.jar
+          if-no-files-found: error
+
+  # 建 Release 与"发到商店"刻意拆成两个 job：Release 建坏了可以重发，
+  # 而商店那边手滑点一次就是一次真上传 —— 让它们的重跑代价不一样。
+  release:
+    name: 建 Release
+    needs: [targets, build]
+    # 【needs 里必须有 targets】这个 job 读了 needs.targets.outputs.list —— 只写 needs: build
+    # 不会报错，而是整个 job 被 GitHub 丢掉（run 是红的、日志是空的、jobs 列表少一个）。
+    # 预发布演练看不见这个错（if 先跳过、矩阵不求值），只有真发版才撞上（AtomChat 0.2.10 撞过）。
+    if: startsWith(github.ref, 'refs/tags/v') && inputs.dry_run != true
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # 多目标产物默认落子目录，必须 merge-multiple 拍平，否则挂不上 Release。
+      - uses: actions/download-artifact@v4
+        with:
+          path: release-out
+          merge-multiple: true
+
+      - name: 汇总产物
+        run: |
+          set -euo pipefail
+          ls -la release-out
+          count=$(find release-out -name "*.jar" | wc -l)
+          if [ "$count" -lt 1 ]; then
+            echo "::error::没有拿到任何产物"
+            exit 1
+          fi
+          echo "共 $count 个 jar"
+
+      - name: 取出本版本的 Release 正文
+        run: |
+          python3 - <<'PY'
+          import os, pathlib, re
+          tag = os.environ["GITHUB_REF_NAME"]
+          version = tag[1:] if tag.startswith("v") else tag
+          text = pathlib.Path("RELEASE_NOTES.md").read_text(encoding="utf-8")
+          m = re.search(rf"^## v{re.escape(version)}\s*$", text, re.MULTILINE)
+          if not m:
+              raise SystemExit(f"RELEASE_NOTES.md 里没有 `## v{version}` 段 —— 打标签之前先写它")
+          rest = text[m.end():]
+          nxt = re.search(r"^## ", rest, re.MULTILINE)
+          body = (rest[:nxt.start()] if nxt else rest).strip()
+          if not body:
+              raise SystemExit(f"`## v{version}` 段是空的")
+          pathlib.Path("release-notes.md").write_text(body + "\n", encoding="utf-8")
+          print(f"Release 正文取 `## v{version}` 段：{len(body.splitlines())} 行")
+          PY
+
+      - name: 建 Release 并挂产物
+        uses: softprops/action-gh-release@v2
+        with:
+          files: release-out/*.jar
+          body_path: release-notes.md
+          # 带后缀的标签（vX.Y.Z-rc1）自动标成预发布
+          prerelease: ${{ contains(github.ref_name, '-') }}
+
+  publish:
+    name: 发布到商店
+    needs: [targets, build]
+    # 预发布标签不发商店；dry_run 也不发。
+    if: startsWith(github.ref, 'refs/tags/v') && !contains(github.ref_name, '-') && inputs.dry_run != true
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.targets.outputs.list) }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 设置 JDK ${{ matrix.java }}
+        uses: actions/setup-java@v5
+        with:
+          java-version: "${{ matrix.java }}"
+          distribution: temurin
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      # 【token 或项目 id 没配 = 静默 SKIPPED，不红】各平台的 onlyIf 会跳过它。
+      # 所以"绿了"不等于"发出去了"：发版后要去商店页面确认（或看这一步的日志里有没有 SKIPPED）。
+      - name: 发布（Modrinth + CurseForge）
+        working-directory: ${{ matrix.project }}
+        env:
+          MODRINTH_TOKEN: ${{ secrets.MODRINTH_TOKEN }}
+          CURSEFORGE_TOKEN: ${{ secrets.CURSEFORGE_TOKEN }}
+        run: |
+          chmod +x ./gradlew
+          ./gradlew publishMods --no-daemon

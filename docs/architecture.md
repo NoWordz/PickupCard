@@ -115,3 +115,36 @@ git 历史里翻到另外几个名字，得知道它们为什么没了：
 失败）就整帧不画卡，日志里留一条 ERROR 说明原因。这是刻意的取舍 —— 一份只在别人机器上
 才跑的第二实现，比"少画"更像故障：连日志都不会有。所以发布前必须验的是绑定与四平台
 native 都在 jar 里（`build.gradle` 的 `unpackNvg` 把它们摊进产物）。
+
+## 打包：nanovg 走 JarJar 嵌套
+
+**同一个包不能有两个模块导出它。** UI Deck 与 PickupCard 都把 `org.lwjgl:lwjgl-nanovg`
+的类摊平在 jar 根（那本是 dev 类路径的解法），两个 mod 同装时 Forge 47.4.x 的 JPMS 直接
+拒绝启动：
+
+```
+java.lang.module.ResolutionException: Modules pickupcard and uideck export package
+org.lwjgl.nanovg to module ferritecore
+```
+
+148 个 mod 的真实实例（1.20.1-main）实测必炸。所以 prod 改成 **JarJar 嵌套供应**，dev 照旧摊平：
+
+| 项 | 做法 |
+| --- | --- |
+| `unpackNvg` | 保留，但**只挂 `runClient`**（dev 类路径照旧）；`jar` / `jarJar` / `reobfJar` 不再依赖它 |
+| 主 jar | `exclude 'org/lwjgl/nanovg/**'` —— 类文件一个不留 |
+| native | **留在主 jar**（`windows/x64/…dll` 等四平台）：它们是资源不是类，不产生包导出，LWJGL 按资源路径自取 |
+| 嵌套 | `jarJar.enable()` + `jarJar(implementation("org.lwjgl:lwjgl-nanovg:[3.3.1]"))` |
+| 版本 | **必须钉死单元素区间 `[3.3.1]`**：`[3.3.1,3.4)` 会解析到 3.3.6，与 MC 运行时的 LWJGL 3.3.1 错版本 = 首次调用 `UnsatisfiedLinkError`，还会把第二份 LWJGL 核心一起嵌进来 |
+
+**两处"参考实现没覆盖"的差异（本项目特有，漏了就是上线才炸）**：
+
+1. **`finalizedBy 'reobfJarJar'`**：FG6 造了这个任务却**不自动挂链**。漏挂的症状是
+   编译过、测试绿、SRG 引用 0 —— 上线第一次画卡才 `NoSuchMethodError`。挂上之后
+   主产物的 SRG 引用应为 160。
+2. **manifest 整份搬**：最终产物的 manifest 必须带上 `MixinConfigs`（UI Deck 没有 mixin，
+   它的 jarJar manifest 只有 4 个属性）。缺了 mixin 不加载、拾取事件整个哑掉。
+
+**产物核验三条**（每次动打包脚本都要跑一遍）：主 jar 里 `org/lwjgl/nanovg/*.class` 残留
+= 0；`META-INF/jarjar/` 里 `lwjgl-3.3.1.jar` 与 `lwjgl-nanovg-3.3.1.jar` 成对同版；
+`windows/x64/…/lwjgl_nanovg.dll` 等 native 仍在主 jar 里。

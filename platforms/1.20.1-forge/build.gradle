@@ -301,6 +301,10 @@ tasks.matching { it.name == 'compileTestJava' }.configureEach {
 
 tasks.named('processResources', ProcessResources).configure {
     filteringCharset = 'UTF-8'
+    // 许可与第三方声明各只有一份正本（都在仓库根）—— 这里把它们拷进 jar，免得资源目录里
+    // 再养一份会漂的副本（2026-09-20 仓库重构：原来那份就埋在 src/main/resources 里）。
+    from(new File(pickupcardRepoRoot, 'LICENSE'))
+    from(new File(pickupcardRepoRoot, 'THIRD_PARTY_NOTICES.md'))
     var replaceProperties = [
             minecraft_version      : minecraft_version, minecraft_version_range: minecraft_version_range,
             forge_version          : forge_version, forge_version_range: forge_version_range,
@@ -408,8 +412,12 @@ def changelogFor(version) {
     // Store changelog convention: the trailing English block of the version
     // section in RELEASE_NOTES.md (Chinese summary first, English last).
     def trimmed = section.trim()
-    def idx = trimmed.lastIndexOf('\n\n')
-    return idx >= 0 ? trimmed.substring(idx).trim() : trimmed
+    // Store changelog = 分隔线 `---` **之后**的英文块（写法约定见 RELEASE_NOTES.md 顶部）。
+    // 【为什么不用"最后一个空行"】英文块自己也会分段，按空行取只会取到最后一段、把前面几段
+    // 一起丢掉 —— v0.2.2 那段正好就是这样（2026-09-20 换成分隔线切分）。老版本段没有分隔线时
+    // 整段兜底，不会因此取空。
+    def sep = trimmed.indexOf('\n---')
+    return sep >= 0 ? trimmed.substring(sep + 4).trim() : trimmed
 }
 
 modrinth {

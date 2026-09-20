@@ -68,7 +68,7 @@ ClientPacketListenerMixin (ensureRunningOnSameThread 之后注入)
 
 ## 5. 渲染层设计（自绘）
 
-**美术定案（2026-09-16，依据 docs/art/mockup.html 实况预览）**：卡面语言 = **玻璃拟态**
+**美术定案（2026-09-16，依据 design/card.html 实况预览）**：卡面语言 = **玻璃拟态**
 （深色半透明卡 + 顶部高光细线 + 稀有度色微光；真背景模糊很贵，v1 以半透明近似，
 模糊留 v2 可复用 AtomChat 金字塔模糊经验）；动画性格 = **弹性**（入场 easeOutBack
 320ms 从下方 18px 回弹 + 过冲，合并数字单峰脉冲放大 1.35 倍，退场下沉 12px 缩 0.94
