@@ -125,4 +125,4 @@ Schema 缝已存在：`PickupCardSettings`——配置 GUI（v2）
 
 九宫格纹理面板与多主题全家桶、拖拽锚点编辑（keyhud 式）、附近玩家追踪
 （loot-journal 的隐私处理可直接抄思路：隐身/南瓜头不追踪、白名单）、图鉴/历史、
-配置 GUI（长在 SettingsSource 上）。
+配置 GUI（长在 PickupCardSettings 上）。
