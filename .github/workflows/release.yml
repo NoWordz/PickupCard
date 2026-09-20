@@ -162,7 +162,9 @@ jobs:
           python3 - <<'PY'
           import os, pathlib, re
           tag = os.environ["GITHUB_REF_NAME"]
-          version = tag[1:] if tag.startswith("v") else tag
+          # 预发布后缀不算版本差异：v0.2.2-rc1 的正文取 `## v0.2.2` 段 —— 与版本号闸同一把尺子
+          # （不然每次预发布演练都要在 RELEASE_NOTES 里多养一段重复的正文）。
+          version = (tag[1:] if tag.startswith("v") else tag).split("-")[0]
           text = pathlib.Path("RELEASE_NOTES.md").read_text(encoding="utf-8")
           m = re.search(rf"^## v{re.escape(version)}\s*$", text, re.MULTILINE)
           if not m:
