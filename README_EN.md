@@ -83,7 +83,7 @@ Colours, corner radius, border, padding and animation timings are all data: chan
 2. Put it into a resource pack at the same path (or edit the copy in your instance).
 3. Save — it takes effect within a second, no restart needed.
 
-The model is "the theme provides defaults, the TOML only overrides what you changed", so switching themes never throws away your own tweaks. The design source of truth and the parameter cross-reference live in [docs/design.md](docs/design.md) and [design/](design/) (open `card.html` in a browser to see the card language).
+The model is "the theme provides defaults, the TOML only overrides what you changed", so switching themes never throws away your own tweaks. The design source of truth and the parameter cross-reference live in [docs/design.md](docs/design.md); every tunable parameter is defined in exactly one place, [design/tokens.css](design/tokens.css).
 
 ## Compatibility
 

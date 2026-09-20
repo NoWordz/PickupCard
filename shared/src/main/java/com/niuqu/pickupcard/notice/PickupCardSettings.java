@@ -10,7 +10,7 @@ import com.niuqu.pickupcard.text.CountFormat;
  * 路径，结果每个测试都得先起一个 Forge 环境。
  *
  * @param holdMs        一张卡在屏上停留多久（从最近一次被刷新算起）
- * @param exitMs        退场动画时长；DOM 要等它播完才移除节点
+ * @param exitMs        退场动画时长；渲染层要等它播完才把这张卡从屏上撤掉
  * @param mergeMode     哪些拾取算同一件东西（同名同 NBT / 同名 / 同名但改名的不并 / 从不合并）
  *                      四档见 {@link MergeMode}
  * @param maxOnScreen   同时在屏上限；满了就排队（不再顶掉别人）

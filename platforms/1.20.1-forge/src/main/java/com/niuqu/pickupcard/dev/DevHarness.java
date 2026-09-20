@@ -332,7 +332,7 @@ public final class DevHarness {
             }
             // 【为什么不直接改配置值】那样只能证明"配置→渲染"通，证明不了"按钮→配置"通。
             // 这里发的是**真实鼠标事件**（mouseClicked → 按钮 → 写配置 → 渲染重读），
-            // 把整条链一起验掉 —— handoff 待办里那条"配置界面没点过"就是它。
+            // 把整条链一起验掉 —— 「配置界面没点过」那条待办就是它。
             if (configTicks == WARMUP_TICKS + 26) {
                 PickupCard.LOGGER.info("[harness-auto] 第 1 页控件: {}", configLabels(mc));
                 clickByLabel(mc, I18n.get("pickupcard.config.page.layout.name"));            // 切到「位置与堆叠」页

@@ -126,7 +126,7 @@ repositories {
 // 【打包方式：dev 摊平 + prod 以 JarJar 嵌套】
 // v0.2.2（含）以前是"自包含"：绑定与 native 直接摊进本 jar。2026-09-19 实测它与 UI Deck
 // 同装时 JPMS 直接炸（两个 mod 都导出 org.lwjgl.nanovg 包 —— 摊平副本各自成包导出，
-// 模块系统不允许），见仓库根/docs 的 nanovg-jarjar-hotfix 交接。
+// 模块系统不允许），见 docs/architecture.md 的「打包：nanovg 走 JarJar 嵌套」一节。
 // 现在的分工：开发期照旧摊进 classes 目录（dev 类加载器只认自己的 classes 根，见下）；
 // 发布产物里**类**由 JarJar 嵌套的 lwjgl-nanovg 供应（嵌套 jar 自成模块，多 mod 同库
 // 按版本去重，不再导出同名包）；**native 资源目录仍摊进主 jar**（windows/x64/... 是

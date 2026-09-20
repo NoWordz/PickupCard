@@ -18,7 +18,7 @@ package com.niuqu.pickupcard.notice;
  * @param firstTime  是不是"这个人头一次遇到这件物品"（NEW 角标）
  * @param bornAt     这张卡出生时刻（入场动画的起点）
  * @param touchedAt  最近一次被合并刷新的时刻，合并窗口从它起算
- * @param generation 被合并过几次。DOM 侧用它判断"要不要重放一次入场动画" —— 时间戳
+ * @param generation 被合并过几次。渲染层用它判断"要不要重放一次入场动画" —— 时间戳
  *                   比较会踩时钟精度，计数器不会
  */
 public record Notice<T>(String key,

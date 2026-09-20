@@ -258,7 +258,7 @@ class NoticeQueueTest {
     }
 
     @Test
-    @DisplayName("快照按最久没被碰过排前，DOM 反序就是最新在上")
+    @DisplayName("快照按最久没被碰过排前，渲染层反序就是最新在上")
     void snapshotOrder() {
         NoticeQueue<String> q = queue();
         add(q, "old", 1, 0L);

@@ -28,7 +28,7 @@ class CardTimelineTest {
     }
 
     /**
-     * 入场两段必须走草稿的曲线，不能是匀速。
+     * 入场两段必须走 {@code CardTimeline} 里那两条曲线，不能是匀速。
      *
      * <p>【这条是给谁钉的】原来 {@link CardTimeline} 只把 t 归一化就交出去，靠一句注释
      * "easing 在渲染层做"顶着 —— 而渲染层从来没做，真机上的评价是"很僵硬，没有曲线"。

@@ -152,8 +152,7 @@
 
 **说明**
 
-- 0.1.0 是 ApricityUI 硬前置的版本（HTML/CSS 卡面），已打 `archive/aui` tag 归档。
-  本版是另起一条线：零依赖自绘，按 `docs/design.md` 的定案重做，不向下兼容 0.1.0 的配置
+- 本版是另起一条线：零依赖自绘，按 `docs/design.md` 的定案重做
 
 ----
 
@@ -190,42 +189,4 @@
 
 **Notes**
 
-- 0.1.0 required ApricityUI (HTML/CSS card faces) and is archived under the `archive/aui` tag. This release starts a new line: zero-dependency, self-drawn, rebuilt to `docs/design.md`, and not config-compatible with 0.1.0
-
-## v0.1.0
-
-**新增**
-
-- 纯客户端嗅探原版拾取包，服务端无需安装；注入点在物品实体移除前，拿得到含改名与 NBT 的真实 `ItemStack`
-- 四档稀有度卡面（木牌 / 铜牌 / 蓝银 / 暗紫鎏金），装饰层数递增
-- 窗口内连续拾取同类物品累加数量并触发数字跳动
-- NEW 角标：本局首次遇到的物品亮一下（只记内存、不落盘）
-- 附魔光效与耐久条由原版物品渲染承担
-- 配置：停留时长、合并开关与窗口、同时在屏上限、数量写法
-- 结构守卫 `tools/verify_targets.py`：矩阵规则 / 身份唯一 / 层谓词与挂载一致 / 工程与条目互存
-
-**说明**
-
-- 界面由 ApricityUI 渲染，卡面与动画写在 CSS 里，改外观不用重编译
-- 需要 ApricityUI 1.2.0+ 作为前置
-- 仓库重建于 2026-09-16。更早的 `D:\pickupnotice` 是自己写 SDF 着色器 + 烘焙位图贴图的路线，
-  因「烘焙贴图被三段拉伸导致细节糊、设计稿与实现漂移」整体重做；老仓库以
-  `archive/terminal-card-wip` tag 留档，不再维护
-
-----
-
-**Added**
-
-- Client-side sniffing of the vanilla pickup packet, no server install; the injection point sits before the item entity is removed, so the real `ItemStack` (custom name and NBT included) is available
-- Four rarity card styles (wood / copper / blue-silver / dark purple gilt) with increasing decoration
-- Merging: consecutive pickups of the same item inside a window add to the count and animate the number
-- A NEW tag the first time you ever grab an item in a session (in memory only, never written to disk)
-- The enchant glint and durability bar come from vanilla item rendering
-- Config: dwell time, merge toggle and window, simultaneous cap, count format
-- Structural guard `tools/verify_targets.py`: matrix rules, identity uniqueness, layer predicates matching their mounts, projects and entries existing in pairs
-
-**Notes**
-
-- The interface is rendered by ApricityUI; card faces and animations are written in CSS, so restyling needs no rebuild
-- Requires ApricityUI 1.2.0+ as a dependency
-- The repository was rebuilt on 2026-09-16. The earlier `D:\pickupnotice` wrote its own SDF shaders and baked bitmap textures; because the baked textures were stretched in three slices (blurring detail) and the design drifted from the implementation, it was redone from scratch. The old repository is kept under the `archive/terminal-card-wip` tag and is no longer maintained
+- This release starts a new line: zero-dependency, self-drawn, rebuilt to `docs/design.md`

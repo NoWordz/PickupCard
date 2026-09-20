@@ -98,7 +98,7 @@ git 历史里翻到另外几个名字，得知道它们为什么没了：
 | --- | --- | --- |
 | **NanoVG 矢量**（微光 / 竖条 / 两个框 / 入场裁剪 / 扫光） | **唯一的生产路径** | `layers/mapping/official/…/render/nvg/NvgCardPainter` |
 | 原版内容（物品图标 + 中文文字） | **活的，且必须有** | `render/nvg/NvgCardContent`（2026-09-20 从 Painter 拆出）—— 那是 MC 自己的物品模型与字形图集，不是"第二种画法" |
-| DOM 草稿 | **活的，视觉真源** | `design/theme.css` + `measure.html` + `animation.html`：改外观**先动它** |
+| `design/tokens.css` | **活的，参数真源** | 全部可调参数的唯一定义处；`tools/css_tokens.py` 把它编译成 `assets/pickupcard/styles/*.json`，Java 读那份 JSON |
 | ~~SDF 形状层~~ | **已删**（2026-09-17） | 原 `render/shape/*` + `assets/*/shaders/core/gui_shape.*` |
 | ~~投影 + 顶部高光~~ | **已删**（2026-09-17，用户："直接把影子和高光删了"） | 参数整组从 `tokens.css` → 主题 JSON → `StyleModel` / `StyleOverrides` → 配置界面删掉，不是"默认设成 0" |
 | ~~SDF 整卡回退~~ | **已删**（2026-09-17） | 原是 `TrioCardPainter.paint()/chrome()/barShapes()`：引擎起不来时降级用 |
@@ -106,7 +106,7 @@ git 历史里翻到另外几个名字，得知道它们为什么没了：
 
 ### 为什么删得掉（一次真实的账）
 
-同一条卡几何曾经有 **3 个实现**（DOM / NanoVG / SDF 回退），于是每次改卡面都要改三处。
+同一条卡几何曾经有 **3 个实现**（HTML 卡面 / NanoVG / SDF 回退），于是每次改卡面都要改三处。
 2026-09-17 修"内容穿透竖条"那个 bug 时，裁剪补进了 3 条绘制路径、**漏了第 4 处**
 （NanoVG 的影子批没有窗口），用户第二遍才报回来；同一轮还发现 SDF 回退里**竖条被自己的
 裁剪吃掉**。**同一个几何写 N 遍，就一定会有 N-1 遍是错的。**

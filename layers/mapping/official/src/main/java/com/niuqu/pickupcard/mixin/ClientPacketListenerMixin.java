@@ -17,7 +17,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
  * mod 服务器，只要它用的是原版拾取流程，客户端就看得见。代价是拿不到"谁捡的"这类只有
  * 服务端知道的信息 —— 那些我们本来也不需要。
  * <p>
- * 【注入点为什么在 ensureRunningOnSameThread 之后】那一行之后才是主线程（能安全碰 DOM），
+ * 【注入点为什么在 ensureRunningOnSameThread 之后】那一行之后才是主线程（能安全碰游戏状态），
  * 而且此时 {@code level} 里的物品实体还没被移除 —— 我们能顺着 {@code packet.getItemId()}
  * 把真正的 ItemStack 捞出来，改名过的、带 NBT 的都是原样。晚一步就只剩一个物品 id，
  * 显示出来的名字就不对了。

@@ -24,7 +24,7 @@ import org.lwjgl.glfw.GLFW;
 public final class NvgTextField extends NvgWidget {
 
     private final Supplier<String> value;
-    /** 敲字时通知谁；{@code null} = 只改草稿，等回车才交出去。 */
+    /** 敲字时通知谁；{@code null} = 只改本地编辑值，等回车才交出去。 */
     private final @Nullable Consumer<String> onChange;
     private final Predicate<Character> accepts;
     private final int maxLength;
@@ -144,7 +144,7 @@ public final class NvgTextField extends NvgWidget {
         }
     }
 
-    /** 只在编辑时才叫草稿；没编辑时显示的是真实值。 */
+    /** 是否正在编辑；编辑期间显示的是本地编辑值，没编辑时显示的是真实值。 */
     public boolean editing() {
         return editing;
     }

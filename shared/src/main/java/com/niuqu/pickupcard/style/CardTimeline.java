@@ -52,7 +52,7 @@ public record CardTimeline(long enterMs, long bumpMs, boolean enterEnabled, bool
     private static final float CONTENT_END = 0.84f;
 
     /**
-     * 竖条展开的缓动 = 草稿里 grow 那档的 {@code cubic-bezier(.2,.9,.3,1)}。
+     * 竖条展开的缓动 = {@code cubic-bezier(.2,.9,.3,1)}（参考设计里展开那档就用它）。
      * <p>
      * 【为什么必须由本类兑现，而不是"留给渲染层顺手 easing 一下"】这正是它丢过一次的原因：
      * 本类原来把 {@code enter()} 归一化完就交出去，注释写着"easing 在渲染层做"——
@@ -64,9 +64,9 @@ public record CardTimeline(long enterMs, long bumpMs, boolean enterEnabled, bool
     /**
      * 内容滑出的缓动 = {@link CubicBezier#CONTENT}（Material 标准曲线）。
      * <p>
-     * 草稿原来那条是 {@code cubic-bezier(.22,.9,.28,1)}，前段陡到 t=0.25 就走 0.757 ——
+     * 参考设计原来那条是 {@code cubic-bezier(.22,.9,.28,1)}，前段陡到 t=0.25 就走 0.757 ——
      * 用户真机上的评价是"冲得太快/持续时间太短"。换这条之后 t=0.25 只走 0.237。
-     * **草稿的 {@code --draft-ease-content} 同步换成同一条**，两边不允许不一致。
+     * **当时设计侧的曲线也同步换成了同一条**，两边不允许不一致。
      */
     private static final CubicBezier CONTENT_CURVE = CubicBezier.CONTENT;
 

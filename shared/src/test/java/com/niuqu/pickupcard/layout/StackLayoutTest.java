@@ -12,7 +12,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 /**
  * 排布这件事的"已知答案"（2026-09-19 起为<b>底锚、向上生长</b>语义）。
  * <p>
- * 【为什么专钉锚点】handoff 里记着那次翻车：游戏与草稿锚点方向相反，像素门禁只逐张比
+ * 【为什么专钉锚点】那次翻车是这样的：游戏与参考设计的锚点方向相反，而像素门禁只逐张比
  * 卡的结构（竖条宽、间距…），不比对锚点，于是一路绿灯。所以这里专钉两件事：
  * <b>锚在哪</b>、<b>谁在哪一位</b>。底锚 = 最新那张贴着锚线（HUD 带上方那条固定底线）、
  * 旧的被顶上去（2026-09-19 定案：数量优先 —— 427×240 锚点以上 145px 真放得下同屏 5 张）。
@@ -102,7 +102,7 @@ class StackLayoutTest {
     }
 
     @Test
-    @DisplayName("右缘对齐：卡右缘贴锚线（HTML 的 rightalign 预设），宽卡被右边距拦住")
+    @DisplayName("右缘对齐：卡右缘贴锚线（设计里的「右边缘对齐」预设），宽卡被右边距拦住")
     void rightAlignPinsTheRightEdge() {
         LayoutSettings right = new LayoutSettings(Appear.SLIDE, LayoutSettings.Exit.FADE,
                 LayoutSettings.Side.RIGHT, LayoutSettings.DEFAULT_SEPARATION,

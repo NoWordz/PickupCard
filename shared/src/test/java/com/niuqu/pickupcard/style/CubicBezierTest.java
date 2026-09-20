@@ -12,7 +12,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  */
 class CubicBezierTest {
 
-    /** 草稿 .slot 的那条曲线。 */
+    /** 参考设计里 .slot 的那条曲线。 */
     private static final CubicBezier SLOT = CubicBezier.SLOT;
 
     @Test
@@ -30,7 +30,7 @@ class CubicBezierTest {
         for (int i = 0; i <= 100; i++) {
             float v = SLOT.at(i / 100f);
             assertTrue(v >= previous, "单调递增，t=" + i);
-            assertTrue(v <= 1.0001f, "草稿这条曲线不过冲，t=" + i + " v=" + v);
+            assertTrue(v <= 1.0001f, "参考设计这条曲线不过冲，t=" + i + " v=" + v);
             previous = v;
         }
         assertFalse(SLOT.overshoots());

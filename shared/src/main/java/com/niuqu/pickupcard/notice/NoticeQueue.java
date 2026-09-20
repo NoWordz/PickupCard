@@ -12,7 +12,7 @@ import java.util.Optional;
 /**
  * 屏幕上那几张卡的账本：谁在、谁被合并、谁被挤掉。纯逻辑，不碰渲染、不碰时钟。
  * <p>
- * 【为什么自己做而不用 AUI 的 ToastManager】AUI 自带的 Toast 是"一条消息一次课"，
+ * 【为什么自己拿一套账本，而不是把"弹卡"交给通用提示队列】通用提示队列是"一条消息一次弹"，
  * 而拾取要的是【合并】—— 两秒内连捡 64 个钻石应该变成一张卡的数字在滚，不是弹 64 张。
  * 合并、数量累加、上位淘汰这套规则是拾取特有的，得自己拿着。
  *
@@ -20,11 +20,11 @@ import java.util.Optional;
  */
 public final class NoticeQueue<T> {
 
-    /** 一条卡的生命周期里发生了什么，交给调用方去同步 DOM。 */
+    /** 一条卡的生命周期里发生了什么，交给调用方去同步界面。 */
     public enum Change {
-        /** 新开一张卡：需要创建 DOM 节点并播入场。 */
+        /** 新开一张卡：需要新建一张卡并播入场。 */
         ADDED,
-        /** 并进了已有卡：只需要把数量与代数写回 DOM。 */
+        /** 并进了已有卡：只需要把数量与代数写回那张卡。 */
         MERGED,
         /** 已有卡被挤掉（超出同时在屏数量）：需要播退场后移除。 */
         EVICTED,
@@ -37,7 +37,7 @@ public final class NoticeQueue<T> {
     /**
      * 一次 {@link #absorb} 的结果。
      * <p>
-     * 【为什么带着 evicted】队列内部会静默地把超限的卡挤掉，可 DOM 那侧得让被挤掉的
+     * 【为什么带着 evicted】队列内部会静默地把超限的卡挤掉，可渲染层得让被挤掉的
      * 那张播退场再移除。如果这里只回"新卡是谁"，被挤掉的那张就会永远留在屏幕上 ——
      * 账本和界面各说各话。淘汰结果必须跟着返回值一起出去。
      */
@@ -72,7 +72,7 @@ public final class NoticeQueue<T> {
      * @param mergeMode    合并粒度（哪些拾取算同一件东西）；{@link MergeMode#NEVER} = 从不合并
      * @param maxOnScreen  同时在屏上限；满了就排队，不再顶掉别人
      * @param queueSize    排队上限；0 = 不排队（超出的直接丢）
-     * @return 发生的改动；被淘汰的那张卡会作为结果返回（调用方据此让 DOM 播退场）
+     * @return 发生的改动；被淘汰的那张卡会作为结果返回（调用方据此让它播退场）
      */
     public Outcome<T> absorb(String key, String lookKey, T payload, int amount,
                              boolean firstTime, long now,
@@ -240,7 +240,7 @@ public final class NoticeQueue<T> {
         return Optional.ofNullable(alive.get(key));
     }
 
-    /** 当前在屏的卡，按"最久没被碰过"排前 —— DOM 顺序反过来就是"最新的在最上面"。 */
+    /** 当前在屏的卡，按"最久没被碰过"排前 —— 渲染层倒序铺开就是"最新的在最上面"。 */
     public List<Notice<T>> snapshot() {
         List<Notice<T>> all = new ArrayList<>(alive.values());
         all.sort((a, b) -> Long.compare(a.touchedAt(), b.touchedAt()));

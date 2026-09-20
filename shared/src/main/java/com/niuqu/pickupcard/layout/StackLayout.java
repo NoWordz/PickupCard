@@ -69,8 +69,8 @@ public final class StackLayout {
             Size size = sizes.get(i);
             // 放得下的最右位置；再夹进屏幕，避免超宽卡算出负坐标
             float maxLeft = guiWidth - marginX - size.width();
-            // 【两种对齐一条线】左缘锚定：竖条左缘贴锚线（HTML placeX 的 anchor 档）；
-            // 右缘对齐：卡右缘贴锚线，左缘随卡宽参差（HTML placeX 的 rightalign 档）。
+            // 【两种对齐一条线】左缘锚定：竖条左缘贴锚线（界面上的「竖条左缘锚定」档）；
+            // 右缘对齐：卡右缘贴锚线，左缘随卡宽参差（界面上的「右缘对齐」档）。
             float x;
             if (layout.align() == LayoutSettings.Side.RIGHT) {
                 x = Math.max(0f, Math.min(left - size.width(), maxLeft));

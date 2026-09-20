@@ -37,7 +37,7 @@ propsFile.withInputStream { repoProps.load(it) }
     ext[k] = repoProps.getProperty(k)
 }
 ext.maven_group = repoProps.getProperty('mod_group_id')   // Fabric 侧一直叫 maven_group
-['curseforge_project_id', 'modrinth_project_id', 'apricityui_version'].each { k ->
+['curseforge_project_id', 'modrinth_project_id'].each { k ->
     if (repoProps.containsKey(k)) {
         ext[k] = repoProps.getProperty(k)
     }

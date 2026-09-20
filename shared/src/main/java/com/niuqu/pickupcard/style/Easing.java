@@ -1,8 +1,14 @@
 package com.niuqu.pickupcard.style;
 
 /**
- * 动画缓动曲线库。参数与 docs/art/mockup.html 里的 CSS 变量一一对应——
- * mockup 是这些函数的视觉真源，改曲线先改 mockup 看效果，再回来同步这里。
+ * 动画缓动曲线库。<b>曲线形状的正本就在这里</b>（{@link CubicBezier} / {@link CardTimeline}
+ * 里那几条贝塞尔同理）。
+ * <p>
+ * 时长不在这里：入场 / 跳动 / 淡回三条时长定义在 {@code design/tokens.css}
+ * （{@code --pc-enter-ms} / {@code --pc-bump-ms} / {@code --pc-revive-ms}），由
+ * {@code tools/css_tokens.py} 编译进 {@code assets/pickupcard/styles/*.json} 后供 Java 读取；
+ * 退场时长走 TOML（见 {@link com.niuqu.pickupcard.layout.LayoutSettings}）。
+ * 改曲线只改这里，改完跑 {@code CardTimelineTest} / {@code CubicBezierTest} —— 曲线形状被已知答案钉着。
  */
 public final class Easing {
 

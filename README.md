@@ -83,7 +83,7 @@
 2. 放进资源包同路径覆盖（或直接改实例里的那份）；
 3. 存盘，一秒内游戏里生效，不用重启。
 
-模型是「主题给默认值、TOML 只覆盖你改过的项」：改了主题不会丢掉你在界面里的个人改动。设计真源与参数对照在 [docs/design.md](docs/design.md) 与 [design/](design/)（浏览器直接打开 `card.html` 看卡面语言）。
+模型是「主题给默认值、TOML 只覆盖你改过的项」：改了主题不会丢掉你在界面里的个人改动。设计真源与参数对照在 [docs/design.md](docs/design.md)；全部可调参数的唯一定义处在 [design/tokens.css](design/tokens.css)。
 
 ## 兼容性
 

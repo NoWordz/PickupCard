@@ -60,7 +60,7 @@
 ## 我们搬了什么 / 没搬什么
 
 - ✅ **搬**：`MergeMode` 四档谓词（我们原来的"合并窗口（毫秒）"已删，见
-  `shared/.../notice/MergeMode.java`）。
+  `shared/src/main/java/com/niuqu/pickupcard/notice/MergeMode.java`）。
 - ✅ **搬（已批准，待做）**：`DISPLAY_CAPACITY` + `QUEUE_SIZE` + 溢出卡；`SCALE`（卡片缩放，
   与"屏幕放不下就丢最老的"配合）。
 - 🕓 **记为方向、本轮不做**：主题数据化（资源包 + 匹配 DSL + 可替换部件）。

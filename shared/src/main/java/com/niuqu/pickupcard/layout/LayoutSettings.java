@@ -11,7 +11,7 @@ package com.niuqu.pickupcard.layout;
  *                     平移回竖条后面（与火车入场的逆放）；{@link Exit#WIPE} = 可见范围从右往左
  *                     收拢（与拉幕入场的逆放）。三种都叠加透明度下降。
  * @param align        水平对齐基准。{@link Side#LEFT} = 竖条左缘贴锚线（一摞卡的竖条成一条线）；
- *                     {@link Side#RIGHT} = 卡片右缘贴锚线（HTML 草稿的「右边缘对齐」预设，
+ *                     {@link Side#RIGHT} = 卡片右缘贴锚线（设计里的「右边缘对齐」预设，
  *                     卡宽不齐时左缘参差、右缘齐）。
  * @param separation   两张卡之间的空隙（像素）。它跟卡内间隙（{@code style.gap}）不是一回事，
  *                     刻意分成两个键：一个是"卡与卡"，一个是"框与框"。
@@ -68,9 +68,9 @@ public record LayoutSettings(Appear appearMode, Exit exitMode, Side align, float
 
     /** 卡片出现时的展开方式。 */
     public enum Appear {
-        /** 内容保持原样，从竖条后面平移到最终位置（草稿的「火车」档）。 */
+        /** 内容保持原样，从竖条后面平移到最终位置（界面上的「火车」档）。 */
         SLIDE,
-        /** 内容位置不动，可见范围从左往右慢慢展开（草稿的「拉幕」档）。 */
+        /** 内容位置不动，可见范围从左往右慢慢展开（界面上的「拉幕」档）。 */
         CLIP
     }
 
@@ -88,7 +88,7 @@ public record LayoutSettings(Appear appearMode, Exit exitMode, Side align, float
     public enum Side {
         /** 竖条左缘贴锚线：一摞卡的竖条成一条竖线。 */
         LEFT,
-        /** 卡片右缘贴锚线：右缘齐、左缘随卡宽参差（HTML 草稿的「右边缘对齐」；出厂默认）。 */
+        /** 卡片右缘贴锚线：右缘齐、左缘随卡宽参差（设计里的「右边缘对齐」；出厂默认）。 */
         RIGHT
     }
 

@@ -13,7 +13,8 @@ import org.jetbrains.annotations.Nullable;
  * 有的是每个框自己的圆角、内边距和底色。
  * <p>
  * 【为什么不是 Forge config】外观有且只有一个真源，资源包可以整体覆盖它；塞进 config
- * 就成了第二真源。改外观的正确姿势：改 CSS 草稿看效果 → 同步 {@code default.json}。
+ * 就成了第二真源。改外观的正确姿势：改 {@code design/tokens.css} → 跑
+ * {@code tools/css_tokens.py} 重新生成 {@code default.json}。
  * <p>
  * 【参数只留用得上的】月份牌式的老字段（月牙/徽章倍率/名字胶囊/端点/角标底色）随旧画法
  * 一起删了。留着不用的参数会变成"改了没反应"的陷阱，比没有更糟。

@@ -3,9 +3,9 @@ package com.niuqu.pickupcard.style;
 /**
  * CSS 的 {@code cubic-bezier(x1, y1, x2, y2)}。
  *
- * <p>【为什么需要它】草稿里的过渡全是这一族曲线（{@code animation.html} 写的就是
+ * <p>【为什么需要它】界面里的过渡全是这一族曲线（340ms 那条写的就是
  * cubic-bezier(.22,.9,.28,1)），而 Java 这边原先只有手挑的 easeOutBack / easeOutCubic。
- * 想"照草稿还原"就得能表达草稿里那一条，而不是找个近似的替身：
+ * 想照曲线还原就得能表达那一条，而不是找个近似的替身：
  * 这条曲线在 t=0.25 时已经走了 0.757，而 easeOutCubic 只走 0.578 —— 前段差了近两成，
  * 眼睛看得出来（"一下就滑到位" vs "慢慢挪过去"）。用近似值就等于把还原打了折。
  *
@@ -14,9 +14,9 @@ package com.niuqu.pickupcard.style;
  */
 public final class CubicBezier {
 
-    /** 草稿里 .slot 的过渡：340ms 把卡片推到新位置。 */
+    /** 卡片被推到新位置的过渡：340ms。 */
     public static final CubicBezier SLOT = new CubicBezier(0.22f, 0.9f, 0.28f, 1f);
-    /** 草稿里竖条展开：.18s cubic-bezier(.2,.9,.3,1)。 */
+    /** 竖条展开：180ms。 */
     public static final CubicBezier BAR = new CubicBezier(0.2f, 0.9f, 0.3f, 1f);
     /** CSS 的 ease，退场淡出用。 */
     public static final CubicBezier EASE = new CubicBezier(0.25f, 0.1f, 0.25f, 1f);
@@ -24,13 +24,13 @@ public final class CubicBezier {
     /**
      * 内容滑出的曲线（Material 标准曲线）。
      * <p>
-     * 【为什么不用草稿原来那条 {@link #SLOT}】2026-09-17 用户真机反馈："持续时间太短，
+     * 【为什么不用参考设计原来那条 {@link #SLOT}】2026-09-17 用户真机反馈："持续时间太短，
      * 冲得太快"。{@code SLOT} 前段极陡（t=0.25 已经走了 0.757），560ms 的入场里内容
      * 386ms 就到位了 —— 那正是"冲出来"的观感来源。这条在 t=0.25 只走 0.237，出洞的过程
      * 才看得见。
      * <p>
-     * **这是一次故意的偏离草稿**，所以草稿那边也同步改了（{@code --draft-ease-content}）：
-     * 偏离可以，两边不一致不行 —— 否则下次拿草稿对游戏，对出来的是个假差异。
+     * **这是一次故意的偏离**：偏离可以，但两处必须一起改 —— 否则下次拿设计对游戏，对出来
+     * 的是个假差异（当初这条曲线就是设计侧与这里同步换掉的）。
      * 卡片换位那条（{@code CardMove}）仍走 {@link #SLOT}，没动。
      */
     public static final CubicBezier CONTENT = new CubicBezier(0.4f, 0f, 0.2f, 1f);
@@ -54,7 +54,7 @@ public final class CubicBezier {
 
     /**
      * @param t 进度 ∈ [0,1]
-     * @return 缓动后的值；y 控制点超出 [0,1] 时会过冲（草稿里一条都没有这种）
+     * @return 缓动后的值；y 控制点超出 [0,1] 时会过冲（参考设计里一条都没有这种）
      */
     public float at(float t) {
         t = Easing.clamp01(t);

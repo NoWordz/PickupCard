@@ -423,7 +423,7 @@ public final class ConfigPageSpec {
                 ? "pickupcard.config.value.align.right" : "pickupcard.config.value.align.barLeft");
     }
 
-    /** 草稿（design/animation.html）自己的叫法：火车＝平移，拉幕＝展开可见范围。 */
+    /** 界面上的叫法：火车＝平移，拉幕＝展开可见范围。 */
     private static String appearName(LayoutSettings.Appear appear) {
         return tr(appear == LayoutSettings.Appear.CLIP
                 ? "pickupcard.config.value.appear.clip" : "pickupcard.config.value.appear.train");

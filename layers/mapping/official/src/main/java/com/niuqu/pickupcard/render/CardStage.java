@@ -84,7 +84,7 @@ public final class CardStage {
 
     /**
      * 画法。**全项目只有这一个实现**（NanoVG 矢量）—— 2026-09-17 把 SDF 图层、原版整卡
-     * 渲染、DOM 草稿当贴图那三条一起删了，理由（以及"内容为什么还在原版"）见
+     * 渲染、HTML 卡面当贴图那三条一起删了，理由（以及"内容为什么还在原版"）见
      * {@link NvgCardPainter} 的类注释。
      */
     private final NvgCardPainter painter = new NvgCardPainter();

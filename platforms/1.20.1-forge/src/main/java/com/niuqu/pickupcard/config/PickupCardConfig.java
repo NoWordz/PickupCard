@@ -25,7 +25,7 @@ import java.util.List;
  * 另一部分是"行为偏好"：停留多久、怎么合并、过滤谁。
  * <p>
  * 【配置项的名字与注释是玩家唯一会直接读到的文字】一律说人话，不许用比喻或代号 ——
- * 这条是硬规则（见 docs/plan-ui.md）。
+ * 这条是硬规则（见 docs/architecture.md 的「配置界面」一节）。
  */
 public final class PickupCardConfig {
 
@@ -316,7 +316,7 @@ public final class PickupCardConfig {
                     .comment("水平对齐：锚线（anchorX）管的是卡的哪一条边。",
                             "  LEFT  = 竖条左缘贴锚线：一摞卡的竖条成一条竖线。",
                             "  RIGHT = 卡片右缘贴锚线：右缘齐、左缘随卡宽参差（默认）。",
-                            "    —— 对应 HTML 草稿里的「右边缘对齐」预设。2026-09-20 起出厂默认 RIGHT：",
+                            "    —— 即界面上的「右边缘对齐」预设。2026-09-20 起出厂默认 RIGHT：",
                             "    已保存过本键的配置文件不会自动跟着变，想要右缘对齐请在界面里点一下。")
                     .defineEnum("align", LayoutSettings.Side.RIGHT);
 

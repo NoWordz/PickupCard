@@ -23,8 +23,3 @@ Thumbs.db
 # Python
 __pycache__/
 *.pyc
-
-# legacy 复原工程的构建产物（与 platforms/*/build 同类）
-platforms/1.20.1-legacy/build/
-platforms/1.20.1-legacy/run/
-platforms/1.20.1-legacy/run-server/

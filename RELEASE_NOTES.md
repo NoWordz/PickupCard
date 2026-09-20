@@ -70,7 +70,7 @@
 
 ## v0.2.1
 
-**首个自绘版本：不再需要 ApricityUI，零必需依赖，纯客户端。**
+**首个自绘版本：零必需依赖，纯客户端。**
 
 **新增**
 
@@ -101,12 +101,11 @@
 
 **升级**
 
-- 纯客户端，服务端不用装；不依赖 ApricityUI
-- 0.1.0 的配置不向下兼容（那是 ApricityUI + CSS 卡面的另一条线，已打 `archive/aui` 归档）
+- 纯客户端，服务端不用装
 
 ----
 
-**First self-drawn release: ApricityUI is no longer required - zero required dependencies, client-side only.**
+**First self-drawn release: zero required dependencies, client-side only.**
 
 **Added**
 
@@ -137,41 +136,4 @@
 
 **Upgrading**
 
-- Client-side only, no server install, no ApricityUI dependency
-- 0.1.0 configs are not compatible (that was the ApricityUI + CSS card line, archived under the `archive/aui` tag)
-
-## v0.1.0
-
-**首个版本：拾取卡片提示的完整形态。**
-
-**新增**
-
-- 纯客户端嗅探原版拾取包，服务端无需安装
-- 四档稀有度卡面（木牌 / 铜牌 / 蓝银 / 暗紫鎏金），装饰层数递增
-- 窗口内连续拾取同类物品累加数量并滚动数字
-- NEW 角标：本局首次遇到的物品亮一下（只记内存、不落盘）
-- 附魔光效与耐久条由原版物品渲染承担
-- 配置：停留时长、合并开关与窗口、同时在屏上限、数量写法
-
-**说明**
-
-- 界面由 ApricityUI 渲染，卡面与动画写在 CSS 里，改外观不用重编译
-- **需要 ApricityUI 1.2.0+ 作为前置**
-
-----
-
-**First release: the complete form of the pickup card notification.**
-
-**Added**
-
-- Client-side sniffing of the vanilla pickup packet, no server install
-- Four rarity card styles (wood / copper / blue-silver / dark purple gilt) with increasing decoration
-- Consecutive pickups of the same item inside a window add to the count and animate the number
-- A NEW tag the first time you ever grab an item in a session (in memory only)
-- The enchant glint and durability bar come from vanilla item rendering
-- Config: dwell time, merge toggle and window, simultaneous cap, count format
-
-**Notes**
-
-- The interface is rendered by ApricityUI; card faces and animations are written in CSS, so restyling needs no rebuild
-- **Requires ApricityUI 1.2.0+ as a dependency**
+- Client-side only, no server install

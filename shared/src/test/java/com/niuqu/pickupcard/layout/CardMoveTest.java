@@ -31,7 +31,7 @@ class CardMoveTest {
         assertEquals(80f, move.y("a", 80f, 2_000L + (long) CardMove.DURATION_MS + 1L), 1e-4f);
     }
 
-    /** 中途走的必须是草稿那条曲线，不是线性的、也不是别的缓动。 */
+    /** 中途走的必须是那条 340ms 曲线（{@link CubicBezier#SLOT}），不是线性的、也不是别的缓动。 */
     @Test
     void followsTheDraftCurve() {
         CardMove move = new CardMove();
