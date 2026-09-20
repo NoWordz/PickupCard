@@ -177,15 +177,25 @@ public final class CardStage {
         // 从前记在"第一次拾取"那一帧上（实测 42ms：外壳 23ms + 图标 27ms，用户实例里第一张
         // 卡同样要 51ms），玩家读到的就是"一捡东西就卡一下"。挪到进世界那几帧、每帧只付
         // 一小段（图标两个一组），那时世界还在加载区块，没人察觉得出这几帧的差别。
-        if (warming && mc.level != null) {
-            StyleModel warmStyle = styles.current(System.currentTimeMillis()).sanitized();
-            warming = NvgCardPainter.warmUpStep(event.getGuiGraphics(), warmStyle);
+        if (mc.level != null) {
+            if (warming) {
+                StyleModel warmStyle = styles.current(System.currentTimeMillis());
+                warming = NvgCardPainter.warmUpStep(event.getGuiGraphics(), warmStyle);
+            } else if (!textWarmed) {
+                // 【与引擎预热差开一帧】引擎预热的首帧本来就要 30ms 上下，文本这一笔再叠上去
+                // 只会让那一帧更长。它自己占紧随其后的一帧（那时世界还在加载区块）。
+                textWarmed = true;
+                warmTextAndLayout(event.getGuiGraphics(),
+                        styles.current(System.currentTimeMillis()), mc.font);
+            }
         }
         renderInto(event.getGuiGraphics(), mc);
     }
 
     /** 引擎预热还没走完（进世界后的头几帧分摊付账；每进程一次）。 */
     private boolean warming = true;
+    /** 文本与排布那一路的预热付过了没有（紧跟引擎预热之后的那一帧做）。 */
+    private boolean textWarmed;
 
     /**
      * 拖拽编辑场打开时挂起真卡：屏幕上只能有一摞卡，编辑场的样例堆和真卡叠在一起分不清谁是谁。
@@ -223,7 +233,9 @@ public final class CardStage {
         // 【为什么先取再 pump】pump 会把账本事件变成屏幕上的卡，而"这次合并该救回还是该重播入场"
         // 要用到 exitMs 与 reviveMs —— 事件处理拿不到它们，判据就只能靠猜。
         PickupCardSettings settings = Inbox.INSTANCE.settingsSnapshot();
-        StyleModel style = styles.current(now).sanitized();
+        // 【不再每帧夹一次】{@link StyleSource#current} 保证出门的值一律夹过（玩家手写的数字在
+        // 读进来那一刻就定死了）—— 从前这里每帧白扔一个 22 分量的 record（2026-09-20 性能轮）。
+        StyleModel style = styles.current(now);
         pump(now, settings, style);
 
         // 【总开关】关掉就整条路都不走：屏上的卡立刻清、账本里的也一起忘掉。
@@ -289,12 +301,24 @@ public final class CardStage {
         float targetScale = layout.scale(anchorTop, unscaledH, live.size(), gap);
         float scale = scaleMove.y(SCALE_KEY, targetScale, now);
 
-        String note = fmt("锚线 (%.0f,%.0f) 画布 %dx%d；缩放 %.0f%%；锚线上可用高 %.0fpx（容量 %d 张，屏上 %d 张）",
-                layout.anchorLeft(gui.guiWidth()), anchorTop, gui.guiWidth(), gui.guiHeight(),
-                scale * 100f, anchorTop, capacity, live.size());
-        if (!note.equals(stripNote)) {
-            stripNote = note;
-            PickupCard.LOGGER.info("[落点] {}", note);
+        // 【先比数值，再决定要不要格式化】从前每帧无条件 String.format 一遍（7 个参数 →
+        // varargs 数组 + 装箱 + 格式化），只为和上一次的字符串比一比。落点只在换分辨率、
+        // 改锚点、改缩放时才变，那些帧之外这一段是纯白付（2026-09-20 性能轮）。
+        float noteLeft = layout.anchorLeft(gui.guiWidth());
+        if (noteLeft != stripLeft || anchorTop != stripTop || gui.guiWidth() != stripW
+                || gui.guiHeight() != stripH || scale != stripScale || capacity != stripCapacity
+                || live.size() != stripCards) {
+            stripLeft = noteLeft;
+            stripTop = anchorTop;
+            stripW = gui.guiWidth();
+            stripH = gui.guiHeight();
+            stripScale = scale;
+            stripCapacity = capacity;
+            stripCards = live.size();
+            stripNote = fmt("锚线 (%.0f,%.0f) 画布 %dx%d；缩放 %.0f%%；锚线上可用高 %.0fpx（容量 %d 张，屏上 %d 张）",
+                    noteLeft, anchorTop, gui.guiWidth(), gui.guiHeight(),
+                    scale * 100f, anchorTop, capacity, live.size());
+            PickupCard.LOGGER.info("[落点] {}", stripNote);
         }
 
         CardCanvas canvas = canvas(now, style, settings, layout, gui, scale);
@@ -312,6 +336,57 @@ public final class CardStage {
         paintMicros = (System.nanoTime() - t1) / 1_000L;
         lastFlushes = BatchStats.flushes() - flushesBefore;
         recordPeak();
+    }
+
+    /**
+     * 预热：<b>文本与排布那一路</b>。进世界后紧跟引擎预热的那一帧调一次（每进程一次）。
+     * <p>
+     * 【为什么必须有它】第一张卡上屏那一帧实测 layout 要 4.0~4.6ms，而把"显示物品名"整个
+     * 关掉，这 4ms 一分不少 —— 它不是名字的钱，是"第一次"的钱：{@code ItemStack#getHoverName()}
+     * 头一次把 Component / 翻译模板 / 正则那几条路牵起来，{@code StackLayout} 与
+     * {@code HudSafeZone} 头一次被摸到（类加载 + JIT 预热）。引擎那半边（NanoVG 首次真正绘制、
+     * 图标首次烘焙）已经由 {@link NvgCardPainter#warmUpStep} 付掉了，这一半从前没人管 ——
+     * 账单于是落在玩家第一次捡到东西的那一帧上（用户报的"一捡东西卡一下"）。
+     * <p>
+     * 【为什么用真卡而不是空跑公式】"第一次"由被调用的那段代码说了算：只有照真实顺序走一遍
+     * （造 Notice → 造 CardView → 量宽 → 截名 → 屏幕外画一次字 → 排一次布 → 过一次让位判据），
+     * 那几条路才会真的被牵起来。这与引擎预热踩过的三个坑是同一条教训。
+     */
+    private void warmTextAndLayout(GuiGraphics gui, StyleModel style, Font font) {
+        try {
+            var stack = new net.minecraft.world.item.ItemStack(net.minecraft.world.item.Items.STONE);
+            Inbox.Card card = new Inbox.Card(
+                    new com.niuqu.pickupcard.pickup.CardContent.Item(stack), false);
+            long now = System.currentTimeMillis();
+            Notice<Inbox.Card> notice = new Notice<>("~warm", "~warm", card, 64, false, now, now, 0);
+            CardView view = new CardView(notice);
+            CardCanvas canvas = new CardCanvas(now,
+                    new CardTimeline(style.enterMs(), style.bumpMs(), style.enterEnabled(),
+                            style.bumpEnabled()),
+                    style, PickupCardSettings.defaults(), LayoutSettings.defaults(),
+                    gui.guiWidth(), gui.guiHeight(), 1f);
+            // 名字 + 数量 + 截断（走的是真卡那一份缓存）
+            float width = CardMetrics.naturalWidth(canvas, font, view);
+            float height = CardMetrics.height(canvas, font);
+            // 文字：屏幕外画一次 —— 字形按需栅格化、图集上传、文本批次的第一次都记在这一笔
+            gui.drawString(font, view.text().fitted(), -20_000, -20_000, style.nameColor(), true);
+            // 排布与让位：纯数学，但第一次要付类加载
+            List<StackLayout.Size> sizes = List.of(new StackLayout.Size(width, height));
+            List<StackLayout.Slot> slots = StackLayout.stack(sizes, gui.guiWidth(), gui.guiHeight(),
+                    LayoutSettings.defaults(), MARGIN_X, HudSafeZone.bottomInset(), style.gap());
+            if (!slots.isEmpty()) {
+                StackLayout.Slot slot = slots.get(0);
+                HudSafeZone.reserve(new HudSafeZone.Rect(slot.x(), slot.y(), slot.width(),
+                        slot.height()), null, 0f, null, 0f);
+                HudSafeZone.shiftLeft(slot.x(), slot.width(), gui.guiWidth(), 0f);
+            }
+            PickupCard.LOGGER.info("[预热] 文本与排布那一路也付掉了（{}ms）：名字与数量度量、"
+                            + "字形按需栅格化与图集上传、一次真实排布与让位判据",
+                    System.currentTimeMillis() - now);
+        } catch (Exception e) {
+            // 预热失败不影响任何真功能：它只是提前付账，付不掉就照旧在第一次拾取时付。
+            PickupCard.LOGGER.warn("[预热] 文本/排布那一路没热成（功能不受影响，只是那笔账晚点付）", e);
+        }
     }
 
     /**
@@ -541,6 +616,19 @@ public final class CardStage {
     private int lastBottomMargin = HudSafeZone.bottomInset();
     /** 上一次落点变化时打过的日志（变了才打，不刷屏）。 */
     private String stripNote = "";
+    /**
+     * 上一次打过日志的落点数值。
+     * <p>【为什么要存数】那行提示由 7 个参数拼出来，从前每帧先 {@code String.format} 一遍
+     * （varargs 数组 + 装箱 + 格式化）再拿结果和上一次比 —— 纯白付。现在先比数值，
+     * 全一样的话连格式化都不发生（2026-09-20 性能轮）。
+     */
+    private float stripLeft = Float.NaN;
+    private float stripTop = Float.NaN;
+    private float stripScale = Float.NaN;
+    private int stripW = -1;
+    private int stripH = -1;
+    private int stripCapacity = -1;
+    private int stripCards = -1;
 
     /** 本帧的落点说明（只读诊断；harness 那行"安全区"日志末尾会带上它）。 */
     public String placementNote() {

@@ -57,7 +57,10 @@ public final class StyleSource {
         cachedTheme = theme;
         cachedOverrides = overrides;
         // 【顺序】主题是默认值，改动只覆盖它改过的项，最后统一夹逼。
-        cached = overrides.apply(read(theme));
+        // 【夹逼在这里做掉、结果进缓存】玩家手写的数字在"读进来那一刻"就定死了，帧内不会再变，
+        // 所以调用方不必每帧再夹一次 —— 从前那是一帧白扔一个 22 分量的 record（2026-09-20 性能轮）。
+        // 这一道也覆盖了"主题读坏 → 回退 defaults()"那条路：出门的值一律夹过。
+        cached = overrides.apply(read(theme)).sanitized();
         return cached;
     }
 

@@ -28,10 +28,22 @@ public final class CardView {
     private long exitStartAt = NO_EXIT;
     /** 淡回的起点（被救回时记）；{@code NO_EXIT} = 没在淡回。 */
     private long reviveAt = NO_EXIT;
+    /**
+     * 文本度量备忘（名字 / 数量 / 截断结果与宽度）。
+     * <p>【为什么挂在卡上】同一个物品名每一帧要被问两次（布局量宽、绘制），而每次问都要
+     * 新建 Component、重跑翻译模板、逐码点量宽 —— 见 {@link CardTextCache} 的类注释。
+     * 挂在这里的好处是生命周期自动对齐：卡被摘掉时缓存跟着一起没，不需要另开一张 map 剪枝。
+     */
+    private final CardTextCache text = new CardTextCache();
 
     public CardView(Notice<Inbox.Card> notice) {
         this.notice = notice;
         this.prevCount = notice.count();
+    }
+
+    /** 这张卡的文本度量备忘（懒刷新，键没变就是空操作）。 */
+    public CardTextCache text() {
+        return text;
     }
 
     public Notice<Inbox.Card> notice() {

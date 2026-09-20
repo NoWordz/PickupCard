@@ -5,11 +5,9 @@ import com.niuqu.pickupcard.pickup.CardContent;
 import com.niuqu.pickupcard.pickup.Inbox;
 import com.niuqu.pickupcard.render.BatchStats;
 import com.niuqu.pickupcard.render.CardCanvas;
-import com.niuqu.pickupcard.render.CardMetrics;
 import com.niuqu.pickupcard.render.CardSlot;
 import com.niuqu.pickupcard.render.CardView;
 import com.niuqu.pickupcard.render.FadingItemBuffers;
-import com.niuqu.pickupcard.render.nvg.NvgCardPainter;
 import com.niuqu.pickupcard.style.BodyGeometry;
 import com.niuqu.pickupcard.style.Easing;
 import com.niuqu.pickupcard.style.RevealWindow;
@@ -108,26 +106,33 @@ public final class NvgCardContent {
         // bodyShiftOf 里（镜像取正、常规取负），这里再取反一次等于把动画翻回去 ——
         // 2026-09-20 用户报的「文字动画没镜像」就是这一处。
         float iconL = body.iconLeft() + shift;
+        // 【文本度量走这张卡的备忘】布局路与这里每一帧各问一次同一个名字，而它在一张卡的一生里
+        // 几乎不变 —— 从前每问一次都要新建 Component、重跑翻译模板、逐码点量宽。
+        // 2026-09-20 性能轮实测：把物品名整条关掉，稳态文字段 470~849us → 172~294us。
+        var text = view.text();
+        text.update(canvas, font, view);
         ItemStack iconStack = iconStackOf(canvas, slot);
         if (!iconStack.isEmpty()) {
-            long iconT0 = System.nanoTime();
+            long iconT0 = NvgCardPainter.profiling() ? System.nanoTime() : 0L;
             FadingItemBuffers.drawIcon(gui, iconStack, iconL + h / 2f, h / 2f, style.iconSize(), alpha,
                     clipped);
-            profileIconUs += (System.nanoTime() - iconT0) / 1_000L;
+            if (NvgCardPainter.profiling()) {
+                profileIconUs += (System.nanoTime() - iconT0) / 1_000L;
+            }
         }
 
         // 文字：alpha 直接乘进颜色里（原版字形用的就是这个色的 alpha），不走全局色。
         // 【alpha 字节掉到 4 以下就整段不画】原版 Font.adjustColor（1.20.1 Font.java:109）
         // 会把 alpha 字节 0~3 的颜色强制改成完全 opaque —— 退场末尾 alpha 单调下穿这个区间，
         // 那几帧文字会「闪回不透明」，一帧后整卡才被摘掉（用户连报两次的末帧闪就是它）。
-        long textT0 = System.nanoTime();
+        long textT0 = NvgCardPainter.profiling() ? System.nanoTime() : 0L;
         float textY = (h - font.lineHeight) / 2f;
         if (canvas.settings().showItemName() && textVisible(style.nameColor(), alpha)) {
-            String name = CardMetrics.fittedName(canvas, font, card, view.notice().count());
+            String name = text.fitted();
             if (mirror) {
                 // 镜像：名字贴着图标格左侧排（右对齐），数量在信息框左端
                 float nameRight = iconL - gap - style.paddingH();
-                gui.drawString(font, name, Math.round(nameRight - font.width(name)),
+                gui.drawString(font, name, Math.round(nameRight - text.fittedWidth()),
                         Math.round(textY), fade(style.nameColor(), alpha), true);
             } else {
                 // 常规：名字排在图标格右侧（+ 一份水平内边距）
@@ -139,7 +144,9 @@ public final class NvgCardContent {
         // 数量锚点：非镜像=信息框右缘（往左排），镜像=信息框左缘（往右排）
         float countAnchor = mirror ? style.paddingH() + shift : cardW + shift - style.paddingH();
         drawCount(gui, canvas, view, font, countAnchor, textY, accent, alpha, mirror);
-        profileTextUs += (System.nanoTime() - textT0) / 1_000L;
+        if (NvgCardPainter.profiling()) {
+            profileTextUs += (System.nanoTime() - textT0) / 1_000L;
+        }
 
         if (clipped) {
             // 原版内容还在 bufferSource 里排队：不在这里冲掉，它会在裁剪失效之后才画出来
@@ -192,18 +199,19 @@ public final class NvgCardContent {
         if (!textVisible(accent, alpha)) {
             return;
         }
-        String cur = canvas.countText(view.notice().count());
-        String prev = canvas.prevCountText(view);
+        var text = view.text();
+        String cur = text.countText();
+        String prev = text.prevText();
         float roll = canvas.rollOf(view);
         if (prev == null || roll >= 1f) {
-            float x = mirror ? anchor : anchor - font.width(cur);
+            float x = mirror ? anchor : anchor - text.countTextWidth();
             gui.drawString(font, cur, Math.round(x),
                     Math.round(textY), fade(accent, alpha), true);
             return;
         }
         float t = Easing.easeOutCubic(roll);
         float lineH = font.lineHeight;
-        float w = Math.max(font.width(cur), font.width(prev));
+        float w = text.countWidth();
         float left = mirror ? anchor : anchor - w;
         float right = left + w;
         // 【为什么先 flush】裁剪是"画的时候才生效"的，而前面几张卡的文字正排着队还没提交 ——
@@ -216,7 +224,7 @@ public final class NvgCardContent {
         // 合并之后数字从屏幕上彻底消失）。所以跟外壳 scissor() 一样先过一遍矩阵。
         scissorLocal(gui, gui.pose(), left, textY, right, textY + lineH);
         float prevX = mirror ? left : right - font.width(prev);
-        float curX = mirror ? left : right - font.width(cur);
+        float curX = mirror ? left : right - text.countTextWidth();
         gui.drawString(font, prev, Math.round(prevX),
                 Math.round(textY - t * lineH), fade(accent, alpha), true);
         gui.drawString(font, cur, Math.round(curX),

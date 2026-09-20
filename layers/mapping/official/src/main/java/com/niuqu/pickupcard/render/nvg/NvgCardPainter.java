@@ -98,6 +98,11 @@ public final class NvgCardPainter {
     private static final boolean PROFILE = isOn(System.getProperty("pickupcard.profile"));
     private int profileFrames;
 
+    /** 分段计时开关的只读口：{@link NvgCardContent} 与 {@code CardStage} 也要用它门控自己的 nanoTime。 */
+    public static boolean profiling() {
+        return PROFILE;
+    }
+
     private static boolean isOn(String value) {
         return value != null && (value.equalsIgnoreCase("true") || value.equals("1")
                 || value.equalsIgnoreCase("on"));
@@ -310,11 +315,20 @@ public final class NvgCardPainter {
                 nvgSave(vg);
                 nvgGlobalAlpha(vg, 0f);
                 float h = style.boxHeight();
-                // 两条几何分支都走一遍（常规/镜像），并把微光与扫光带上（它们各是一种 paint）
-                paintShell(vg, style, 4f, 4f, 120f, h, style.accents().common(), 1f, 0f, 1f,
-                        1f, 1f, 0.3f, false, new RevealWindow(0f, 200f));
-                paintShell(vg, style, 4f, 4f + h + 2f, 120f, h, style.accents().rare(), 1f, 0f, 1f,
-                        1f, 1f, 0.3f, true, new RevealWindow(0f, 200f));
+                // 【为什么要画满一摞，而不是两张】"第一次"不只是"第一次画"：NanoVG 的路径/顶点
+                // 缓冲会随一帧里的路径数增长而扩容，而入场那一帧是整摞卡一起画 —— 预热只画两张，
+                // 扩容那笔账照样落在玩家那一帧上。实测（2026-09-20 性能审计）入场首帧的外壳
+                // 是稳态的十倍上下（2600~5800us vs 150~240us），而首帧 layout 已经由文本预热
+                // 压到 0.3ms —— 剩下这块就是它。
+                // 两条几何分支（常规/镜像）、不同宽度与档位色都过一遍；微光与扫光各是一种 paint。
+                var warmAccents = style.accents();
+                int[] warmColors = {warmAccents.common(), warmAccents.rare(), warmAccents.epic(),
+                        warmAccents.xp(), warmAccents.overflow()};
+                for (int i = 0; i < warmColors.length; i++) {
+                    paintShell(vg, style, 4f, 4f + (h + 2f) * i, 120f + i * 7f, h, warmColors[i],
+                            1f, 0f, 1f, 1f, 1f, 0.3f, (i % 2) == 1,
+                            new RevealWindow(0f, 200f));
+                }
                 nvgRestore(vg);
             } finally {
                 nvg.end();
