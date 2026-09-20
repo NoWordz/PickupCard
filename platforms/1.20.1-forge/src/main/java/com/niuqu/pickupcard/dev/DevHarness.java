@@ -102,7 +102,12 @@ public final class DevHarness {
         private static final int EARLY_SHOT = 2;
         /** 开屏后等入场动画播完再拍。 */
         private static final int SHOT_AFTER_OPEN = 40;
-        /** 截图是异步落盘的，给它足够时间再退出。 */
+        /**
+         * 入场逐帧 trace 记到第几 tick：入场 480ms ≈ 10 tick，记到 22 顺带覆盖扫光与
+         * "截图回读之后那一帧"（{@code Screenshot.grab} 会把 GPU 拉停一下，紧跟着的那一帧
+         * 因此可能异常贵 —— 那是 harness 自己的产物，不是玩家的路径，必须能分辨出来）。
+         */
+        private static final int ENTER_TRACE_TICKS = 22;
         /**
          * 拍完基础那张之后还跑多少 tick 再退出。
          * <p>
@@ -749,6 +754,18 @@ public final class DevHarness {
             }
             int age = hudTicks - WARMUP_TICKS;
 
+            // 【入场逐帧 trace】入场那 480ms 里每一张卡都开着裁剪（更贵的提交路径 + 每张两次
+            // flush），而"入场时好卡"这个用户反馈的落点只可能在这十几帧里。逐帧记下
+            // layout/paint/flushes/rise，才能把"贵在哪一帧、随张数怎么长"变成可读的数 ——
+            // 只看稳态那一个抽样数，永远看不到这一段。
+            if (age <= ENTER_TRACE_TICKS) {
+                CardStage.Stats trace = CardStage.INSTANCE.stats();
+                PickupCard.LOGGER.info("[harness-auto] 入场逐帧 age={} cards={} layout={}us paint={}us"
+                                + " flushes={} rise={}",
+                        age, trace.live(), trace.layoutMicros(), trace.paintMicros(), trace.flushes(),
+                        String.format(java.util.Locale.ROOT, "%.2f", trace.firstRise()));
+            }
+
             if (age == 14) {
                 // 【扫光时窗】入场 480ms（≈10 tick）结束后扫光跑 480ms（≈19 tick 收尾）——
                 // age=14 正好在窗中央。扫光是一次性的，常规稳态截图（SHOT_AFTER_OPEN=40 起）
@@ -757,6 +774,16 @@ public final class DevHarness {
                         mc.getMainRenderTarget(),
                         m -> PickupCard.LOGGER.info("[harness-auto] 截图: pickupcard-hud-shimmer -> {}",
                                 m.getString()));
+            }
+
+            // 【入场中途的两张】稳态图证明不了动画：镜像卡片"内容从竖条（右）那侧滑出来"
+            // 这件事只在展开到一半时可见（2026-09-20 用户报「卡片动画镜像了、文字动画没有」，
+            // 就是稳态截图全绿、动画途中才现形的那种）。rise≈0.3 与 ≈0.7 各一张。
+            if (age == 3 || age == 7) {
+                Screenshot.grab(mc.gameDirectory, "pickupcard-hud-enter" + age,
+                        mc.getMainRenderTarget(),
+                        m -> PickupCard.LOGGER.info("[harness-auto] 截图: enter{} -> {}",
+                                age, m.getString()));
             }
 
             // 【收工必须是独立卫语句，不能是链尾的 else if】它原来是链尾，而前面
@@ -772,15 +799,29 @@ public final class DevHarness {
 
             if (age == SHOT_AFTER_OPEN) {
                 CardStage.Stats s = CardStage.INSTANCE.stats();
-                PickupCard.LOGGER.info("[harness-auto] HUD 读数 cards={} painted={} layout={}us paint={}us",
-                        s.live(), s.painted(), s.layoutMicros(), s.paintMicros());
+                PickupCard.LOGGER.info("[harness-auto] HUD 读数 cards={} painted={} layout={}us paint={}us"
+                                + " flushes={}（本帧原版批次提交次数）",
+                        s.live(), s.painted(), s.layoutMicros(), s.paintMicros(), s.flushes());
+                // 【峰值为什么要单独打】入场中段那几帧（全部卡都开着裁剪 + 内容正在滑）才是
+                // 一帧里最贵的位置，而它跟"稳态抽一帧"不在同一个时刻。峰值是"这一轮卡堆里
+                // 最糟的那一帧"，入场动画的性能问题只有它能指认。
+                PickupCard.LOGGER.info("[harness-auto] HUD 峰值 worst={}us（cards={} flushes={} {}）"
+                                + " 单帧最多提交={} 次 —— 一轮卡堆里的极值（layout+paint / 批次提交）",
+                        s.peakMicros(), s.peakCards(), s.peakFlushes(), s.peakShape(), s.maxFlushes());
                 // 【性能护栏（2026-09-20 定）】排布是纯数学，超 500us 必是回归；绘制（NanoVG 外壳
                 // + 图标每帧现渲 + 文字）稳态一摞卡在毫秒以内，4000us 是数倍余量。超线只报 ERROR
                 // 不炸进程——这条线是给日志审查抓的（grep「性能护栏」）。
+                // 【峰值也进护栏】稳态抽样过线才算回归是旧尺子；入场中段超线同样是回归，
+                // 用更松的 2 倍预算（那一瞬所有卡都在裁剪 + 平移，本来就比稳态贵）。
                 if (s.live() >= 4 && (s.layoutMicros() > 500 || s.paintMicros() > 4_000)) {
                     PickupCard.LOGGER.error("[harness-auto] 性能护栏：cards={} layout={}us（预算 500）"
                                     + " paint={}us（预算 4000）—— 渲染路径疑似回归",
                             s.live(), s.layoutMicros(), s.paintMicros());
+                }
+                if (s.peakCards() >= 4 && s.peakMicros() > 8_000) {
+                    PickupCard.LOGGER.error("[harness-auto] 性能护栏（峰值）：worst={}us cards={}"
+                                    + " flushes={}（预算 8000）—— 入场/退场中段疑似回归",
+                            s.peakMicros(), s.peakCards(), s.peakFlushes());
                 }
                 logHudSafeZone(mc);
                 // 在屏的是哪几张 + <b>每张的实际矩形</b>：「少了我的那张卡」与「位置又不对」是最常见的

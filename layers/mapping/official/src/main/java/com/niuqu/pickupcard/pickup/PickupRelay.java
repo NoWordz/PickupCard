@@ -1,5 +1,6 @@
 package com.niuqu.pickupcard.pickup;
 
+import com.niuqu.pickupcard.PickupCard;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.client.player.AbstractClientPlayer;
@@ -29,6 +30,14 @@ import org.jetbrains.annotations.Nullable;
  */
 public final class PickupRelay {
 
+    /**
+     * 记账慢过这条线就报一条日志（微秒）。
+     * <p>取 4000：60fps 的一帧是 16667us，这条路径单独吃掉 4ms 就已经能在帧率上看见；
+     * 而它平时是几十微秒（一次 item 注册表查询 + 一个栈复制）。定了这条线，
+     * 「捡起来好卡」下次会自己带着"哪一次、什么东西、多久"回来。
+     */
+    private static final long SLOW_PICKUP_MICROS = 4_000L;
+
     private PickupRelay() {
     }
 
@@ -37,15 +46,29 @@ public final class PickupRelay {
         if (!(level.getEntity(packet.getPlayerId()) instanceof AbstractClientPlayer collector)) return;
         if (!isSelf(collector)) return;
 
-        Entity carried = level.getEntity(packet.getItemId());
-        if (carried instanceof ItemEntity itemEntity) {
-            ItemStack stack = itemEntity.getItem();
-            if (stack.isEmpty()) return;
-            // 必须复制：实体下一 tick 就可能被移除，而我们的卡要活好几秒
-            Inbox.INSTANCE.offer(new CardContent.Item(stack.copy()), packet.getAmount());
-        } else if (carried instanceof ExperienceOrb) {
-            // 数量就是包里的经验值（take 广播的是实际吸收的量）
-            Inbox.INSTANCE.offer(new CardContent.Experience(), packet.getAmount());
+        // 【拾取这一下花了多久】这条路径跑在包处理里（渲染线程），任何一次变慢都会直接
+        // 变成玩家看到的掉帧 —— 而且拖慢它的东西大多不在这个类里（过滤规则现查 tag、
+        // 稀有度联动的首次解析、第一张卡的引擎初始化）。超线就报一条日志，把"哪一次拾取、
+        // 多久"钉住 —— 没有它，用户报的「捡起来好卡」只能靠猜（2026-09-20 就是这么开始的）。
+        long t0 = System.nanoTime();
+        try {
+            Entity carried = level.getEntity(packet.getItemId());
+            if (carried instanceof ItemEntity itemEntity) {
+                ItemStack stack = itemEntity.getItem();
+                if (stack.isEmpty()) return;
+                // 必须复制：实体下一 tick 就可能被移除，而我们的卡要活好几秒
+                Inbox.INSTANCE.offer(new CardContent.Item(stack.copy()), packet.getAmount());
+            } else if (carried instanceof ExperienceOrb) {
+                // 数量就是包里的经验值（take 广播的是实际吸收的量）
+                Inbox.INSTANCE.offer(new CardContent.Experience(), packet.getAmount());
+            }
+        } finally {
+            long micros = (System.nanoTime() - t0) / 1_000L;
+            if (micros >= SLOW_PICKUP_MICROS) {
+                PickupCard.LOGGER.warn("[拾取] 这次记账花了 {}us（阈值 {}）—— 会直接算进掉帧；"
+                                + "看它前后的日志（首张卡引擎初始化、联动解析、过滤规则现查）",
+                        micros, SLOW_PICKUP_MICROS);
+            }
         }
     }
 

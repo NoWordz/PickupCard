@@ -3,12 +3,14 @@ package com.niuqu.pickupcard.render.nvg;
 import com.niuqu.pickupcard.layout.LayoutSettings;
 import com.niuqu.pickupcard.pickup.CardContent;
 import com.niuqu.pickupcard.pickup.Inbox;
+import com.niuqu.pickupcard.render.BatchStats;
 import com.niuqu.pickupcard.render.CardCanvas;
 import com.niuqu.pickupcard.render.CardMetrics;
 import com.niuqu.pickupcard.render.CardSlot;
 import com.niuqu.pickupcard.render.CardView;
 import com.niuqu.pickupcard.render.FadingItemBuffers;
 import com.niuqu.pickupcard.render.nvg.NvgCardPainter;
+import com.niuqu.pickupcard.style.BodyGeometry;
 import com.niuqu.pickupcard.style.Easing;
 import com.niuqu.pickupcard.style.RevealWindow;
 import com.niuqu.pickupcard.style.StyleModel;
@@ -49,6 +51,10 @@ public final class NvgCardContent {
     private static final Vector3f CORNER_A = new Vector3f();
     private static final Vector3f CORNER_B = new Vector3f();
 
+    /** 分段计时（-Dpickupcard.profile=1 时逐帧打印）：图标与文字各花了多久。 */
+    static long profileIconUs;
+    static long profileTextUs;
+
     private NvgCardContent() {
     }
 
@@ -64,12 +70,15 @@ public final class NvgCardContent {
         float h = slot.height() / cardScale;
         float cardW = slot.width() / cardScale;
         float gap = style.gap();
-        float bodyX = style.barWidth() + gap;
+        boolean mirror = canvas.layout().mirrorCard();
+        // 三个框的自然位置与外壳<b>共用一份几何</b>（BodyGeometry）：从前两边各推一遍，
+        // 镜像时这里把滑出方向算反了 —— 外壳从竖条（右）那侧滑出、文字与图标却从左边冒出来，
+        // 稳态看不出来、只有动画途中现形（用户 2026-09-20 报「卡片动画镜像了、文字动画没有」）。
+        BodyGeometry body = BodyGeometry.of(cardW, h, style.barWidth(), gap, mirror);
         float rise = canvas.contentOf(view);
         RevealWindow win = NvgCardPainter.windowOf(canvas, slot, style, rise);
         float shift = NvgCardPainter.bodyShiftOf(canvas, slot, style, rise);
         float alpha = NvgCardPainter.exitAlphaOf(canvas, slot);
-        float x = bodyX + shift;
         int accent = NvgCardPainter.accentOf(card, style.accents());
 
         gui.pose().pushPose();
@@ -95,19 +104,23 @@ public final class NvgCardContent {
         // alpha<1 的帧里由 FadingItemBuffers 把 NO_BLEND 实体层换到开混合的等价层提交 ——
         // setShaderColor 的 alpha 从此数学上有效。几何（窗口/位移/缩放/裁剪）与外壳同源，
         // 三档退场都跟着卡走。
-        boolean mirror = canvas.layout().mirrorCard();
-        // 图标格左缘：非镜像 = 内容区左缘；镜像 = 从卡右缘反算（shift 已含镜像方向）
-        float iconL = mirror ? cardW - x - h : x;
+        // 图标格左缘 = 自然位置 + 位移。【位移一律加、不乘方向】方向因子已经在
+        // bodyShiftOf 里（镜像取正、常规取负），这里再取反一次等于把动画翻回去 ——
+        // 2026-09-20 用户报的「文字动画没镜像」就是这一处。
+        float iconL = body.iconLeft() + shift;
         ItemStack iconStack = iconStackOf(canvas, slot);
         if (!iconStack.isEmpty()) {
+            long iconT0 = System.nanoTime();
             FadingItemBuffers.drawIcon(gui, iconStack, iconL + h / 2f, h / 2f, style.iconSize(), alpha,
                     clipped);
+            profileIconUs += (System.nanoTime() - iconT0) / 1_000L;
         }
 
         // 文字：alpha 直接乘进颜色里（原版字形用的就是这个色的 alpha），不走全局色。
         // 【alpha 字节掉到 4 以下就整段不画】原版 Font.adjustColor（1.20.1 Font.java:109）
         // 会把 alpha 字节 0~3 的颜色强制改成完全 opaque —— 退场末尾 alpha 单调下穿这个区间，
         // 那几帧文字会「闪回不透明」，一帧后整卡才被摘掉（用户连报两次的末帧闪就是它）。
+        long textT0 = System.nanoTime();
         float textY = (h - font.lineHeight) / 2f;
         if (canvas.settings().showItemName() && textVisible(style.nameColor(), alpha)) {
             String name = CardMetrics.fittedName(canvas, font, card, view.notice().count());
@@ -117,7 +130,8 @@ public final class NvgCardContent {
                 gui.drawString(font, name, Math.round(nameRight - font.width(name)),
                         Math.round(textY), fade(style.nameColor(), alpha), true);
             } else {
-                float nameX = x + h + gap;
+                // 常规：名字排在图标格右侧（+ 一份水平内边距）
+                float nameX = iconL + h + gap;
                 gui.drawString(font, name, Math.round(nameX + style.paddingH()), Math.round(textY),
                         fade(style.nameColor(), alpha), true);
             }
@@ -125,9 +139,11 @@ public final class NvgCardContent {
         // 数量锚点：非镜像=信息框右缘（往左排），镜像=信息框左缘（往右排）
         float countAnchor = mirror ? style.paddingH() + shift : cardW + shift - style.paddingH();
         drawCount(gui, canvas, view, font, countAnchor, textY, accent, alpha, mirror);
+        profileTextUs += (System.nanoTime() - textT0) / 1_000L;
 
         if (clipped) {
             // 原版内容还在 bufferSource 里排队：不在这里冲掉，它会在裁剪失效之后才画出来
+            BatchStats.countFlush();
             gui.bufferSource().endBatch();
             gui.disableScissor();
         }
@@ -192,6 +208,7 @@ public final class NvgCardContent {
         float right = left + w;
         // 【为什么先 flush】裁剪是"画的时候才生效"的，而前面几张卡的文字正排着队还没提交 ——
         // 不冲掉的话它们会一起被这个框裁掉（同一批 buffer 共用同一个裁剪状态）。
+        BatchStats.countFlush();
         gui.flush();
         // 【坐标必须是屏幕坐标】这里的 left/right/textY 是"卡内未缩放单位"，而
         // GuiGraphics#enableScissor 吃的是经当前 pose 变换后的屏幕像素 —— 直接把卡内坐标喂进去
@@ -204,6 +221,7 @@ public final class NvgCardContent {
                 Math.round(textY - t * lineH), fade(accent, alpha), true);
         gui.drawString(font, cur, Math.round(curX),
                 Math.round(textY + (1f - t) * lineH), fade(accent, alpha), true);
+        BatchStats.countFlush();
         gui.flush();
         gui.disableScissor();
     }

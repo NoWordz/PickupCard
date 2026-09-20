@@ -49,6 +49,8 @@ minecraft {
             jvmArg "-Dpickupcard.harness.reviveAfter=${project.findProperty('harnessReviveAfter') ?: '15'}"
             // 拍完稳态那张之后还活多久 —— 同上，默认的 70 会把退场连拍从中途掐断
             jvmArg "-Dpickupcard.harness.quitAfter=${project.findProperty('harnessQuitAfter') ?: '70'}"
+            // 首几帧的分段计时（外壳/图标/文字各花多久）：./gradlew runClient -PpcProfile=1
+            jvmArg "-Dpickupcard.profile=${project.findProperty('pcProfile') ?: 'off'}"
 
             mods {
                 "${mod_id}" {

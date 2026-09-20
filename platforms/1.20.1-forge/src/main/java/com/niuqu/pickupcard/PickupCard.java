@@ -116,6 +116,13 @@ public final class PickupCard {
         }
 
         @SubscribeEvent
+        static void onLoggingIn(ClientPlayerNetworkEvent.LoggingIn event) {
+            // 进世界：把联动桥解析掉。懒解析本来落在"第一次拾取那一帧"上，和 NanoVG 初始化
+            // 叠在一起（实测那一帧 51ms）—— 挪到进世界时付，代价是微秒级。
+            RarityCoreBridge.warmUp();
+        }
+
+        @SubscribeEvent
         static void onLoggingOut(ClientPlayerNetworkEvent.LoggingOut event) {
             // 离开世界：队列、NEW 账本、未取走的事件一起清。NEW 不落盘是刻意的，这里就是"忘记"的时机。
             Inbox.INSTANCE.reset();

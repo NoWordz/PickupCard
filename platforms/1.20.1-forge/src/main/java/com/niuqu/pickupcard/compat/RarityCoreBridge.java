@@ -49,6 +49,20 @@ public final class RarityCoreBridge implements LinkedRarity {
         PickupCard.LOGGER.info("[联动] 检测到 RarityCore：档位与强调色由它接管，首次使用时懒解析");
     }
 
+    /**
+     * 进世界时提前解析，别把它记在第一次拾取那一帧上。
+     * <p>【懒解析的代价】{@code Class.forName + unreflect} 本身是微秒级，但它落在
+     * “第一次拾取那一帧”里就和 NanoVG 初始化叠在一起了（用户实例实测：那一刻
+     * {@code [落点] → [nvg 建立] → [桥已就绪]} 三行挤在 54ms 里）。进世界时先解析掉，
+     * 拾取那一帧就只剩画卡的事。解析失败与懒路径完全同款（解联回落主题色）。
+     */
+    public static void warmUp() {
+        if (!ModList.get().isLoaded("raritycore")) {
+            return;
+        }
+        ensureResolved();
+    }
+
     @Override
     public int tierOf(ItemStack stack) {
         if (stack.isEmpty() || !ensureResolved()) {

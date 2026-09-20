@@ -23,6 +23,10 @@ import org.lwjgl.nanovg.NanoVGGL3;
  */
 public final class NvgCanvas implements AutoCloseable {
 
+    /** 上一次 {@link #end()} 里 {@code nvgEndFrame} 与状态恢复各花了多少微秒（诊断读，见 {@link #end}）。 */
+    static long endFrameUs;
+    static long restoreUs;
+
     /**
      * NVG_ANTIALIAS：解析抗锯齿，必须开（关掉边缘就是硬的）。
      * NVG_STENCIL_STROKES：描边走模板缓冲，让交叠的描边不出现自相交的暗斑 ——
@@ -103,13 +107,22 @@ public final class NvgCanvas implements AutoCloseable {
         if (!valid() || guard == null) {
             return;
         }
+        long t0 = endProfile ? System.nanoTime() : 0L;
         try {
             NanoVG.nvgEndFrame(ctx);
         } finally {
+            long t1 = System.nanoTime();
             guard.restore();
             guard = null;
+            if (endProfile) {
+                NvgCanvas.endFrameUs = (t1 - t0) / 1_000L;
+                NvgCanvas.restoreUs = (System.nanoTime() - t1) / 1_000L;
+            }
         }
     }
+
+    /** 分段计时开关（诊断用；由 NvgCardPainter 的开关注入）。 */
+    static boolean endProfile;
 
     @Override
     public void close() {

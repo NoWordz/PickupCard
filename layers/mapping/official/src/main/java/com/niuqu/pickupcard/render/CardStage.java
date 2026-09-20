@@ -97,6 +97,24 @@ public final class CardStage {
     private long layoutMicros;
     /** 上一帧绘制（NanoVG 外壳 + 图标现渲 + 文字）的耗时，给 harness 读 —— 性能护栏的另一半。 */
     private long paintMicros;
+    /**
+     * 这一轮卡堆里最慢的一帧（layout + paint 合计）与当时的卡数、批次提交次数。
+     * <p>【为什么不能只看当前帧】{@code stats()} 是抽样读的（harness 在某 tick 顺手问一次），
+     * 而真正卡的那一下往往落在入场/退场的中段 —— 抽样恰好命中它纯属运气。留住峰值后，
+     * 事后读到的就是"这一轮里最糟的一帧长什么样"。卡堆清空时复位（每轮各自记各自的）。
+     */
+    private long peakFrameMicros;
+    private int peakFrameCards;
+    private long peakFrameFlushes;
+    /**
+     * 这一轮卡堆里单帧最多的原版批次提交次数。
+     * <p>【为什么单独记它】它是入场/合并期帧开销的主要变量，而且它跟"最慢的一帧"不一定
+     * 同时发生 —— 合并滚动（数字卷动）会临时多提交两次/卡，那一帧未必最慢，但它的提交数
+     * 是最高的。两个数一起看才知道"贵在提交次数还是贵在别的"。
+     */
+    private long maxFlushesPerFrame;
+    /** 上一帧原版批次提交次数（{@link BatchStats} 的差值）—— 入场期它是帧开销的主要变量。 */
+    private long lastFlushes;
     /** 上一帧主题里的入场时长与最新那张卡的展开进度，给 harness 读 —— 动画出问题时靠它定位。 */
     private long lastEnterMs;
     private float lastFirstRise = 1f;
@@ -155,8 +173,19 @@ public final class CardStage {
     public void onHudRender(RenderGuiEvent.Post event) {
         Minecraft mc = Minecraft.getInstance();
         if (mc.options.hideGui || suspended) return;
+        // 【进世界后的前几帧：把引擎的账分摊付掉】见 NvgCardPainter#warmUpStep —— 这笔钱
+        // 从前记在"第一次拾取"那一帧上（实测 42ms：外壳 23ms + 图标 27ms，用户实例里第一张
+        // 卡同样要 51ms），玩家读到的就是"一捡东西就卡一下"。挪到进世界那几帧、每帧只付
+        // 一小段（图标两个一组），那时世界还在加载区块，没人察觉得出这几帧的差别。
+        if (warming && mc.level != null) {
+            StyleModel warmStyle = styles.current(System.currentTimeMillis()).sanitized();
+            warming = NvgCardPainter.warmUpStep(event.getGuiGraphics(), warmStyle);
+        }
         renderInto(event.getGuiGraphics(), mc);
     }
+
+    /** 引擎预热还没走完（进世界后的头几帧分摊付账；每进程一次）。 */
+    private boolean warming = true;
 
     /**
      * 拖拽编辑场打开时挂起真卡：屏幕上只能有一摞卡，编辑场的样例堆和真卡叠在一起分不清谁是谁。
@@ -270,16 +299,75 @@ public final class CardStage {
 
         CardCanvas canvas = canvas(now, style, settings, layout, gui, scale);
         lastEnterMs = style.enterMs();
+        peakEnterWindowMs = Math.max(200L, style.enterMs()) + 200L;
         lastFirstRise = live.isEmpty() ? 1f : canvas.contentOf(live.values().iterator().next());
 
         long t0 = System.nanoTime();
         List<CardSlot> slots = layout(gui, mc, canvas, now, gap, anchorTop);
         layoutMicros = (System.nanoTime() - t0) / 1_000L;
         lastSlots = List.copyOf(slots);
+        long flushesBefore = BatchStats.flushes();
         long t1 = System.nanoTime();
         painter.paint(gui, canvas, slots);
         paintMicros = (System.nanoTime() - t1) / 1_000L;
+        lastFlushes = BatchStats.flushes() - flushesBefore;
+        recordPeak();
     }
+
+    /**
+     * 把这一帧记进这一轮的峰值账。卡堆清空时复位 —— 每轮卡堆各自记各自的最糟帧。
+     * <p>只算"真有卡在屏上"的帧：没卡的帧是一两微秒的空转，记进去只会把峰值稀释掉。
+     */
+    private void recordPeak() {
+        if (lastSlots.isEmpty()) {
+            peakFrameMicros = 0L;
+            peakFrameCards = 0;
+            peakFrameFlushes = 0L;
+            maxFlushesPerFrame = 0L;
+            return;
+        }
+        long total = layoutMicros + paintMicros;
+        if (total > peakFrameMicros) {
+            peakFrameMicros = total;
+            peakFrameCards = lastSlots.size();
+            peakFrameFlushes = lastFlushes;
+            peakFrameShape = describeFrameShape();
+        }
+        maxFlushesPerFrame = Math.max(maxFlushesPerFrame, lastFlushes);
+        // 【慢帧探针】超线就留一条带上下文的日志：哪一帧、几张卡、提交几次、有没有卡在
+        // 进场/退场。整帧只有几毫秒是常态，"哪一帧突然贵了"必须能事后指认 —— 上限 12 条，
+        // 不刷屏；这条日志对玩家的下一次反馈同样有效（它就在正式版里）。
+        if (total > SLOW_FRAME_MICROS && slowFrameLogs < 12) {
+            slowFrameLogs++;
+            PickupCard.LOGGER.info("[慢帧] {}us（layout={} paint={} cards={} flushes={} {}）"
+                            + "—— 阈值 {}us{}",
+                    total, layoutMicros, paintMicros, lastSlots.size(), lastFlushes,
+                    describeFrameShape(), SLOW_FRAME_MICROS,
+                    slowFrameLogs >= 12 ? "（本会话已报满 12 条）" : "");
+        }
+    }
+
+    /** 这一帧的形态：几张在进场、几张在退场、主题缩放多少 —— 慢帧日志的上下文。 */
+    private String describeFrameShape() {
+        int entering = 0;
+        int exiting = 0;
+        for (CardSlot slot : lastSlots) {
+            if (slot.view().exiting()) {
+                exiting++;
+            }
+            if (slot.view().notice().bornAt() + peakEnterWindowMs > System.currentTimeMillis()) {
+                entering++;
+            }
+        }
+        return "进场=" + entering + " 退场=" + exiting;
+    }
+
+    /** 慢帧探针的阈值（微秒）：60fps 一帧 16667us，取 1/4 帧 —— 到这一线玩家已经能察觉。 */
+    private static final long SLOW_FRAME_MICROS = 4_000L;
+    private int slowFrameLogs;
+    /** "还在进场"的判定窗口：主题入场时长 + 一点余量，只用于慢帧日志的上下文。 */
+    private long peakEnterWindowMs = 1_000L;
+    private String peakFrameShape = "";
 
     /** 消费积压的账本事件。 */
     private void pump(long now, PickupCardSettings settings, StyleModel style) {
@@ -382,12 +470,15 @@ public final class CardStage {
      * "看不见的状态"（每张卡的实际位置与尺寸）变成可读的，而不是为了让别处改渲染。
      */
     public record Stats(int live, int painted, long layoutMicros, long paintMicros,
-                        long enterMs, float firstRise) {
+                        long enterMs, float firstRise,
+                        long flushes, long maxFlushes,
+                        long peakMicros, int peakCards, long peakFlushes, String peakShape) {
     }
 
     public Stats stats() {
         return new Stats(live.size(), lastSlots.size(), layoutMicros, paintMicros,
-                lastEnterMs, lastFirstRise);
+                lastEnterMs, lastFirstRise, lastFlushes, maxFlushesPerFrame,
+                peakFrameMicros, peakFrameCards, peakFrameFlushes, peakFrameShape);
     }
 
     /** 上一帧参与绘制的卡。辅助线要按这个画，才保证画的是"真的画了的那批"。 */

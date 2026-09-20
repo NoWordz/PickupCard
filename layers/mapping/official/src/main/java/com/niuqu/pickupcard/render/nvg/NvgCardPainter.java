@@ -5,14 +5,18 @@ import com.niuqu.pickupcard.layout.LayoutSettings;
 import com.niuqu.pickupcard.pickup.CardContent;
 import com.niuqu.pickupcard.pickup.Inbox;
 import com.niuqu.pickupcard.rarity.RarityAccent;
+import com.niuqu.pickupcard.render.BatchStats;
 import com.niuqu.pickupcard.render.CardCanvas;
 import com.niuqu.pickupcard.render.CardSlot;
+import com.niuqu.pickupcard.render.FadingItemBuffers;
+import com.niuqu.pickupcard.style.BodyGeometry;
 import com.niuqu.pickupcard.style.Easing;
 import com.niuqu.pickupcard.style.RevealWindow;
 import com.niuqu.pickupcard.style.StyleModel;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.world.item.ItemStack;
 import org.lwjgl.nanovg.NVGColor;
 import org.lwjgl.nanovg.NVGPaint;
 import org.lwjgl.system.MemoryStack;
@@ -85,6 +89,20 @@ public final class NvgCardPainter {
     /** "引擎没了"这件事每次会话只该在屏幕上说一次，日志里也只需要一条。 */
     private boolean reportedMissing;
 
+    /**
+     * 分段计时开关（{@code -PpcProfile=1} → {@code -Dpickupcard.profile=1}）：只打头几帧，
+     * 用来定位一次性开销在哪。
+     * <p>【为什么不用 {@code Boolean.getBoolean}】它只认 "true"（大小写不敏感），
+     * 给个 1 会静默地当成关 —— 而 {@code -Pxx=1} 是最顺手的写法。
+     */
+    private static final boolean PROFILE = isOn(System.getProperty("pickupcard.profile"));
+    private int profileFrames;
+
+    private static boolean isOn(String value) {
+        return value != null && (value.equalsIgnoreCase("true") || value.equals("1")
+                || value.equalsIgnoreCase("on"));
+    }
+
     // ------------------------------------------------------------------
     // 一帧：HUD 与 dev harness 共用这一条路径
     // ------------------------------------------------------------------
@@ -99,6 +117,8 @@ public final class NvgCardPainter {
     public void paint(GuiGraphics gui, CardCanvas canvas, List<CardSlot> slots) {
         Font font = Minecraft.getInstance().font;
 
+        long t0 = System.nanoTime();
+        BatchStats.countFlush();
         gui.flush();
 
         NvgCanvas nvg = NvgCanvas.shared();
@@ -113,7 +133,11 @@ public final class NvgCardPainter {
 
         StyleModel style = canvas.style();
         float guiScale = (float) Minecraft.getInstance().getWindow().getGuiScale();
+        boolean profile = PROFILE && profileFrames < 6;
+        NvgCanvas.endProfile = profile;
+        long flushDoneAt = profile ? System.nanoTime() : 0L;
         nvg.begin(gui.guiWidth(), gui.guiHeight(), guiScale);
+        long beginDoneAt = profile ? System.nanoTime() : 0L;
         try {
             long vg = nvg.handle();
             for (CardSlot slot : slots) {
@@ -163,17 +187,167 @@ public final class NvgCardPainter {
         } finally {
             nvg.end();
         }
+        long shellDoneAt = profile ? System.nanoTime() : 0L;
 
         // 内容排在 NanoVG 之后：它画在卡面之上（用的是同一批屏幕坐标）。
         // 图标与文字都在这一路 —— 图标每帧原版现渲，文字走原版字形（见 NvgCardContent）。
+        NvgCardContent.profileIconUs = 0L;
+        NvgCardContent.profileTextUs = 0L;
         for (CardSlot slot : slots) {
             NvgCardContent.paint(gui, canvas, slot, font);
         }
+
+        if (profile) {
+            profileFrames++;
+            // 分段账：flush / begin / 逐卡外壳 / end（再拆成 NanoVG 自己的 flush 与 MC 状态恢复）
+            // / 图标 / 文字 —— 首帧那几十毫秒到底记在哪一段，只有拆到这一步才看得出。
+            PickupCard.LOGGER.info("[profile] cards={} flush={}us begin={}us 逐卡={}us end={}us"
+                            + "（其中 nvgEndFrame={}us 状态恢复={}us）图标={}us 文字={}us",
+                    slots.size(), (flushDoneAt - t0) / 1_000L, (beginDoneAt - flushDoneAt) / 1_000L,
+                    (shellDoneAt - beginDoneAt) / 1_000L, (System.nanoTime() - shellDoneAt) / 1_000L,
+                    NvgCanvas.endFrameUs, NvgCanvas.restoreUs,
+                    NvgCardContent.profileIconUs, NvgCardContent.profileTextUs);
+        }
     }
 
-    // ------------------------------------------------------------------
-    // 外壳：影子 -> 竖条 -> 两个框 -> 微光
-    // ------------------------------------------------------------------
+    /**
+     * 提前把"这张卡第一次真的被画出来"那一帧的账付掉 —— <b>由进世界后的第一帧调用</b>。
+     *
+     * <p>【为什么必须有它】懒创建把这些钱全记在了<b>第一次拾取那一帧</b>上，实测那一帧要
+     * <b>62ms</b>（5 张卡：外壳 37.5ms + 图标 24.5ms + 文字 1.9ms；用户实例里第一张卡同样
+     * 要 51ms），玩家读到的就是「一捡东西就卡一下」。钱不能省，但可以挪到进世界那几帧去付。
+     *
+     * <p>【为什么"建上下文 + 空帧"不够】这才是关键教训：{@code nvgCreate} 只把壳建起来，
+     * 驱动是<b>第一次真正画东西</b>时才编着色器/JIT 管线的 —— 空跑 begin/end 实测仍然
+     * 留下 37ms 在第一次绘制上。所以这里必须真画，而且要把用到的每条绘制路径都走到：
+     * 圆角矩形填充、渐变填充（框底）、描边、boxGradient（微光）、线性渐变（扫光）、
+     * 以及镜像分支。
+     *
+     * <p>【为什么看不见】外壳用 {@code nvgGlobalAlpha(0)} 画在屏幕内（透明度 0 = 逐像素
+     * 无变化，但绘制仍然真的发生）；图标不能这么干（无混合层忽略 alpha），所以挪到屏幕外
+     * —— 顶点全在裁剪体外，驱动照样得把管线准备好。
+     *
+     * @return true = 还有后续步骤，调用方下一帧继续调
+     */
+    public static boolean warmUpStep(GuiGraphics gui, StyleModel style) {
+        NvgCanvas nvg = NvgCanvas.shared();
+        if (nvg == null || !nvg.valid()) {
+            return false;
+        }
+        long t0 = System.nanoTime();
+        float guiScale = (float) Minecraft.getInstance().getWindow().getGuiScale();
+        Font font = Minecraft.getInstance().font;
+        if (warmStep == 0) {
+            warmShell(gui, nvg, style, guiScale);
+        } else if (warmStep == 1) {
+            // 文字：字形图集的上传。屏幕外，用的是一串常见字符。
+            gui.drawString(font, "0.9K +Common", -20_000, -20_000,
+                    style.nameColor(), false);
+        } else if (warmStep == 2) {
+            // 【字体测量预热】第一张卡那帧 layout 会花 10ms 以上 —— 那不是布局公式贵，是
+            // {@code font.width(name)} 第一次逼着字形按需栅格化（每个字符一次）。把可打印
+            // ASCII 全集 + 常见符号的量宽提前跑掉，第一次拾取那一帧的量宽就全是缓存命中。
+            // （中文走 Unicode 图集、量一次贵一次，这里按量级覆盖 ASCII —— 英文名占大头。）
+            warmFontMetrics(font);
+        } else {
+            int from = (warmStep - 3) * ICONS_PER_STEP;
+            for (int i = from; i < Math.min(WARM_ICONS.length, from + ICONS_PER_STEP); i++) {
+                FadingItemBuffers.drawIcon(gui, WARM_ICONS[i], -20_000f, -20_000f,
+                        style.iconSize(), 1f, true);
+            }
+        }
+        warmStep++;
+        warmTotalUs += (System.nanoTime() - t0) / 1_000L;
+        int totalSteps = 3 + (WARM_ICONS.length + ICONS_PER_STEP - 1) / ICONS_PER_STEP;
+        if (warmStep < totalSteps) {
+            return true;
+        }
+        PickupCard.LOGGER.info("[预热] 引擎的首次绘制在进世界时分 {} 帧付掉：合计 {}us"
+                        + "（外壳首轮={}us → 次轮={}us，这就是「这笔账真的付掉了」的证据）",
+                totalSteps, warmTotalUs, warmShellFirstUs, warmShellSecondUs);
+        return false;
+    }
+
+    /**
+     * 把量宽会碰到的字符提前全部量一遍。
+     * <p>【为什么分段只放一个字符串】{@code font.width} 是字形图集的按需栅格化入口，
+     * 第一张卡那一帧的 10ms layout 就是这里欠的账（实测 16:41 轮 layout=10.6ms）。
+     * ASCII 可打印字符 + 数字格式会用到的符号一起量掉；中文名的量宽在玩家切中文包时才
+     * 发生，那次仍有一次性开销，但它是"第一次出现中文"而不是"第一次捡东西"。
+     */
+    private static void warmFontMetrics(Font font) {
+        StringBuilder sb = new StringBuilder(128);
+        for (char c = 32; c < 127; c++) {
+            sb.append(c);
+        }
+        sb.append("+×KMBk…");        // 数量格式与省略号
+        for (int i = 0; i < sb.length(); i++) {
+            font.width(String.valueOf(sb.charAt(i)));
+        }
+        font.width(sb.toString());   // 整串再量一次（缓存命中，几乎免费 —— 保的是行为一致）
+    }
+
+    /** 预热分帧进度：0 = 还没开始；每帧 +1，走到 {@code totalSteps} 即完成。 */
+    private static int warmStep;
+    private static long warmTotalUs;
+    private static long warmShellFirstUs;
+    private static long warmShellSecondUs;
+
+    /**
+     * 预热第一段：外壳。<b>为什么画两轮</b> —— 第一轮付"第一次绘制"（驱动编着色器/JIT 管线），
+     * 第二轮验证它真的被付掉了。实测 23ms → 0.1ms，这是"预热有效"的硬证据，也是
+     * "只建上下文不画东西等于没预热"那个教训的量尺。
+     */
+    private static void warmShell(GuiGraphics gui, NvgCanvas nvg, StyleModel style, float guiScale) {
+        for (int round = 0; round < 2; round++) {
+            long roundT0 = System.nanoTime();
+            // 【顺序必须与真实一帧一致】外壳在 NVG 帧内、图标与文字在帧外 —— 把图标画进
+            // 帧内会让真实那一帧照样贵：两条路径的 GL 状态序列不同，驱动对"第一次"的判定
+            // 也就不同。要挪走的那笔账，必须按原样再走一遍才算付过。
+            nvg.begin(gui.guiWidth(), gui.guiHeight(), guiScale);
+            try {
+                long vg = nvg.handle();
+                nvgSave(vg);
+                nvgGlobalAlpha(vg, 0f);
+                float h = style.boxHeight();
+                // 两条几何分支都走一遍（常规/镜像），并把微光与扫光带上（它们各是一种 paint）
+                paintShell(vg, style, 4f, 4f, 120f, h, style.accents().common(), 1f, 0f, 1f,
+                        1f, 1f, 0.3f, false, new RevealWindow(0f, 200f));
+                paintShell(vg, style, 4f, 4f + h + 2f, 120f, h, style.accents().rare(), 1f, 0f, 1f,
+                        1f, 1f, 0.3f, true, new RevealWindow(0f, 200f));
+                nvgRestore(vg);
+            } finally {
+                nvg.end();
+            }
+            long roundUs = (System.nanoTime() - roundT0) / 1_000L;
+            if (round == 0) {
+                warmShellFirstUs = roundUs;
+            } else {
+                warmShellSecondUs = roundUs;
+            }
+        }
+    }
+
+    /**
+     * 预热用的图标：把"卡上会出现的东西"按<b>渲染层与模型形态</b>分类各来一发 ——
+     * 平贴图（钻石剑/翅膀）、方块模型（石头/信标/龙蛋）、带 NBT 的实体模型（附魔书）、
+     * 以及经验卡固定用的下界之星。
+     * <p>每类在驱动里都是"第一次画才编管线 + 现烘焙模型"，所以只热其中一类，另一类照样
+     * 把账留到第一次拾取那一帧（实测漏掉三类时首帧仍要 27ms）。
+     */
+    private static final ItemStack[] WARM_ICONS = {
+            new ItemStack(net.minecraft.world.item.Items.STONE),
+            new ItemStack(net.minecraft.world.item.Items.COMMAND_BLOCK),
+            new ItemStack(net.minecraft.world.item.Items.DIAMOND_SWORD),
+            new ItemStack(net.minecraft.world.item.Items.ELYTRA),
+            new ItemStack(net.minecraft.world.item.Items.BEACON),
+            new ItemStack(net.minecraft.world.item.Items.DRAGON_EGG),
+            new ItemStack(net.minecraft.world.item.Items.ENCHANTED_BOOK),
+            new ItemStack(net.minecraft.world.item.Items.NETHER_STAR),
+    };
+
+    /** 每个预热帧画几个图标：一个个错开付，避免一次 50ms 的集中卡顿。 */
+    private static final int ICONS_PER_STEP = 2;
 
     /**
      * 一张卡的全部矢量部分。退场淡出不在这里 —— 调用方用 {@code nvgGlobalAlpha} 一笔带过，
@@ -202,9 +376,11 @@ public final class NvgCardPainter {
                                   RevealWindow window) {
         float gap = style.gap();
         float barW = style.barWidth();
-        float bodyW = Math.max(0f, cardW - barW - gap);
-        // 内容区的两条边：非镜像时从竖条右侧开始；镜像时贴卡左缘、到竖条左侧为止
-        float bodyLeft = mirror ? x : x + barW + gap;
+        // 三个框的自然位置：与内容路共用同一份几何（BodyGeometry）—— 镜像这种"整套坐标
+        // 反着来"的改动，两份实现一定会漏掉一边（2026-09-20 用户报「文字动画没镜像」）。
+        BodyGeometry body = BodyGeometry.of(cardW, cardH, barW, gap, mirror);
+        // 内容区左缘（屏幕坐标）：微光与扫光都从它起算
+        float bodyLeft = x + body.bodyLeft();
         float radius = Math.min(style.cornerRadius(), cardH / 2f);
 
         try (MemoryStack stack = MemoryStack.stackPush()) {
@@ -217,19 +393,16 @@ public final class NvgCardPainter {
             nvgSave(vg);
             nvgScissor(vg, x + window.left(), y, window.width(), cardH);
             if (window.width() > 0.01f) {
-                // 图标格贴着竖条那侧；镜像时从卡右缘反算。信息框占据剩下的宽度
-                float iconX = mirror ? bodyLeft + bodyW - cardH : bodyLeft;
-                box(vg, stack, style, iconX + bodyShift, y, cardH, cardH, radius);
-                float infoX = mirror ? bodyLeft : iconX + cardH + gap;
-                float infoW = Math.max(0f, bodyW - cardH - gap);
-                if (infoW > 0f) {
-                    box(vg, stack, style, infoX + bodyShift, y, infoW, cardH, radius);
+                box(vg, stack, style, x + body.iconLeft() + bodyShift, y, cardH, cardH, radius);
+                if (body.infoWidth() > 0f) {
+                    box(vg, stack, style, x + body.infoLeft() + bodyShift, y, body.infoWidth(),
+                            cardH, radius);
                 }
                 // 扫光在框之后、微光之前：它要照亮的是框面（在框上才读得出"掠过"），
                 // 又必须被窗口裁着（入场未完成时不许越出洞口）。镜像时进度取反，
                 // 光带就从右往左扫——与"从竖条侧出发"的镜像语义一致
                 if (shimmer > 0f) {
-                    shimmerBand(vg, stack, style, bodyLeft, y, bodyW, cardH, radius,
+                    shimmerBand(vg, stack, style, bodyLeft, y, body.bodyWidth(), cardH, radius,
                             mirror ? 1f - shimmer : shimmer);
                 }
             }
@@ -244,7 +417,8 @@ public final class NvgCardPainter {
             if (glowStrength > 0f && rise > 0.45f && style.glowAlpha() > 0) {
                 float ramp = Easing.clamp01((rise - 0.45f) / 0.4f);
                 softBox(vg, stack, bodyLeft + bodyShift - GLOW_SPREAD, y - GLOW_SPREAD,
-                        bodyW + GLOW_SPREAD * 2f, cardH + GLOW_SPREAD * 2f, radius + GLOW_SPREAD,
+                        body.bodyWidth() + GLOW_SPREAD * 2f, cardH + GLOW_SPREAD * 2f,
+                        radius + GLOW_SPREAD,
                         GLOW_FEATHER, withAlpha(accent,
                                 Math.round(style.glowAlpha() * glowScale * glowStrength * ramp)));
             }

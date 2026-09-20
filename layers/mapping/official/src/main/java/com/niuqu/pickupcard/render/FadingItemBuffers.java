@@ -7,8 +7,7 @@ import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.VertexConsumer;
 import com.mojang.blaze3d.vertex.VertexFormat;
 import com.niuqu.pickupcard.PickupCard;
-import com.niuqu.pickupcard.style.Easing;
-import net.minecraft.client.Minecraft;
+import com.niuqu.pickupcard.style.Easing;import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.renderer.LightTexture;
 import net.minecraft.client.renderer.MultiBufferSource;
@@ -98,6 +97,7 @@ public final class FadingItemBuffers implements MultiBufferSource {
         // 【清队列是有代价的】整条批次提交一次 GPU；稳态（没淡出、没裁剪）无污染可言，
         // 免掉这一次 flush —— 一摞卡就是一帧省 N 次提交（2026-09-20 性能轮）。
         if (fading || clipped) {
+            BatchStats.countFlush();
             gui.flush();
         }
         if (fading) {
@@ -123,6 +123,7 @@ public final class FadingItemBuffers implements MultiBufferSource {
                     LightTexture.FULL_BRIGHT, OverlayTexture.NO_OVERLAY, model);
             pose.popPose();
             // 原版 renderItem 在恢复光照前 flush（uniform 在 draw 时才吃）—— 同序。
+            BatchStats.countFlush();
             mc.renderBuffers().bufferSource().endBatch();
             if (flatLight) {
                 Lighting.setupFor3DItems();
