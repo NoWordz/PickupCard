@@ -143,6 +143,7 @@
   "pickupcard.config.filter.mute.hint": "照常弹卡，但稀有提示音和原版拾取音都被压掉",
   "pickupcard.config.filter.mute.input": "加进静音名单：写法同上",
   "pickupcard.config.filter.count": "%s 条",
+  "pickupcard.config.filter.count.one": "%s 条",
   "pickupcard.config.filter.delete": "删除",
   "pickupcard.config.filter.removeHint": "%s —— 点「删除」把它从「%s」里去掉",
   "pickupcard.config.filter.addRow": "加一条",

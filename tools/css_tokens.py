@@ -46,6 +46,7 @@ SCHEMA = {
     "--pc-fill-bottom":     ("material", "fillBottom", "color"),
     "--pc-border":          ("material", "border", "color"),
     "--pc-glow-alpha":      ("material", "glowAlpha", "int"),
+    "--pc-shimmer-alpha":   ("material", "shimmerAlpha", "int"),
     # 文字
     "--pc-name":            ("text", "nameColor", "color"),
     # 强调色

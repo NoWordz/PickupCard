@@ -14,7 +14,8 @@
     "fillTop": "#262B38D1",
     "fillBottom": "#161A22DB",
     "border": "#FFFFFF2E",
-    "glowAlpha": 46
+    "glowAlpha": 46,
+    "shimmerAlpha": 90
   },
   "text": {
     "nameColor": "#EBEFF6F0"

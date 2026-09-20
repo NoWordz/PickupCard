@@ -95,6 +95,8 @@ public final class CardStage {
     /** 上一帧的排布结果与耗时，只给 harness 读。 */
     private List<CardSlot> lastSlots = List.of();
     private long layoutMicros;
+    /** 上一帧绘制（NanoVG 外壳 + 图标现渲 + 文字）的耗时，给 harness 读 —— 性能护栏的另一半。 */
+    private long paintMicros;
     /** 上一帧主题里的入场时长与最新那张卡的展开进度，给 harness 读 —— 动画出问题时靠它定位。 */
     private long lastEnterMs;
     private float lastFirstRise = 1f;
@@ -134,6 +136,7 @@ public final class CardStage {
         styles.invalidate();
         lastSlots = List.of();
         layoutMicros = 0L;
+        paintMicros = 0L;
         retainMoves(Set.of());
     }
 
@@ -273,7 +276,9 @@ public final class CardStage {
         List<CardSlot> slots = layout(gui, mc, canvas, now, gap, anchorTop);
         layoutMicros = (System.nanoTime() - t0) / 1_000L;
         lastSlots = List.copyOf(slots);
+        long t1 = System.nanoTime();
         painter.paint(gui, canvas, slots);
+        paintMicros = (System.nanoTime() - t1) / 1_000L;
     }
 
     /** 消费积压的账本事件。 */
@@ -376,11 +381,13 @@ public final class CardStage {
      * 上一帧画了哪些卡、量了多久。**只读遥测，没有写入口**——它存在是为了让 harness 能把
      * "看不见的状态"（每张卡的实际位置与尺寸）变成可读的，而不是为了让别处改渲染。
      */
-    public record Stats(int live, int painted, long layoutMicros, long enterMs, float firstRise) {
+    public record Stats(int live, int painted, long layoutMicros, long paintMicros,
+                        long enterMs, float firstRise) {
     }
 
     public Stats stats() {
-        return new Stats(live.size(), lastSlots.size(), layoutMicros, lastEnterMs, lastFirstRise);
+        return new Stats(live.size(), lastSlots.size(), layoutMicros, paintMicros,
+                lastEnterMs, lastFirstRise);
     }
 
     /** 上一帧参与绘制的卡。辅助线要按这个画，才保证画的是"真的画了的那批"。 */

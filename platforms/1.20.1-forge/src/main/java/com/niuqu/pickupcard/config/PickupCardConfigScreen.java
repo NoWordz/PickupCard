@@ -47,6 +47,8 @@ public final class PickupCardConfigScreen extends Screen {
 
     // ---- 界面尺度 ----
     private static final int PAD = 6;
+    /** 底部说明被截断时补在末尾的省略号。 */
+    private static final String ELLIPSIS = "…";
     /** 全界面统一的行距/行高：放不下就滚，节奏不随内容变。 */
     private static final int ROW_STEP = 20;
     private static final int ROW_H = 18;
@@ -665,8 +667,9 @@ public final class PickupCardConfigScreen extends Screen {
                     lo.preview().w() + 4f, Math.max(0f, lo.preview().h() - 12f), p.radius,
                     0x40202A38);
         } else {
-            // 右对齐：底部那行左边是悬停说明（drawHint），左对齐会跟它叠在一起
-            ui.textRight(previewCollapsed(), lo.items().right(), this.height - 12f, p.textDim);
+            // 「预览被收掉了」的提示挪到 drawHint 那一拍用 raw gui 画：在这里画的话，
+            // 垫底带属于 NanoVG 即时路径、会被控件底盖住，而字又要等 close() 才上屏
+            // —— 底和字分家，字就浮在别人控件上了。
         }
     }
 
@@ -784,9 +787,41 @@ public final class PickupCardConfigScreen extends Screen {
         if (hint == null) {
             hint = page.hint();        // 哪儿都没停：说当前这一页是干嘛的
         }
-        String shown = this.font.plainSubstrByWidth(hint,
-                Math.max(24, (int) (hintRightLimit() - PAD)));
-        gui.drawString(this.font, shown, PAD, this.height - 12, palette.textDim);
+        // 【左右边距要对称】从前预算是 hintRightLimit - PAD，左边距却只给了 PAD=6：
+        // 英文一长，尾巴一直顶到离屏幕右缘 10px 的地方被 plainSubstrByWidth 硬切，
+        // 切点还悬在屏幕边上（用户报的「英文文案超出 UI 边缘」就是这条）。左边距改用
+        // 与标题同一把尺（MARGIN），装不下就补省略号——宁可诚实地"…"，不要假装写得下。
+        float budget = Math.max(24f, hintRightLimit() - ConfigLayout.MARGIN);
+        String shown = this.font.plainSubstrByWidth(hint, (int) budget);
+        if (this.font.width(shown) < this.font.width(hint)) {
+            shown = this.font.plainSubstrByWidth(hint,
+                    (int) Math.max(0f, budget - this.font.width(ELLIPSIS))) + ELLIPSIS;
+        }
+        // 【让开原版 HUD】height-12 正好坐在快捷栏格子里。原版 HUD 底部中带（快捷栏 22px
+        // + 经验条 + 等级数）都在底部 40px 内，height-40 在它上面、面板之下。
+        // 【垫一层底】这个位置仍会浮在滚动内容与面板的尾巴上（外观页实测与"Fill top"行相撞）。
+        // 【要的是遮蔽不是描边】深色界面里再叠"半透明深色"毫无对比（56% 实测看不出来）；
+        // 这条底带的职责是把背后的行压掉、给自己当画布——94% 不透明才做得到。
+        int bandW = this.font.width(shown);
+        // 【先清批再画带】原版批按渲染类型排序、不按提交顺序：不清批的话，带（position_color）
+        // 会在整个帧的文字批次【之前】上屏，被前面排队的所有标签字压回来（外观页实测
+        // "Fill top" 就是这样从带里透出来的）。清批后带与提示字是最后入队的内容，顺序才对。
+        gui.flush();
+        gui.fill(Math.round(ConfigLayout.MARGIN) - 5, this.height - 43,
+                Math.round(ConfigLayout.MARGIN) + bandW + 5, this.height - 28, 0xF010141C);
+        gui.drawString(this.font, shown, Math.round(ConfigLayout.MARGIN), this.height - 40,
+                palette.textDim);
+        // 右端那句「预览被收掉了」：只在预览隐藏时有，与左边的说明同一拍、同一套垫底。
+        // 从前它在 drawChrome（NanoVG 拍）里画，垫底会被控件底盖住、字却排队到 close()，
+        // 底字分家——两样都挪到这里用 raw gui 画，先后顺序就再也错不了。
+        ConfigLayout lo = layout();
+        if (!lo.previewVisible()) {
+            String collapsed = previewCollapsed();
+            int cw = this.font.width(collapsed);
+            int right = Math.round(lo.items().right());
+            gui.fill(right - cw - 4, this.height - 42, right + 4, this.height - 29, 0x9010141C);
+            gui.drawString(this.font, collapsed, right - cw, this.height - 40, palette.textDim);
+        }
     }
 
     /** 需要滚动时才画的那条滚动条（细，不抢视线；位置一眼看出"还能往下"）。 */

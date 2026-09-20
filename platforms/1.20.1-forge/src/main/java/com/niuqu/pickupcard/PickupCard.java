@@ -1,6 +1,7 @@
 package com.niuqu.pickupcard;
 
 import com.niuqu.pickupcard.config.PickupCardConfig;
+import com.niuqu.pickupcard.compat.RarityCoreBridge;
 import com.niuqu.pickupcard.pickup.CardContent;
 import com.niuqu.pickupcard.dev.DevHarness;
 import com.niuqu.pickupcard.client.PickupCardKeys;
@@ -76,6 +77,10 @@ public final class PickupCard {
         CardStage.INSTANCE.setLayoutSource(PickupCardConfig::layoutSnapshot);
         // 主题与外观改动也来自配置：主题给默认值，[style] 段只覆盖玩家改过的项
         CardStage.INSTANCE.setStyleSources(PickupCardConfig::theme, PickupCardConfig::styleOverrides);
+
+        // 稀有度联动：装了 RarityCore 就让它的档位与玩家自定义色接管竖条/微光（懒解析，
+        // 见 RarityCoreBridge；没装或解析失败都完整回落主题色）
+        RarityCoreBridge.install();
 
         MinecraftForge.EVENT_BUS.register(ClientLifecycle.class);
         MinecraftForge.EVENT_BUS.register(CardStage.INSTANCE);

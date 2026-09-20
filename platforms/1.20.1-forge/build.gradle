@@ -102,7 +102,9 @@ mixin {
 repositories {
     mavenCentral()
 
-    // RarityCore（稀有度联动，可选软依赖）。只编译期依赖它的 API，不打进 jar；
+    // RarityCore（稀有度联动，可选软依赖）。2026-09-20 定案走反射桥（compat/RarityCoreBridge，
+    // MethodHandle 懒解析），不引编译期依赖——CI 与开发机都没有它的 jar，编译期引用会断构建。
+    // 这个 maven 仓库是当年为 compileOnly 方案预埋的，留给将来若要做编译期 API 校验时用；
     // 运行期由 ModList 探测，玩家装没装都不影响本 mod 的其他功能。
     maven {
         name = "Modrinth"

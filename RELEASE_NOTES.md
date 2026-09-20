@@ -27,6 +27,16 @@
 英文界面这一版补齐：所有文案（含色块标签、样例卡名）都走语言文件，长英文标签
 （如 Placement & stacking）自动缩字而不是穿出边框或截断。
 
+这一版（第 8 次就地替换）把英文界面真正收尾：每页底部说明条不再顶出屏幕边缘
+（对称边距 + 超长补省略号 + 让开快捷栏 + 自带垫底），过滤页输入框占位文字缩进
+框内不再出界，长名样例的数量不再贴死框缘，"1 rules" 这类单复数语法错修了；
+配置界面布局给底部说明让出了专属净空带。**新增 RarityCore（稀有度核心）联动**：
+装了它，卡片的竖条与微光自动改用你在 RarityCore 里配的七档颜色，没装则一切照旧
+（反射接入，无需任何设置）。**新增两项稀有特效**：高稀有卡（原版稀有以上 /
+RarityCore 传说以上）停稳后有一道白光扫过卡面一次；稀有度微光改为按档位爬阶梯，
+档位越高越亮。性能上给渲染路径加了硬预算护栏（5 卡稳态实测绘制 ~0.9ms），并做
+了三处热路径清理。全量审计见 `docs/audit-2026-09-20.md`。
+
 纯客户端，服务端不用装；不依赖 ApricityUI。从 0.2.1 直接覆盖即可，
 配置文件兼容（旧的贴边/竖条位置键会被忽略，锚点在配置界面里拖）。
 
@@ -52,6 +62,22 @@ true alpha alongside the card instead of darkening first.
 The English UI is now complete: every string (including the color-swatch labels
 and sample card names) comes from the language files, and long English labels
 such as "Placement & stacking" scale to fit instead of overflowing or clipping.
+
+This pass (8th in-place replacement) finishes the English UI: the per-page hint
+line no longer runs off the screen edge (symmetric margins, ellipsis on overflow,
+clear of the hotbar, with its own backing band), the filter text-field placeholder
+scales inside its box instead of spilling out, the long-name sample's count no
+longer touches the card border, and the "1 rules" grammar slip is fixed; the
+config layout now reserves an exclusive strip for the hint line. **RarityCore
+integration lands**: when [稀有度核心] is installed, the card bar and glow
+automatically use your seven-tier colors configured in RarityCore - no setup,
+reflection-based, and everything falls back to theme colors without it. **Two
+rarity effects added**: high-rarity cards (rare+ vanilla / legendary+ RarityCore)
+get a one-shot light sweep after settling, and the rarity glow now climbs a
+per-tier intensity ladder. On the performance side the render path gained hard
+budget guardrails (5 settled cards measure ~0.9 ms paint) plus three hot-path
+cleanups. Full audit: see docs/audit-2026-09-20.md.
+
 Client-side only, no hard dependencies; drop-in upgrade from 0.2.1.
 
 ## v0.2.1

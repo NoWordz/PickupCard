@@ -30,11 +30,13 @@ import org.jetbrains.annotations.Nullable;
  * @param fillBottom     框底色下端（两色相同 = 纯色）
  * @param border         框描边色
  * @param glowAlpha      稀有度微光不透明度（0 = 不画）
+ * @param shimmerAlpha   入场扫光不透明度（0 = 关）：高稀有卡停稳后，一道光带从卡面扫过一次
  *
  * <p>【2026-09-17 删掉的两组参数】投影（浓度 / 下移 / 软边）与顶部那条 1px 高光。
  * 用户的原话是"直接把影子和高光删了" —— 在草地这种有纹理的底上，投影读起来就是一圈脏边；
  * 20px 高的框上也读不出什么"玻璃感"。删的是<b>参数本身</b>，不是"默认设成 0"：
  * 留着能调、却一眼看不出差别的键，就是"改了没反应"的陷阱。
+ *
  * @param nameColor      物品名颜色
  * @param enterMs        入场动画时长
  * @param bumpMs         数字跳动时长
@@ -57,6 +59,7 @@ public record StyleModel(int cornerRadius,
                          int fillBottom,
                          int border,
                          int glowAlpha,
+                         int shimmerAlpha,
                          int nameColor,
                          long enterMs,
                          long bumpMs,
@@ -89,7 +92,7 @@ public record StyleModel(int cornerRadius,
         return new StyleModel(
                 4, 4, 3, 3, 16, 2, 1, 1,
                 0xD1262B38, 0xDB161A22, 0x2EFFFFFF,
-                46,
+                46, 90,
                 0xF0EBEFF6,
                 560L, 300L, CardTimeline.DEFAULT_REVIVE_MS, 106, true, true, true,
                 Accents.defaults());
@@ -108,6 +111,7 @@ public record StyleModel(int cornerRadius,
                 Math.max(0, Math.min(4, borderWidth)),
                 fillTop, fillBottom, border,
                 Math.max(0, Math.min(255, glowAlpha)),
+                Math.max(0, Math.min(255, shimmerAlpha)),
                 nameColor,
                 Math.max(0, enterMs),
                 Math.max(0, bumpMs),
@@ -152,6 +156,7 @@ public record StyleModel(int cornerRadius,
                     color(mat, "fillBottom", 0xDB161A22),
                     color(mat, "border", 0x2EFFFFFF),
                     i(mat, "glowAlpha", 46),
+                    i(mat, "shimmerAlpha", 90),
                     color(tex, "nameColor", 0xF0EBEFF6),
                     i(anim, "enterMs", 560),
                     i(anim, "bumpMs", 300),
@@ -179,10 +184,6 @@ public record StyleModel(int cornerRadius,
 
     private static int i(JsonObject o, String key, int def) {
         return o.has(key) ? o.get(key).getAsInt() : def;
-    }
-
-    private static float f(JsonObject o, String key, float def) {
-        return o.has(key) ? o.get(key).getAsFloat() : def;
     }
 
     private static boolean b(JsonObject o, String key, boolean def) {

@@ -154,10 +154,14 @@ public final class NvgTextField extends NvgWidget {
         NvgPalette p = ui.palette;
         ui.well(x, y, w, h, wellColor(p));
         String shown = editing ? (draft == null ? "" : draft) : value.get();
+        // 【宽度约束必须有】英文占位文案比框宽（"Type a rule and press Enter" 在右对齐的
+        // 45% 等分行里装不下）：无约束的 ui.text 把字画到框外，越过的部分被滚动视口裁掉，
+        // 框右缘只留下被切的半个字母——2026-09-20 截图里那粒“神秘的竖点”就是 and 的 a。
+        // 装不下整体缩小，与 NvgButton 的值同一策略。
         if (shown.isEmpty() && !placeholder.isEmpty() && !editing) {
-            ui.text(placeholder, x + 4f, y + (h - ui.font().lineHeight) / 2f, p.textDim);
+            ui.textFitted(placeholder, x + 4f, y + (h - ui.font().lineHeight) / 2f, p.textDim, w - 8f);
         } else {
-            ui.text(shown, x + 4f, y + (h - ui.font().lineHeight) / 2f, p.text);
+            ui.textFitted(shown, x + 4f, y + (h - ui.font().lineHeight) / 2f, p.text, w - 8f);
         }
         if (editing && (System.currentTimeMillis() / 500) % 2 == 0) {
             // 光标：闪，且跟在文字后面 —— 不闪的话玩家分不清"在编辑"还是"只是显示"

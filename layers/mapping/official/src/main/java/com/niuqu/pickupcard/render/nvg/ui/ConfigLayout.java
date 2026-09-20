@@ -30,9 +30,11 @@ public record ConfigLayout(boolean tabsOnTop,
     /** 屏幕四边的留白（和标签/配置列之间的缝分开：一个是"贴边"，一个是"列间距"）。 */
     public static final float MARGIN = 8f;
     public static final float GAP = 8f;
-    /** 顶部标题两行、底部那行说明各占多少。 */
+    /** 顶部标题两行、底部那行说明各占多少。说明带（含垫底）画在 height-43..height-28，
+     *  三列必须在它上方收尾——从前 BOTTOM=22 而提示画在更低处，滚动内容会从说明字底下穿过
+     *  （2026-09-20 外观页实测文字相撞后恢复"注释即不变量"）。 */
     public static final float TOP = 30f;
-    public static final float BOTTOM = 22f;
+    public static final float BOTTOM = 43f;
     /** 标签列：跟着画布宽一点，但有上下限（太窄装不下"位置与堆叠"，太宽就白占地方）。 */
     public static final float TAB_RATIO = 0.22f;
     public static final float TAB_MIN = 72f;

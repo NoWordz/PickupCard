@@ -550,7 +550,22 @@ public final class DevHarness {
                 capture(mc, "config-cycle" + ((configTicks - WARMUP_TICKS - 118) / CYCLE_EVERY));
                 return;
             }
-            if (configTicks >= WARMUP_TICKS + 118 + CYCLE_EVERY * CYCLE_FRAMES) {
+            if (configTicks >= WARMUP_TICKS + 118 + CYCLE_EVERY * CYCLE_FRAMES
+                    && configTicks < WARMUP_TICKS + 118 + CYCLE_EVERY * CYCLE_FRAMES + 8) {
+                // 【外观页补拍】翻页流程从前只走 通用→布局→动画→过滤，外观页（颜色 chip 那几行）
+                // 从来没有被截过图——英文文案在不在框里只有真截一张才算数。
+                int look = configTicks - WARMUP_TICKS - 118 - CYCLE_EVERY * CYCLE_FRAMES;
+                if (look == 0) {
+                    clickByLabel(mc, I18n.get("pickupcard.config.page.look.name"));
+                    return;
+                }
+                if (look == 4) {
+                    capture(mc, "look");
+                    PickupCard.LOGGER.info("[harness-auto] 外观页: {}", configLabels(mc));
+                    return;
+                }
+            }
+            if (configTicks >= WARMUP_TICKS + 118 + CYCLE_EVERY * CYCLE_FRAMES + 8) {
                 PickupCard.LOGGER.info("[harness-auto] 配置界面模式收工，退出客户端");
                 mc.stop();
             }
@@ -734,6 +749,16 @@ public final class DevHarness {
             }
             int age = hudTicks - WARMUP_TICKS;
 
+            if (age == 14) {
+                // 【扫光时窗】入场 480ms（≈10 tick）结束后扫光跑 480ms（≈19 tick 收尾）——
+                // age=14 正好在窗中央。扫光是一次性的，常规稳态截图（SHOT_AFTER_OPEN=40 起）
+                // 永远拍不到它，这一张就是"扫光真的存在"的证据。
+                Screenshot.grab(mc.gameDirectory, "pickupcard-hud-shimmer",
+                        mc.getMainRenderTarget(),
+                        m -> PickupCard.LOGGER.info("[harness-auto] 截图: pickupcard-hud-shimmer -> {}",
+                                m.getString()));
+            }
+
             // 【收工必须是独立卫语句，不能是链尾的 else if】它原来是链尾，而前面
             // `else if (exitSeen)` 一旦成立就把后面所有分支全吞掉 —— 于是"到点退出"永远走不到，
             // 客户端拍完三张图就挂在那儿，用户看到的就是"跑完了窗口还开着、像在等人操作"。
@@ -747,8 +772,16 @@ public final class DevHarness {
 
             if (age == SHOT_AFTER_OPEN) {
                 CardStage.Stats s = CardStage.INSTANCE.stats();
-                PickupCard.LOGGER.info("[harness-auto] HUD 读数 cards={} painted={} layout={}us",
-                        s.live(), s.painted(), s.layoutMicros());
+                PickupCard.LOGGER.info("[harness-auto] HUD 读数 cards={} painted={} layout={}us paint={}us",
+                        s.live(), s.painted(), s.layoutMicros(), s.paintMicros());
+                // 【性能护栏（2026-09-20 定）】排布是纯数学，超 500us 必是回归；绘制（NanoVG 外壳
+                // + 图标每帧现渲 + 文字）稳态一摞卡在毫秒以内，4000us 是数倍余量。超线只报 ERROR
+                // 不炸进程——这条线是给日志审查抓的（grep「性能护栏」）。
+                if (s.live() >= 4 && (s.layoutMicros() > 500 || s.paintMicros() > 4_000)) {
+                    PickupCard.LOGGER.error("[harness-auto] 性能护栏：cards={} layout={}us（预算 500）"
+                                    + " paint={}us（预算 4000）—— 渲染路径疑似回归",
+                            s.live(), s.layoutMicros(), s.paintMicros());
+                }
                 logHudSafeZone(mc);
                 // 在屏的是哪几张 + <b>每张的实际矩形</b>：「少了我的那张卡」与「位置又不对」是最常见的
                 // 两类反馈，而"画在哪"只有从渲染层的 slot 上读才是准的 —— 从截图上量要按颜色挑、

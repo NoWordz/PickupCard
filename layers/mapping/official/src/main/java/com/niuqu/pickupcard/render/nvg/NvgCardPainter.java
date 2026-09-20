@@ -149,12 +149,15 @@ public final class NvgCardPainter {
                     // 【为什么要这一行】用户报过「淡出最后一帧图标和文字完全不透明，然后消失」。
                     // 这件事只有逐帧数值能定死：alpha 一路单调到 0 说明问题在绘制那一路；
                     // alpha 中途跳回 1 就是这张卡被救回来 / 重挂了（见 CardView#absorbMerge）。
-                    // 退场只有十几帧，不会刷屏。
-                    PickupCard.LOGGER.info("[退场/淡回] key={} 进度={} alpha={}", slot.view().key(),
-                            String.format(java.util.Locale.ROOT, "%.2f",
-                                    slot.view().reviving() ? canvas.reviveOf(slot.view())
-                                            : canvas.exitOf(slot.view())),
-                            String.format(java.util.Locale.ROOT, "%.2f", exitAlphaOf(canvas, slot)));
+                    // 【退场诊断降为 debug】病根修掉后它只剩复查价值——挂 debug 级且只在
+                    // debug 开启时才拼字符串，退场期一帧两次格式化不再进热路径（2026-09-20 性能轮）。
+                    if (PickupCard.LOGGER.isDebugEnabled()) {
+                        PickupCard.LOGGER.debug("[退场/淡回] key={} 进度={} alpha={}", slot.view().key(),
+                                String.format(java.util.Locale.ROOT, "%.2f",
+                                        slot.view().reviving() ? canvas.reviveOf(slot.view())
+                                                : canvas.exitOf(slot.view())),
+                                String.format(java.util.Locale.ROOT, "%.2f", exitAlphaOf(canvas, slot)));
+                    }
                 }
                 nvgSave(vg);
                 // 退场：整张卡的外壳（竖条 + 两个框 + 微光）一起淡，见类注释。
@@ -177,8 +180,9 @@ public final class NvgCardPainter {
                 nvgScale(vg, cardScale * pulse, cardScale * pulse);
                 paintShell(vg, style, -w0 / 2f, -h0 / 2f, w0, h0,
                         accentOf(card, style.accents()), canvas.barOf(slot.view()),
-                        bodyShiftOf(canvas, slot, style, rise), rise, isHighlighted(card),
-                        glowScaleOf(canvas, slot), windowOf(canvas, slot, style, rise));
+                        bodyShiftOf(canvas, slot, style, rise), rise, glowStrengthOf(card),
+                        glowScaleOf(canvas, slot), shimmerOf(canvas, slot),
+                        windowOf(canvas, slot, style, rise));
                 nvgRestore(vg);
             }
         } finally {
@@ -218,15 +222,17 @@ public final class NvgCardPainter {
      *                  它是"洞口"，所以只有内容偏移。退场「火车退回」的位移也从这里进。
      * @param rise     内容出现进度 0~1。影子浓度与微光都按它给 —— 用户报过"影子一出来就是
      *                 满的，看着像影子先到、卡片后到"
-     * @param highlighted 值得给一层稀有度微光的卡（经验卡与白名单强调的卡）
-     * @param glowScale 微光亮度系数（呼吸动画给，见 {@link #glowScaleOf}；关闭呼吸恒为 1）
+     * @param glowStrength 微光强度 0~1（{@link #glowStrengthOf} 给：按稀有度档位爬阶梯）。
+     *                     0 = 这张卡没有微光
+     * @param glowScale 微光呼吸系数（0.4~1.0，关闭呼吸恒为 1）
+     * @param shimmer  入场扫光进度：0 = 不画；(0,1) = 光带走到哪（{@link #shimmerOf} 给）
      * @param window   隧道口：内容能被看见的那一段。**偏移必须有它配套**：只有偏移没有裁剪，
      *                 两个框就会从竖条前面滑过去 —— 真机上看就是"卡片穿透竖条"。
      *                 消失方式「拉幕收拢」也从这里进：退场时窗口从右往左收。
      */
     public static void paintShell(long vg, StyleModel style, float x, float y, float cardW, float cardH,
                                   int accent, float barFill, float bodyShift, float rise,
-                                  boolean highlighted, float glowScale, RevealWindow window) {
+                                  float glowStrength, float glowScale, float shimmer, RevealWindow window) {
         float gap = style.gap();
         float barW = style.barWidth();
         float bodyX = barW + gap;
@@ -249,17 +255,48 @@ public final class NvgCardPainter {
                 if (infoW > 0f) {
                     box(vg, stack, style, infoX + bodyShift, y, infoW, cardH, radius);
                 }
+                // 扫光在框之后、微光之前：它要照亮的是框面（在框上才读得出"掠过"），
+                // 又必须被窗口裁着（入场未完成时不许越出洞口）
+                if (shimmer > 0f) {
+                    shimmerBand(vg, stack, style, x + bodyX, y, bodyW, cardH, radius, shimmer);
+                }
             }
             nvgRestore(vg);
 
             // 微光叠在外壳之"上"：画在框之前会被底色盖掉，看起来就是没画。
             // glowScale 是呼吸系数（0.4~1.0，关闭呼吸时恒 1）—— 见 glowScaleOf。
-            if (highlighted && rise > 0.5f && style.glowAlpha() > 0) {
+            // glowStrength 是档位阶梯（见 glowStrengthOf）：强度 = 基础 alpha × 档位 × 呼吸。
+            if (glowStrength > 0f && rise > 0.5f && style.glowAlpha() > 0) {
                 softBox(vg, stack, x + bodyX - GLOW_SPREAD, y - GLOW_SPREAD,
                         bodyW + GLOW_SPREAD * 2f, cardH + GLOW_SPREAD * 2f, radius + GLOW_SPREAD,
-                        GLOW_FEATHER, withAlpha(accent, Math.round(style.glowAlpha() * glowScale)));
+                        GLOW_FEATHER, withAlpha(accent,
+                                Math.round(style.glowAlpha() * glowScale * glowStrength)));
             }
         }
+    }
+
+    /**
+     * 扫光带：一道竖向光带从内容框左缘走到右缘，亮度按 sin(π·p) 起落（起=淡入，落=淡出）。
+     * <p>【为什么是"彗星"而不是对称光带】线性渐变只有两个停靠点：透明→亮。移动起来亮头
+     * 在前、淡尾在后，读起来就是一颗掠过的光；为了对称再叠第二条渐变，多一次填充也换不回
+     * 能看见的差别。颜色用白而不是强调色：强调色已经在竖条和微光上说话了，扫光说"有光
+     * 掠过"这件事，白色最不带歧义。
+     */
+    private static void shimmerBand(long vg, MemoryStack stack, StyleModel style,
+                                    float x, float y, float w, float h, float radius, float p) {
+        float bandW = Math.max(24f, h * 1.2f);
+        // 出发时整条带在框左缘外，收工时整条带在右缘外：行程要含两条带宽，否则最后 1/4
+        // 的淡出发生在画面外，观众看到的扫光是"突然没了一半"
+        float bandX = x - bandW + (w + bandW * 2f) * p;
+        float envelope = (float) Math.sin(Math.PI * p);
+        int peak = Math.round(style.shimmerAlpha() * envelope);
+        NVGPaint paint = nvgLinearGradient(vg, bandX, y, bandX + bandW, y,
+                color(stack, 0x00FFFFFF), color(stack, withAlpha(0xFFFFFFFF, peak)),
+                NVGPaint.mallocStack(stack));
+        nvgBeginPath(vg);
+        nvgRoundedRect(vg, bandX, y, bandW, h, Math.min(radius, h / 4f));
+        nvgFillPaint(vg, paint);
+        nvgFill(vg);
     }
 
     /**
@@ -388,7 +425,8 @@ public final class NvgCardPainter {
         // 三档退场都跟着卡走。
         ItemStack iconStack = iconStackOf(canvas, slot);
         if (!iconStack.isEmpty()) {
-            FadingItemBuffers.drawIcon(gui, iconStack, x + h / 2f, h / 2f, style.iconSize(), alpha);
+            FadingItemBuffers.drawIcon(gui, iconStack, x + h / 2f, h / 2f, style.iconSize(), alpha,
+                    clipped);
         }
 
         // 文字：alpha 直接乘进颜色里（原版字形用的就是这个色的 alpha），不走全局色。
@@ -508,9 +546,47 @@ public final class NvgCardPainter {
         return stacks.get((int) ((nowMs / interval) % stacks.size()));
     }
 
-    /** 值得给一层稀有度微光的卡：经验卡与白名单强调的卡。 */
-    private static boolean isHighlighted(Inbox.Card card) {
-        return card.content() instanceof CardContent.Experience || card.emphasized();
+    /**
+     * 这张卡的微光强度（0~1）：微光从「有 / 无」改成按稀有度档位爬阶梯（2026-09-20 用户选型）。
+     * <p>经验卡与白名单强调卡维持满强度——那是玩家已经看惯的参考观感，不为阶梯让路；
+     * 物品卡从 rare(3) 起步、每升一档亮一截。阶梯落在统一档位尺（{@link RarityAccent#tierOf}）
+     * 上，vanilla 的 epic(4) 与 RC 的 legendary(5) 自然各就各位。
+     */
+    private static float glowStrengthOf(Inbox.Card card) {
+        if (card.content() instanceof CardContent.Experience || card.emphasized()) {
+            return 1f;
+        }
+        if (card.content() instanceof CardContent.Item item) {
+            int tier = RarityAccent.tierOf(item.stack());
+            return tier >= 3 ? Math.min(1f, 0.3f + 0.15f * (tier - 2)) : 0f;
+        }
+        return 0f;
+    }
+
+    /**
+     * 入场扫光进度：0 = 不画；(0,1) = 光带走到了哪。
+     * <p>【为什么窗口接在入场后面】入场是"内容滑出来"，扫光是"光从停稳的卡上掠过去"——
+     * 同时跑互相抢戏；入场关掉（瞬间出现）就从落座那一刻起跑。
+     * <p>【为什么是一次性的】循环扫光的高稀有卡会永远在喊"看我"，一摞上去就是迪厅；
+     * 一次性 + 只给高稀有档（{@link RarityAccent#showcaseFrom}，vanilla rare+ / RC 5+）
+     * = 拾取瞬间的奖励感，不是常驻装饰。
+     */
+    private static float shimmerOf(CardCanvas canvas, CardSlot slot) {
+        StyleModel style = canvas.style();
+        if (style.shimmerAlpha() <= 0) {
+            return 0f;
+        }
+        Inbox.Card card = slot.view().notice().payload();
+        if (!(card.content() instanceof CardContent.Item item)) {
+            return 0f;
+        }
+        if (RarityAccent.tierOf(item.stack()) < RarityAccent.showcaseFrom()) {
+            return 0f;
+        }
+        long start = slot.view().notice().bornAt()
+                + (style.enterEnabled() ? style.enterMs() : 0L);
+        float p = (canvas.now() - start) / 480f;
+        return p <= 0f || p >= 1f ? 0f : p;
     }
 
     /**

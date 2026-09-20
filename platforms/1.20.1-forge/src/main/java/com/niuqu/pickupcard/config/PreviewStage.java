@@ -466,8 +466,12 @@ public final class PreviewStage {
         float room = Math.max(24f, (areaW - 6f) / scale);
         CardCanvas probe = previewCanvas(style, scale, PickupCardConfig.snapshot(),
                 canvasWidth, canvasHeight, now);
+        // 【多扣一个 gap】名字预算只扣到"数量开头"的话，名字顶满预算时卡的自然宽度会比
+        // 面板可用宽多出 gap*scale，随后被 min(area.w()-6) 夹窄——右对齐的数量就压到名字
+        // 尾巴上（英文长名样例里"…+1"贴死就是它）。多让出一个 gap，夹窄永远轮不到发生。
         int nameRoom = (int) Math.max(12f,
-                room - CardMetrics.namelessWidth(probe, Minecraft.getInstance().font, sampleAmount()));
+                room - CardMetrics.namelessWidth(probe, Minecraft.getInstance().font, sampleAmount())
+                        - style.gap());
         return withNameLimit(PickupCardConfig.snapshot(), nameRoom);
     }
 

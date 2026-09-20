@@ -69,7 +69,12 @@ public final class FilterPageBuilder {
         List<String> rules = rules(config);
         // 表头这一行：标签是名单名，右边那颗只读钮报"现在几条"——只读控件的底更暗、不画描边，
         // 一眼能看出它点不动（见 NvgButton 的 action == null）
-        host.cell(title, new NvgButton("", () -> I18n.get("pickupcard.config.filter.count", rules.size()), null), what);
+        // 【单复数分键】英文 "1 rule" / "2 rules" 是两个词形；MC 1.20.1 的语言系统没有复数
+        // 支持，一个 "%s rules" 键在一张名单只剩一条时就是语法错误（用户截图里的 "1 rules"）。
+        // 中文两个键同形，key 集仍两端一致（LangKeyConsistencyTest 钉着）。
+        host.cell(title, new NvgButton("", () -> I18n.get(rules.size() == 1
+                ? "pickupcard.config.filter.count.one" : "pickupcard.config.filter.count",
+                rules.size()), null), what);
         for (int i = 0; i < rules.size(); i++) {
             String rule = rules.get(i);
             int index = i;

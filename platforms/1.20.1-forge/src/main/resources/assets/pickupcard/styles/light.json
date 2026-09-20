@@ -4,7 +4,8 @@
     "fillTop": "#FFFFFFF2",
     "fillBottom": "#E9ECF3F7",
     "border": "#1B1F2724",
-    "glowAlpha": 46
+    "glowAlpha": 46,
+    "shimmerAlpha": 90
   },
   "text": {
     "nameColor": "#1B1F27F0"

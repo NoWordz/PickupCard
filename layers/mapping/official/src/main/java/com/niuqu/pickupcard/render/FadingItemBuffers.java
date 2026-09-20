@@ -53,6 +53,9 @@ public final class FadingItemBuffers implements MultiBufferSource {
     private static final ResourceLocation ATLAS = InventoryMenu.BLOCK_ATLAS;
     private static final FadingItemBuffers INSTANCE = new FadingItemBuffers();
 
+    /** 图标的 y 翻转矩阵（原版 renderItem 同款）。mulPoseMatrix 只读它，静态一份免每帧分配。 */
+    private static final Matrix4f FLIP_Y = new Matrix4f().scaling(1.0F, -1.0F, 1.0F);
+
     /** 无混合实体层 -> 开混合等价层。键按结构相等构造（与 ItemBlockRenderTypes 同一构造调用）。 */
     private static final Map<RenderType, RenderType> BLENDED = new HashMap<>();
 
@@ -76,9 +79,10 @@ public final class FadingItemBuffers implements MultiBufferSource {
      * @param centerX centerY 图标中心的<b>卡内未缩放坐标</b>（调用方已把 pose 变换到卡空间）
      * @param iconSize 目标边长（逻辑 px）；原版图标 16
      * @param alpha 这张卡本帧的不透明度；=1 走普通直画，&lt;1 走换层淡出
+     * @param clipped 调用方此刻是否开着入场/退场裁剪。开着就必须先清队列（见下），稳态不用
      */
     public static void drawIcon(GuiGraphics gui, ItemStack stack, float centerX, float centerY,
-                                float iconSize, float alpha) {
+                                float iconSize, float alpha, boolean clipped) {
         if (stack.isEmpty()) {
             return;
         }
@@ -91,7 +95,11 @@ public final class FadingItemBuffers implements MultiBufferSource {
         Minecraft mc = Minecraft.getInstance();
         // 【先清队列】共享批次里还排着前几张卡的文字，它们会在图标的 flush 里一起上屏 ——
         // 而此刻的 scissor/全局色是这张卡的，不清队列就会错裁、错淡别人的内容。
-        gui.flush();
+        // 【清队列是有代价的】整条批次提交一次 GPU；稳态（没淡出、没裁剪）无污染可言，
+        // 免掉这一次 flush —— 一摞卡就是一帧省 N 次提交（2026-09-20 性能轮）。
+        if (fading || clipped) {
+            gui.flush();
+        }
         if (fading) {
             RenderSystem.setShaderColor(1f, 1f, 1f, Easing.clamp01(alpha));
         }
@@ -102,7 +110,8 @@ public final class FadingItemBuffers implements MultiBufferSource {
             pose.pushPose();
             // —— 从这里起与 GuiGraphics.renderItem 逐字对齐 ——
             pose.translate(centerX, centerY, 150f);
-            pose.mulPoseMatrix(new Matrix4f().scaling(1.0F, -1.0F, 1.0F));
+            // y 翻转矩阵只读不存（mulPoseMatrix 把值乘进 pose 栈），共享一份免每帧分配
+            pose.mulPoseMatrix(FLIP_Y);
             float scale = iconSize / CardMetrics.ICON_PX;
             pose.scale(16.0F * scale, 16.0F * scale, 16.0F * scale);
             boolean flatLight = !model.usesBlockLight();

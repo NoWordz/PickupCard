@@ -106,7 +106,7 @@ class StyleModelTest {
     @Test
     void nullAccentsCannotReachTheRenderer() {
         // 手搓一个 accents 为空的主题也应被夹逼兜住，而不是让渲染层 NPE
-        StyleModel broken = new StyleModel(4, 4, 3, 3, 16, 4, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        StyleModel broken = new StyleModel(4, 4, 3, 3, 16, 4, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
                 true, true, true, null);
         assertEquals(StyleModel.Accents.defaults().rare(), broken.sanitized().accents().rare());
     }
