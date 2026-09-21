@@ -468,3 +468,9 @@ tasks.register('publishMods') {
     description = 'Publish the mod to Modrinth and CurseForge.'
     dependsOn 'modrinth', 'curseforge'
 }
+
+// Trellis 试点：只取 core。它是纯 Java 零依赖的，
+// 所以给 Forge 工程加它不会往运行期塞任何东西。
+dependencies {
+    implementation 'dev.e33.trellis:core:0.1.0-SNAPSHOT'
+}

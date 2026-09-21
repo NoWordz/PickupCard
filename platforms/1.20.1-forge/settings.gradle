@@ -15,3 +15,7 @@ plugins {
 }
 
 rootProject.name = 'pickupcard'
+
+// Trellis 试点（分支 trellis-pilot）：复合构建直接吃源码，不发布、不装 jar。
+// 【这一行是本机绝对路径，只活在试点分支上】—— 绝不能进 main，否则 CI 和别人的机器全炸。
+includeBuild('D:/Trellis')

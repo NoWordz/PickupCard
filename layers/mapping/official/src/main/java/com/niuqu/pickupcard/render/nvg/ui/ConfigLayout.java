@@ -1,5 +1,7 @@
 package com.niuqu.pickupcard.render.nvg.ui;
 
+import dev.e33.trellis.layout.Sizing;
+
 /**
  * 配置界面那三列的几何：<b>纯函数，能离线单测</b>（{@code ConfigLayoutTest}）。
  * <p>
@@ -67,7 +69,11 @@ public record ConfigLayout(boolean tabsOnTop,
         float top = TOP;
         float bottom = Math.max(top + TAB_ROW, height - BOTTOM);
 
-        float tabW = clamp(inner * TAB_RATIO, TAB_MIN, TAB_MAX);
+        // Trellis 试点：原来这里是 clamp(inner * TAB_RATIO, TAB_MIN, TAB_MAX)。
+        // 换成 Sizing.fraction(min, fraction, max) 的解析 —— 语义完全一样
+        // （等价 CSS `width: 22%; min-width: 72px; max-width: 110px`），
+        // 但"夹在上下限里"这件事从此由框架负责，而不是这里手写一遍。
+        float tabW = Sizing.fraction(TAB_MIN, TAB_RATIO, TAB_MAX).resolve(0f, inner);
         // 标签列留着还塞不下配置列 → 标签挪到顶上一行
         boolean tabsOnTop = inner - tabW - GAP < ITEMS_MIN;
 
@@ -82,7 +88,8 @@ public record ConfigLayout(boolean tabsOnTop,
 
         float itemsX = tabsOnTop ? MARGIN : MARGIN + tabs.w() + GAP;
         float itemsRoom = tabsOnTop ? inner : inner - tabs.w() - GAP;
-        float want = clamp(inner * ITEMS_RATIO, ITEMS_MIN, ITEMS_MAX);
+        // 同上：clamp(inner * ITEMS_RATIO, ITEMS_MIN, ITEMS_MAX)
+        float want = Sizing.fraction(ITEMS_MIN, ITEMS_RATIO, ITEMS_MAX).resolve(0f, inner);
         float rest = itemsRoom - want - GAP;
         boolean previewVisible = rest >= PREVIEW_MIN;
 
