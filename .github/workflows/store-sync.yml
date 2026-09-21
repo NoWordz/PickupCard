@@ -7,9 +7,13 @@ name: 同步商店文案
 # 【为什么只有 Modrinth】CurseForge 的官方 Upload API **没有改项目描述的端点**（只有上传
 # 文件的），所以那边只能人工贴 —— 见 tools/store_sync.py 的说明。别为它写自动化。
 #
-# 【正文规范见 skill `store-description`】三份正文内容必须相同、只有标记与语言不同。
-# 所以推送前先过一遍结构闸（下面那一步）：走这条路的人就会撞上 `check_store_copy` /
-# `check_store_parity` —— 规范写在 skill 里，但拦住你的是这道闸（2026-09-21 立）。
+# 【正本是 README】描述只在 `README.md` / `README_EN.md` 里改；这个工作流现出 Modrinth 那一份
+# 再推上去，**仓库里不留描述文档**（用户 2026-09-21：「别在仓库 docs 里放描述文档了，我上传商店
+# 是一定会微调的，到时候又不统一」）。规范见 skill `store-description`。
+#
+# 【页面上的手工微调是允许的】线上那份就是权威。演练（不勾 apply）会把差异打出来 ——
+# 差异里有你手改的内容时，自己决定是改 README 还是保留页面版本。**勾了 apply 会覆盖。**
+# 所以推送前先过一遍结构闸（下面那一步）：`check_description_pipeline`。
 #
 # 【token 没配会怎样】脚本会在 project_id 还是 UNSET 时直接报错退出（不是静默跳过）：
 # 这个工作流是手动触发的，报错比"跑了但什么都没做"更有用。

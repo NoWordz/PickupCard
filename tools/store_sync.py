@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""把 docs/store/modrinth.md 同步到 Modrinth 项目正文（那份由 store_copy.py 从正本生成）。
+"""把 Modrinth 项目正文同步成"从 README 现出的那一份"。
 
-【正文怎么写，看 skill `store-description`】三份商店正文（Modrinth / CurseForge / MC 百科）
-内容必须相同、只有标记与语言不同。改正文前后都要跑 `python tools/verify_targets.py` ——
-`check_store_sources`（两份正本逐节对等）与 `check_store_outputs`（产物 = 重生成结果）就是那道闸。
-**别只信记忆**：闸是唯一不会忘的那一份。
+【正本是 README】描述只有一个地方要改：`README.md` / `README_EN.md`。三处商店正文都是
+从它现出的派生视图（`tools/store_copy.py`），**仓库里不留描述文档** —— 商店页面是在平台编辑器里
+改的，仓库再存一份就必然分家（用户 2026-09-21：「别在仓库 docs 里放描述文档了，我上传商店是一定会微调的」）。
+规范见 skill `store-description`；闸是 `python tools/verify_targets.py`（含"仓库里不许有描述文档"）。
 
 【为什么只有 Modrinth】CurseForge 的官方 Upload API 只有"上传文件"的端点，**没有改项目
 描述的端点** —— 那边只能人工贴，脚本不去假装能做（AtomChat 那边查证过同一件事）。
@@ -30,7 +30,13 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 API = "https://api.modrinth.com/v2"
-DESC = ROOT / "docs" / "store" / "modrinth.md"
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+
+def local_body() -> str:
+    """本地这份 = 从 README 现出的正文（唯一正本是 README，仓库里不留描述文档）。"""
+    import store_copy
+    return store_copy.render("modrinth").strip()
 
 
 def project_id() -> str:
@@ -61,13 +67,13 @@ def request(method: str, url: str, payload: dict | None = None) -> dict:
 
 def main() -> int:
     apply = "--apply" in sys.argv[1:]
-    local = DESC.read_text(encoding="utf-8").strip()
+    local = local_body()
     pid = project_id()
 
     remote = request("GET", f"{API}/project/{pid}")
     remote_body = (remote.get("body") or "").strip()
     print(f"store_sync: 项目 {pid}（{remote.get('title')}）")
-    print(f"  本地 docs/store/modrinth.md: {len(local.splitlines())} 行")
+    print(f"  本地（README 现出）: {len(local.splitlines())} 行")
     print(f"  远端正文                        : {len(remote_body.splitlines())} 行")
 
     if local == remote_body:

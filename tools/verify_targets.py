@@ -15,7 +15,7 @@
   7. 平台不许定义身份  各平台 gradle.properties 里不许出现身份键（否则就是第二个真源）
   8. buildable 不许有未验证字段
   9. 仓库地址只有一份  资源与文档里出现的本仓库地址必须与 mod_repo_url 一致，且不许硬编码进资源
- 10. 商店正文两份正本  docs/store/{zh,en}.md 逐节对等；三份产物必须等于从正本重生成的结果
+ 10. 描述只有一处正本  README 是唯一描述正本；仓库里不许有商店描述文档；三处正文能从它现出
 
 用法：python tools/verify_targets.py
 退出码 0 = 全绿，1 = 有问题（问题打在 stderr）。
@@ -179,24 +179,90 @@ def check_repo_url(props: dict[str, str]) -> None:
             # 同 owner 下的兄弟仓库、以及上游仓库：都是真的别的地址，放行
 
 
-# 商店正文：**两份正本 → 三份产物**（`tools/store_copy.py`）。
-# 用户 2026-09-21 的原话是「好乱啊怎么办」—— 那天仓库里躺着四份描述文件、两种标记、两种语言，
-# 手写几遍就要同步几遍。现在只有两份人写的正本，产物是生成的。
-STORE_SOURCES = ["docs/store/zh.md", "docs/store/en.md"]
-
-# 产物名（与 tools/store_copy.py 的 OUTPUTS 一致；这里只用来报数）
-OUTPUT_FILES = ["modrinth.md", "curseforge.md", "mcmod.md"]
-
-# 数条目与抽事实时要跳过的"版式行"：头图 / 标题 / 斜体标语 / 徽章 / 百科的目录标记。
-# （正本里本来不该有这些，排掉是为了让闸也能读产物。）
-STORE_LAYOUT_LINE = re.compile(r"^(?:!\[|<img|#|_|\[mark)|img\.shields\.io")
-
-# 事实 token：反引号里的标识符 / 键名 / 路径，以及数字（含 ms、% 这类单位）。
-# 归一化去掉反引号与空白 —— "0.9 ms" 与 "0.9ms" 是同一件事（changelog 那套闸踩过这个坑）。
-FACT_TOKEN = re.compile(r"`[^`]+`|\d+(?:\.\d+)*(?:\s*(?:ms|%|MB|KB))?")
+# 描述：**README 是唯一正本**，三处商店正文是从它现出的派生视图，**不进仓库**。
+#
+# 用户 2026-09-21 的原话：「别在仓库 docs 里放描述文档了，我上传商店是一定会微调的，到时候又不统一」——
+# 商店页面是在平台编辑器里改的，仓库再存一份就必然分家，而且分家看不出来。
+# 所以这里检查的不再是"产物与正本一致"，而是三件更难糊弄的事：
+#   ① 仓库里确实没有描述文档（规则进闸，否则下一轮又会有人顺手加回来）；
+#   ② 两份 README 还得对得上（双语对齐是派生能成立的前提）；
+#   ③ 三处正文真的现得出来，且各自的平台规矩成立（md 有头图/徽章；百科是纯文本、无空行）。
+DESCRIPTION_EXCEPTIONS = ("README.md", "README_EN.md")
 
 
+def readme_headings(path: Path) -> list[str]:
+    return [m.group(1) for line in path.read_text(encoding="utf-8").splitlines()
+            if (m := re.match(r"^##\s+(.+?)\s*$", line))]
 
+
+def check_description_pipeline() -> None:
+    """描述只有一处正本（README），三处商店正文现出现用。"""
+    # ---- ① 仓库里不许有描述文档 ----
+    for path in sorted(ROOT.rglob("*")):
+        if not path.is_file() or ".git" in path.parts:
+            continue
+        if "description" in path.name.lower() and path.name not in DESCRIPTION_EXCEPTIONS:
+            fail(f"{path.relative_to(ROOT).as_posix()} —— 仓库里不留商店描述文档："
+                 f"正文一律从 README 现出（python tools/store_copy.py --platform …）")
+    if (ROOT / "docs" / "store").exists():
+        fail("docs/store/ 还在 —— 商店正文不落库（README 就是正本），删掉它")
+
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    try:
+        import store_copy
+    except ImportError as exc:  # pragma: no cover
+        fail(f"读不到 tools/store_copy.py（{exc}）—— 商店正文由它从 README 现出")
+        return
+
+    # ---- ② 两份 README 要对得上 ----
+    zh_head = readme_headings(ROOT / "README.md")
+    en_head = readme_headings(ROOT / "README_EN.md")
+    if len(zh_head) != len(en_head):
+        fail(f"两份 README 的节数不等：README.md {len(zh_head)} 节 vs README_EN.md {len(en_head)} 节 "
+             f"—— 双语对齐是商店正文能派生的前提")
+    stats["readme_sections"] = len(zh_head)
+
+    # 映射表里每个节名都得真的存在：不然改个 README 节名，商店正文会**静默少一节**
+    for lang, pairs in store_copy.MAP.items():
+        have = set(readme_headings(store_copy.SOURCES[lang]))
+        for readme_title, _ in pairs:
+            if readme_title not in have:
+                fail(f"{store_copy.SOURCES[lang].name} 里没有「{readme_title}」这一节 —— "
+                     f"商店正文的映射表（tools/store_copy.py 的 MAP）要跟着改名一起改")
+
+    # ---- ③ 三处正文现得出来，且各自的平台规矩成立 ----
+    for platform in sorted(store_copy.PLATFORMS):
+        try:
+            text = store_copy.render(platform)
+        except SystemExit as exc:
+            fail(f"{platform} 正文现不出来：{exc}")
+            continue
+        if len(text.strip()) < 200:
+            fail(f"{platform} 正文只有 {len(text.strip())} 字符 —— 现出来的东西不像正文")
+            continue
+        stats["platforms"] = stats.get("platforms", 0) + 1
+
+        if platform == "mcmod":
+            # 百科的编辑器不解析 Markdown，而且会吃掉空行 —— 两条都验过会红
+            for pattern, what in ((r"\*\*", "粗体标记 `**`"), (r"`", "反引号代码"),
+                                  (r"\]\(", "Markdown 链接"), (r"(?m)^\s*[-*]\s", "列表标记")):
+                if re.search(pattern, text):
+                    fail(f"mcmod 正文里出现了{what} —— 百科的编辑器不认 Markdown，"
+                         f"渲染时要用纯文本（tools/store_copy.py 的 mcmod_plain）")
+            if any(not line.strip() for line in text.splitlines()):
+                fail("mcmod 正文里有空行 —— 百科的编辑器会吃掉空行、把条目并成一段，"
+                     "所以那份一行就是一条，不留空行")
+
+    # 门面与商店的头图必须是同一张（附件 URL：raw 域名在用户网络下拉不动）
+    readme = ROOT / "README.md"
+    if readme.is_file():
+        readme_image = first_image_url(readme.read_text(encoding="utf-8"))
+        if readme_image and readme_image != store_copy.BANNER_URL:
+            fail(f"README 顶部那张图（{readme_image}）与商店正文头图（{store_copy.BANNER_URL}）"
+                 f"不是同一张 —— 门面与商店各用各的图，就没有东西会把它们对起来")
+    if not (ROOT / store_copy.BANNER).is_file():
+        fail(f"仓库里没有横幅正本 {store_copy.BANNER} —— 对外用的是附件 URL，"
+             f"正本丢了就再也没法重新上传同一张图")
 
 
 def first_image_url(text: str) -> str | None:
@@ -212,172 +278,6 @@ def first_image_url(text: str) -> str | None:
     return None
 
 
-RAW_HOST = "https://raw.githubusercontent.com/"
-
-
-def banner_key(value: str | None) -> str | None:
-    """把"门面 / 商店用的那张横幅"归一成可比的形式。
-
-    README 写相对路径（`design/banner.png`），商店正文必须写绝对 URL（正文没有基准路径），
-    两者指的是仓库里同一份文件 —— 所以 key = 去掉 raw 域名与 owner/仓库/分支之后的仓库内路径。
-    """
-    if not value:
-        return None
-    if value.startswith(RAW_HOST):
-        parts = value[len(RAW_HOST):].split("/")
-        return "/".join(parts[3:]) if len(parts) > 3 else value
-    return value.lstrip("./")
-
-
-
-def split_sections(text: str) -> tuple[str, list[tuple[str, str]]]:
-    """按 `# 标题` 切段。返回（一句话简介, [(标题, 正文), …]）。
-
-    正本两份共用同一种中立标记（产物才带平台标记）：`# 概述` → `## Overview` / `[h1=概述]`。
-    标题之前的那些行就是**一句话简介**（规范里正文的第一行），它也要两份对等。
-    """
-    heading = re.compile(r"^#\s+(.+?)\s*$")
-    tagline: list[str] = []
-    sections: list[tuple[str, list[str]]] = []
-    for line in text.splitlines():
-        match = heading.match(line)
-        if match:
-            sections.append((match.group(1), []))
-            continue
-        if sections:
-            sections[-1][1].append(line)
-        else:
-            tagline.append(line)
-    return "\n".join(tagline), [(head, "\n".join(body)) for head, body in sections]
-
-
-def store_items(body: str) -> int:
-    """数条目：非空行各算一条（版式行不计）。
-
-    正本两份都是"一条一行"的形状，所以这一条跨语言可比 —— 而两者的**标记差异**已经由
-    `store_copy.py` 承担了，闸不用再为"表格 vs 列表"绕路。
-    """
-    return sum(1 for line in body.splitlines()
-               if line.strip() and not STORE_LAYOUT_LINE.search(line.strip()))
-
-
-def store_facts(body: str) -> set[str]:
-    """抽事实 token（反引号标识符 + 数字/单位），归一化掉反引号与空白。
-
-    **先把 URL 抹掉**：`https://github.com/E33EPUS/...` 里的 "33" 会被当成一个数字事实，
-    两份正本只要一处写链接另一处没写，就是一片假报。
-    """
-    facts = set()
-    for line in body.splitlines():
-        if STORE_LAYOUT_LINE.search(line.strip()):
-            continue
-        for token in FACT_TOKEN.findall(re.sub(r"https?://\S+", "", line)):
-            cleaned = token.replace("`", "").replace(" ", "").strip()
-            if cleaned:
-                facts.add(cleaned)
-    return facts
-
-
-def check_store_sources() -> None:
-    """两份正本必须逐节对等：节数相同、每节条目数相同、每节事实 token 两边都不许少。
-
-    【为什么不再需要节表映射】两份正本用同一种中立标记、同一个顺序，第 N 节对第 N 节 ——
-    2026-09-21 之前那张 EN↔ZH 的节表映射是"两份文件各写各的标记"逼出来的，现在没有了。
-    """
-    paths = [ROOT / rel for rel in STORE_SOURCES]
-    if not all(p.is_file() for p in paths):
-        return  # 还没上架的仓库可以没有，但一旦有了就得对齐
-
-    (zh_path, en_path) = paths  # STORE_SOURCES = [zh, en]
-    zh_tagline, zh = split_sections(zh_path.read_text(encoding="utf-8"))
-    en_tagline, en = split_sections(en_path.read_text(encoding="utf-8"))
-
-    if len(zh) != len(en):
-        fail(f"商店正本节数不等：{STORE_SOURCES[0]} {len(zh)} 节 vs "
-             f"{STORE_SOURCES[1]} {len(en)} 节\n      "
-             f"中文 {[h for h, _ in zh]}\n      英文 {[h for h, _ in en]}")
-
-    # 一句话简介（正文第一行）也按一节比：规范里它必须在，且两份都得有
-    pairs = [("（一句话简介）", zh_tagline, en_tagline)]
-    pairs += [(f"第 {i} 节（{zh_head} / {en_head}）", zh_body, en_body)
-              for i, ((zh_head, zh_body), (en_head, en_body)) in enumerate(zip(zh, en), 1)]
-
-    for label, zh_body, en_body in pairs:
-        zh_count, en_count = store_items(zh_body), store_items(en_body)
-        if zh_count != en_count:
-            fail(f"商店正本{label} 条目数不等：中文 {zh_count} 条 vs 英文 {en_count} 条 —— "
-                 f"内容要相同，只许语言不同")
-        zh_facts, en_facts = store_facts(zh_body), store_facts(en_body)
-        missing_in_en = sorted(zh_facts - en_facts)
-        missing_in_zh = sorted(en_facts - zh_facts)
-        if missing_in_en:
-            fail(f"商店正本{label} 里这些事实只在中文、英文那边没有：{missing_in_en}")
-        if missing_in_zh:
-            fail(f"商店正本{label} 里这些事实只在英文、中文那边没有：{missing_in_zh}")
-
-
-def check_store_outputs() -> None:
-    """三份产物必须等于"从正本重生成"的结果，且头图与 README 顶部那张同源。
-
-    【为什么这条比"三份互相比对"硬】比对只能发现两处不一致；重生成能发现**任何**手工改动 ——
-    包括"改了产物忘了改正本"（那是最容易发生的漂，因为产物才是大家顺手编辑的那份文件）。
-    """
-    sys.path.insert(0, str(Path(__file__).resolve().parent))
-    try:
-        import store_copy
-    except ImportError as exc:  # pragma: no cover - 只有文件被挪走才走得到
-        fail(f"读不到 tools/store_copy.py（{exc}）—— 商店产物由它生成，缺了就没法校验")
-        return
-
-    rendered = store_copy.render_all()
-    for name, expected in rendered.items():
-        path = store_copy.STORE / name
-        actual = path.read_text(encoding="utf-8") if path.is_file() else None
-        if actual != expected:
-            fail(f"docs/store/{name} 与正本重生成的结果不一致"
-                 + ("（文件不存在）" if actual is None else "")
-                 + " —— 改内容请改 docs/store/{zh,en}.md，然后跑 "
-                   "python tools/store_copy.py --write")
-
-    # mcmod 必须是**纯文本**：MC 百科的编辑器不解析 Markdown（用户 2026-09-21 原话：
-    # 「mcmod 里还保留 markdown 写法？编辑器就不支持代码格式，只能用他们的可视化编辑器去改格式」）。
-    # 漏一个标记，页面上就是一堆没被解析的符号 —— 所以这里逐类扫一遍，别只靠渲染器自觉。
-    mcmod = rendered.get("mcmod.md")
-    if mcmod is not None:
-        for pattern, what in ((r"\*\*", "粗体标记 `**`"),
-                              (r"`", "反引号代码"),
-                              (r"\]\(", "Markdown 链接"),
-                              (r"(?m)^\s*[-*]\s", "列表标记")):
-            if re.search(pattern, mcmod):
-                fail(f"docs/store/mcmod.md 里出现了{what} —— 百科的编辑器不认 Markdown，"
-                     f"渲染时要用纯文本（tools/store_copy.py 的 mcmod_plain）")
-        # 空行会被编辑器吃掉（"条目被并成一段"），所以干脆一个都不写：一行就是一条。
-        # 留空行只会让人以为格式是对的 —— 这类"看着没问题"的假象正是要拦的。
-        for number, line in enumerate(mcmod.splitlines(), 1):
-            if not line.strip():
-                fail(f"docs/store/mcmod.md 第 {number} 行是空行 —— 百科的编辑器会吃掉空行、"
-                     f"把条目并成一段，所以这份产物一行就是一条，不留空行")
-                break
-
-    readme = ROOT / "README.md"
-    if readme.is_file():
-        # 门面与商店必须是同一张图。头图对外用的是**附件 URL**（raw 域名在用户网络下拉不动，
-        # 而 README 写相对路径也会被 GitHub 重写成 raw 域名 —— 两处一起坏，2026-09-21 实测）。
-        store_banner = store_copy.BANNER_URL
-        readme_image = first_image_url(readme.read_text(encoding="utf-8"))
-        if readme_image and readme_image != store_banner:
-            fail(f"README 顶部那张图（{readme_image}）与商店正文头图（{store_banner}）"
-                 f"不是同一张 —— 门面与商店各用各的图，就没有东西会把它们对起来")
-
-    # 横幅正本在仓库里：附件 URL 是"对外引用"，正本是"还能再传一次"的那份文件
-    banner_file = ROOT / store_copy.BANNER
-    if not banner_file.is_file():
-        fail(f"仓库里没有横幅正本 {store_copy.BANNER} —— 对外用的是附件 URL，"
-             f"正本丢了就再也没法重新上传同一张图")
-
-
-
-
 def main() -> int:
     raw_targets = json.loads((ROOT / "versions/targets.json").read_text(encoding="utf-8"))
     targets = entries(raw_targets)
@@ -390,9 +290,7 @@ def main() -> int:
             fail(f"仓库根 gradle.properties 缺身份键 {key}")
     check_identity_values(root_props)
     check_repo_url(root_props)
-    check_store_sources()
-    check_store_outputs()
-    store_outputs = sorted(OUTPUT_FILES)
+    check_description_pipeline()
 
     # ---- 2. 矩阵是规则 ----
     by_version: dict[str, set[str]] = {}
@@ -494,7 +392,8 @@ def main() -> int:
 
     print(f"verify_targets: 全绿（{len(targets)} 个目标，{len(layers)} 个层，"
           f"约 {total_checks} 项检查；身份 {len(IDENTITY_KEYS)} 键、仓库链接 {stats['links']} 处一致、"
-          f"商店正本 {len(STORE_SOURCES)} 份 → 产物 {len(store_outputs)} 份）")
+          f"描述正本 README ×2（{stats.get('readme_sections', 0)} 节/份）→ 商店正文 "
+          f"{stats.get('platforms', 0)} 处现出现用）")
     for version in sorted(by_version):
         loaders = ", ".join(sorted(by_version[version]))
         print(f"  MC {version}: {loaders}")
