@@ -59,16 +59,21 @@ public final class TrellisBridge {
      *                 <b>这个数必须由宿主交进来、当成树自己的内边距用，不能在桥里事后补</b> ——
      *                 补在桥里就是又造一份口径；交给树，它才是树算出来的几何。
      *                 （2026-09-21 真机实测：漏了它，整列 12 行集体高 2 逻辑 px。）
+     * @param grid     网格间距，交给布局层对齐（传 {@code 1 / guiScale} = 一个设备像素）。
+     *                 对齐放在布局层而不是绘制层：绘制的 {@code NvgCanvas} 本来也会把盒子
+     *                 对齐到设备像素，但那一挪就造出第二份几何 —— 画出来的矩形不再是命中测试
+     *                 读的那个 {@code Rect}（每条边差半个设备像素）。对在布局层，
+     *                 {@code rect()} 本身已经是设备整数，渲染层再对就成恒等变换。
      */
     public static void outlineControls(NvgCanvas host, ConfigLayout.Rect items, int rows,
-                                       float topInset, int argb) {
+                                       float topInset, float grid, int argb) {
         dev.e33.trellis.render.nanovg.NvgCanvas canvas = attach(host);
         // 【两套 Rect 在这里会合】PickupCard 有自己的 ConfigLayout.Rect，Trellis 有 geom.Rect。
         // 两个 record 的字段几乎一样，却必须在这里互相翻译 —— 这本身就是"布局口径没统一"的证据，
         // 也正是 Trellis 要收掉的东西。真正接的时候这段话应该消失（只留一套几何）。
         Rect box = new Rect(items.x(), items.y(), items.w(), items.h());
         LayoutNode root = column(rows, topInset);
-        FlexLayout.solve(root, box);
+        FlexLayout.solve(root, box, grid);
         for (int i = 0; i < rows; i++) {
             Rect control = root.children().get(i).children().get(1).rect();
             canvas.strokeRoundRect(control, 2f, 1f, argb);

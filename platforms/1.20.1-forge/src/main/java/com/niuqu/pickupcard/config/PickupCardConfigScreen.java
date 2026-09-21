@@ -604,8 +604,11 @@ public final class PickupCardConfigScreen extends Screen {
         // 用 Trellis 算配置列每一行的控件几何，并把它描一圈。
         // 目的是让"Trellis 算出的坐标真的出现在 MC 的帧里"这件事在截图里**看得见**。
         // 行顶那 2px 从 ConfigRows 借过去当树的内边距 —— 这个数只有那一个源。
+        // 网格 = 1/guiScale（一个设备像素）：对齐放在布局层，绘制的 NvgCanvas 再对就是恒等，
+        // 于是"画出来的"与"点得到的"仍然是同一个 Rect（判据 1）。
+        float deviceGrid = (float) (1.0 / Minecraft.getInstance().getWindow().getGuiScale());
         TrellisBridge.outlineControls(ui.canvas(), lo.items(), rowsModel.all().size(),
-                ConfigRows.ROWS_TOP_INSET, 0xFFFF3B30);
+                ConfigRows.ROWS_TOP_INSET, deviceGrid, 0xFFFF3B30);
         PickupCardSettings eff = PickupCardConfig.snapshot();
         // 标题靠左、副标题跟同一个左缘（用户要求标题不居中；对齐 MARGIN 与标签列同一起点）。
         // 状态行钉在标题行右端 —— 总开关是"整体生效没生效"的唯一真源，藏进页里就得翻页才知道。
