@@ -189,13 +189,34 @@ STORE_MIN_BADGES = 3        # 徽章行至少几个 img.shields.io
 
 
 def first_image_url(text: str) -> str | None:
-    """取正文里的第一张图：Markdown `![…](url)` 或 HTML `<img … src="url">`。"""
-    for pattern in (r"!\[[^\]]*\]\((https?://[^)\s]+)\)",
-                    r"<img[^>]*\ssrc=[\"'](https?://[^\"']+)[\"']"):
+    """取正文里的第一张图：Markdown `![…](url)` 或 HTML `<img … src="url">`。
+
+    README 里的图允许写**相对路径**（GitHub 上直接就能渲染），所以这里两种都给出来。
+    """
+    for pattern in (r"!\[[^\]]*\]\(([^)\s]+)\)",
+                    r"<img[^>]*\ssrc=[\"']([^\"']+)[\"']"):
         match = re.search(pattern, text)
         if match:
             return match.group(1)
     return None
+
+
+RAW_HOST = "https://raw.githubusercontent.com/"
+
+
+def banner_key(value: str | None) -> str | None:
+    """把"门面 / 商店用的那张横幅"归一成可比的形式。
+
+    README 写相对路径（`design/banner.png`），商店正文必须写绝对 URL（正文没有基准路径），
+    两者指的是仓库里同一份文件 —— 所以 key = 去掉 raw 域名与 owner/仓库/分支之后的仓库内路径。
+    """
+    if not value:
+        return None
+    if value.startswith(RAW_HOST):
+        parts = value[len(RAW_HOST):].split("/")
+        return "/".join(parts[3:]) if len(parts) > 3 else value
+    return value.lstrip("./")
+
 
 
 def check_store_copy(props: dict[str, str]) -> None:
@@ -245,9 +266,9 @@ def check_store_copy(props: dict[str, str]) -> None:
         elif badge_lines[0].count("img.shields.io") < STORE_MIN_BADGES:
             fail(f"{rel} 的徽章行只有 {badge_lines[0].count('img.shields.io')} 个徽章"
                  f"（少于 {STORE_MIN_BADGES}）—— MC / 加载器 / 侧别这几条是基本盘")
-        if banner and first_image_url(text) != banner:
-            fail(f"{rel} 的头图与 README 顶部那张不是同一张 —— 门面与商店各用各的图，"
-                 f"唯一没有闸盯着的地方就多出一张脸")
+        if banner and banner_key(first_image_url(text)) != banner_key(banner):
+            fail(f"{rel} 的头图与 README 顶部那张不是同一张（README 用的是 "
+                 f"{banner}）—— 门面与商店各用各的图，唯一没有闸盯着的地方就多出一张脸")
 
 
 

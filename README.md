@@ -1,7 +1,7 @@
 [简体中文](README.md) | [English](README_EN.md)
 
 <p align="center">
-<img width="512" height="257" alt="PickupCard" src="https://github.com/user-attachments/assets/5bbce647-df3a-4c51-b87b-d63dfc7c4bdc" />
+<img width="512" height="257" alt="PickupCard" src="design/banner.png" />
 </p>
 
 <h1 align="center">Pickup Card</h1>

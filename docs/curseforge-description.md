@@ -1,4 +1,4 @@
-![Pickup Card](https://github.com/user-attachments/assets/5bbce647-df3a-4c51-b87b-d63dfc7c4bdc)
+![Pickup Card](https://raw.githubusercontent.com/E33EPUS/PickupCard/main/design/banner.png)
 
 # Pickup Card
 
