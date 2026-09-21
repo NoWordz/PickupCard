@@ -190,7 +190,9 @@ def main() -> int:
                             + ("（文件不存在）" if current is None else ""))
         else:
             path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_text(text, encoding="utf-8")
+            # newline="\n" 是必须的：Windows 上 write_text 默认写 CRLF，而本仓库 .gitattributes
+            # 是 eol=lf（工作区必须 LF，否则每次提交都要被 git 警告一遍）
+            path.write_text(text, encoding="utf-8", newline="\n")
             print(f"  write docs/store/{name}（{len(text.splitlines())} 行）")
 
     if problems:
