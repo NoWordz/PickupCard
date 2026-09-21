@@ -18,6 +18,17 @@
 **结构以桌面《商店格式规范》为准**（用户 2026-09-21 提交）：
 一句话简介 → 概述 → 功能 → 兼容性（表格）→ 配置（表格）→ 已知限制 → FAQ → 问题反馈。
 
+**MC 百科那份的三条规矩**（三个坑都是当天踩出来的）：
+
+1. **不解析 Markdown** —— 用户原话「编辑器就不支持代码格式，只能用他们的可视化编辑器去改格式」。
+   `**粗体**`、反引号、`[文字](链接)`、`- ` 全要抹掉（`mcmod_plain`）；`tools/verify_targets.py`
+   还会再扫一遍，漏一个就红。
+2. **空行会被吃掉** —— 用户原话「空行被吃：条目被并成一段」。所以**不写空行**：一行就是一条，
+   闸也会拦空行（留空行只会让人以为格式是对的）。
+3. **只认 `[h1=]` / `[h2=]`** 这一族标记（加粗、列表、表格都得在编辑器工具栏里点；`[mark:title_menu]`
+   我们没写 —— 没在真页面上验证过，宁可不加）。标题层级照 AtomChat 那页：概述与收尾几节用 `[h1=]`，
+   中间的正文节用 `[h2=]`；表格写成 `格| 格；` 的行式。
+
 **正本里不写的东西**（都由这里生成，写了就会被 --check 判为漂）：头图那一行、`# 名字`、
 徽章行（MC / 加载器 / 侧别 / Java / 版本 / 许可，全部从仓库身份与目标声明里读出来）、
 `[mark:title_menu]`。**一句话简介写在正本第一段**（它要分语言，不能从英文的 mod_description 派生）。
@@ -206,18 +217,15 @@ def render(tagline: list[str], sections: list[tuple[str, list[list[str]]]], styl
             for block in blocks:
                 out += block            # 列表：一条一行；表格：原样；段落：整段连着
                 out.append("")
-    else:  # mcmod：百科的可视化编辑器不认 Markdown —— 标记全抹掉，条目之间空一行，表格走行式
-        out += ["[mark:title_menu]", ""]
+    else:  # mcmod：见文件头那三条规矩 —— 纯文本、一行一条、不写空行、只留 [h1=]/[h2=]
         if one_liner:
-            out += [mcmod_plain(one_liner), ""]
+            out += [mcmod_plain(one_liner)]
         for title, blocks in sections:
             level = "h1" if title in MCMOD_H1 else "h2"
-            out += [f"[{level}={title}]", ""]
+            out += [f"[{level}={title}]"]
             for block in blocks:
                 lines = mcmod_table(block) if block[0].startswith("|") else block
-                for line in lines:
-                    out.append(mcmod_plain(line))
-                    out.append("")
+                out += [mcmod_plain(line) for line in lines]
     while out and not out[-1]:
         out.pop()
     return "\n".join(out) + "\n"

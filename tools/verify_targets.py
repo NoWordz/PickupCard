@@ -351,6 +351,13 @@ def check_store_outputs() -> None:
             if re.search(pattern, mcmod):
                 fail(f"docs/store/mcmod.md 里出现了{what} —— 百科的编辑器不认 Markdown，"
                      f"渲染时要用纯文本（tools/store_copy.py 的 mcmod_plain）")
+        # 空行会被编辑器吃掉（"条目被并成一段"），所以干脆一个都不写：一行就是一条。
+        # 留空行只会让人以为格式是对的 —— 这类"看着没问题"的假象正是要拦的。
+        for number, line in enumerate(mcmod.splitlines(), 1):
+            if not line.strip():
+                fail(f"docs/store/mcmod.md 第 {number} 行是空行 —— 百科的编辑器会吃掉空行、"
+                     f"把条目并成一段，所以这份产物一行就是一条，不留空行")
+                break
 
     readme = ROOT / "README.md"
     if readme.is_file():
