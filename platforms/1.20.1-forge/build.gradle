@@ -473,4 +473,7 @@ tasks.register('publishMods') {
 // 所以给 Forge 工程加它不会往运行期塞任何东西。
 dependencies {
     implementation 'dev.e33.trellis:core:0.1.0-SNAPSHOT'
+    // nvg 模块：Canvas 契约 + NanoVG 后端。LWJGL 是它的 compileOnly，
+    // 运行期由本工程（Forge）提供，所以这里不用也不能再引一份 native。
+    implementation 'dev.e33.trellis:nvg:0.1.0-SNAPSHOT'
 }
