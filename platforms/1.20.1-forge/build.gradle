@@ -150,6 +150,15 @@ dependencies {
     // 【SVG 是白送的】绑定自带 NanoSVG（nnsvgParse / NSVGImage / NSVGShape / NSVGPath），
     // 所以"用 SVG 纯矢量绘制"既不用再加依赖，也不用自己写路径解析器。
     implementation 'org.lwjgl:lwjgl-nanovg:3.3.1'
+    // 【dev 真机：绑定类也必须走库层】Trellis 的 nvg 模块住在 legacy 层、要引用
+    // org.lwjgl.nanovg.*，所以 Java 侧的绑定得跟它同层 —— 摊进 mod 模块（unpackNvg）
+    // 会让那一层看不见（2026-09-21 实测：NoClassDefFoundError org/lwjgl/nanovg/NVGColor）。
+    // 一个包只能住一个模块，所以这里进了库层、下面就不再往 classes 目录摊绑定。
+    // 【transitive = false 是必须的】nanovg 的 POM 传递依赖 lwjgl 核心，而 MC 自己那份
+    // 已经在这层上；minecraftLibrary 走的是"resolved 文件全量追加"、不去重 ——
+    // 同一路径进两次，BootstrapLauncher 的 UnionFileSystem 会 Duplicate key 直接崩
+    // （2026-09-21 实测）。这里的 lwjgl 核心由 MC 提供，所以只要绑定本体。
+    minecraftLibrary('org.lwjgl:lwjgl-nanovg:3.3.1') { transitive = false }
     // 开发与测试期：native 直接进 classpath，LWJGL 的 SharedLibraryLoader 自己解压到临时目录。
     // 【发布前必做】四平台 native 必须 JiJ 进 jar，否则玩家侧第一次画卡就是 UnsatisfiedLinkError。
     runtimeOnly 'org.lwjgl:lwjgl-nanovg:3.3.1:natives-windows'
@@ -169,24 +178,28 @@ dependencies {
 // 所以第三方库只写 implementation 的话：编译过、单元测试过（测试走 testRuntimeClasspath）、
 // 但 runClient 里 mod 的类加载器看不见它 —— 报错是 NoClassDefFoundError，
 // 而且只在真的去画的那一刻才炸。
-// 【为什么不用别的办法】FG6 的 minecraft 配置不接受额外 artifact，也没有
-// minecraftImplementation 之类的东西；jarJar 只管往 jar 里打（发布用），不影响 dev 启动。
-// 所以这里做最直白的一件事：FG 写完那个文件之后，我们把该进去的 jar 追加上去。
-// 【失败要响】追加前先确认文件存在，缺文件直接抛，不然会退化成一个"跑起来但没引擎"的
-// 静默失败 —— 那正是这个项目一直在治的病。
+// 【第三方库要进真机：走 minecraftLibrary】FG 6.0.54 本来就有这条配置 —— UserDevPlugin
+// 建出 `minecraftLibrary`，DependencyManagementExtension 把它的 jar 拼进同一个
+// minecraft_classpath token。旧注释写的"FG6 没有这类东西"是错的
+// （2026-09-21 核对 FG 6.0.54 字节码：UserDevPlugin / DependencyManagementExtension）。
+// nanovg 的 **native 资源**（.dll/.so/.dylib，不是类）仍走下面的摊平：资源不上模块层，
+// 只能落在 classes 目录里、让 LWJGL 的 SharedLibraryLoader 按 <os>/<arch>/... 找到。
+// 它的**绑定类**已经跟着 Trellis 的 nvg 模块一起走 minecraftLibrary（见上面的依赖块）。
+// （上面那三条死路只针对"往 legacy 文件里塞"和"换 -DlegacyClassPath.file"；
+//   minecraftLibrary 是 FG 的正门，不踩它们。）
 configurations {
     nvgDev
 }
 
 dependencies {
-    nvgDev 'org.lwjgl:lwjgl-nanovg:3.3.1'
+    // 只需要 native：绑定类走 minecraftLibrary（见上面的 nanovg 依赖块）。
     ['natives-windows', 'natives-linux', 'natives-macos', 'natives-macos-arm64'].each { classifier ->
         nvgDev "org.lwjgl:lwjgl-nanovg:3.3.1:${classifier}"
     }
 }
 
 // ---------------------------------------------------------------------------
-// 开发期：把 NanoVG 摊进我们自己的 classes 目录
+// 开发期：把 NanoVG 的 native 资源摊进我们自己的 classes 目录
 // ---------------------------------------------------------------------------
 // 【为什么不能靠 classpath】Forge 的 dev 启动器把游戏类加载器建在一个"层"上，
 // 而那个层只吃 legacyClassPath 文件里的条目。实测证明过三件事：
@@ -195,28 +208,24 @@ dependencies {
 //   2) 往 FG 生成的 legacy classpath 文件追加会被 runClient 自己的 action 覆盖；
 //   3) 用 jvmArg 覆盖 -DlegacyClassPath.file 会让 BootstrapLauncher 直接崩
 //      （它拿那个值去 Paths.get，不接受我们换文件）。
-// 【所以走这条】我们的 classes 目录本身就是类加载器的一个根，摊进去就一定能看见 ——
-// 效果等同于 shade，但只在开发期做（发布走 jarJar，不污染 jar）。
-// 【失败要响】找不到 jar 直接抛，不留下一个"能跑但没引擎"的静默状态。
-// 摊平：开发期要它（类加载器只认自己的 classes 根）。
-// 发布产物里**类不再要**（JarJar 嵌套供应，见下面的 jarJar 段），但 **native 资源仍要**
-// —— 所以 jar/jarJar 还得消费这个写进 classes 目录的动作（Gradle 校验要求显式声明）。
+// 【所以走这条】native 是资源不是类，进不了模块层，只能摊进 classes 目录 ——
+// 那里是类加载器的一个根，LWJGL 按资源路径一定找得到。
+// 【失败要响】找不到 native 直接抛，不留下一个"能跑但没引擎"的静默状态。
+// 发布产物里 **native 资源仍要**（JarJar 嵌套的是绑定 jar，里面没有 native）——
+// 所以 jar/jarJar 还得消费这个写进 classes 目录的动作（Gradle 校验要求显式声明）。
 tasks.register('unpackNvg', Copy) {
     dependsOn 'compileJava'
-    def jars = configurations.nvgDev
-    def binding = jars.files.find { it.name == 'lwjgl-nanovg-3.3.1.jar' }
-    def natives = jars.files.findAll { it.name.contains('natives') }
-    if (binding == null || natives.size() != 4) {
-        throw new GradleException("NanoVG 摊平失败：需要 1 个绑定 + 4 个平台 native，实际 ${jars.files*.name}")
+    def natives = configurations.nvgDev.files.findAll { it.name.contains('natives') }
+    if (natives.size() != 4) {
+        throw new GradleException("NanoVG native 摊平失败：需要 4 个平台，实际 ${configurations.nvgDev.files*.name}")
     }
-    // 绑定：Java 类；native：各平台目录下的 dll/so/dylib（LWJGL 按 <os>/<arch>/... 的资源路径找）
-    from(zipTree(binding)) { include 'org/lwjgl/nanovg/**' }
+    // 各平台目录下的 dll/so/dylib（LWJGL 按 <os>/<arch>/... 的资源路径找）
     natives.each { jar ->
         from(zipTree(jar)) { include 'windows/**', 'linux/**', 'macos/**' }
     }
     into layout.buildDirectory.dir('classes/java/main')
     outputs.upToDateWhen { false }
-    doLast { logger.lifecycle("NanoVG 摊平完成（绑定 + ${natives.size()} 个平台 native）-> build/classes/java/main") }
+    doLast { logger.lifecycle("NanoVG native 摊平完成（${natives.size()} 个平台）-> build/classes/java/main") }
 }
 
 tasks.matching { it.name == 'runClient' }.configureEach {
@@ -469,11 +478,20 @@ tasks.register('publishMods') {
     dependsOn 'modrinth', 'curseforge'
 }
 
-// Trellis 试点：只取 core。它是纯 Java 零依赖的，
-// 所以给 Forge 工程加它不会往运行期塞任何东西。
+// Trellis 试点（分支 trellis-pilot）：core = 纯 Java 零依赖的布局/文本层；
+// nvg = Canvas 契约 + NanoVG 后端（LWJGL 是它的 compileOnly，运行期由本工程提供，
+// 所以这里不用也不能再引一份 native）。
+//
+// 【为什么写两遍：两个配置各喂一段，缺一不可】
+//   implementation   —— 编译 + 单元测试（测试走 testRuntimeClasspath）
+//   minecraftLibrary —— 真机 runClient。userdev 的 client run 把游戏类路径交给
+//                       -DlegacyClassPath.file={minecraft_classpath_file}，那个文件只由
+//                       configurations.minecraft 装配；minecraftLibrary 是 FG 给第三方库
+//                       留的追加通道（细节见上面 unpackNvg 那一段的注释）。
+// 只写 implementation 的症状：编译过、单测绿、真机第一次画到才 NoClassDefFoundError。
 dependencies {
-    implementation 'dev.e33.trellis:core:0.1.0-SNAPSHOT'
-    // nvg 模块：Canvas 契约 + NanoVG 后端。LWJGL 是它的 compileOnly，
-    // 运行期由本工程（Forge）提供，所以这里不用也不能再引一份 native。
-    implementation 'dev.e33.trellis:nvg:0.1.0-SNAPSHOT'
+    implementation   'dev.e33.trellis:core:0.1.0-SNAPSHOT'
+    implementation   'dev.e33.trellis:nvg:0.1.0-SNAPSHOT'
+    minecraftLibrary 'dev.e33.trellis:core:0.1.0-SNAPSHOT'
+    minecraftLibrary 'dev.e33.trellis:nvg:0.1.0-SNAPSHOT'
 }
