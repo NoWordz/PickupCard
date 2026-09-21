@@ -4,9 +4,9 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.niuqu.pickupcard.render.nvg.ui.ConfigLayout;
+import com.niuqu.pickupcard.render.nvg.ui.NvgWidget;
 import com.niuqu.pickupcard.render.nvg.ui.TrellisBridge;
 import dev.e33.trellis.geom.Rect;
-import dev.e33.trellis.ui.Component;
 import dev.e33.trellis.ui.UiTree;
 import java.util.ArrayList;
 import java.util.List;
@@ -30,12 +30,22 @@ class TrellisHitParityTest {
 
     /**
      * 外观页的行形态：10 个控件行 + 2 个小节头行（下标 1 = Shape、7 = Colors）。
-     * 小节头也占一行、只是没有控件 —— 两边的树都必须按这个形态建。
+     * 小节头也占一行、只是没有控件 —— 两边的树都必须按这个形态建（{@code null} = 小节头）。
+     *
+     * <p>控件用 {@link TestWidgets.Inert} 替身：这一条测的是<b>几何</b>，
+     * 真控件会去碰 Forge 配置，而这条必须在没启动游戏时也能跑。
      */
-    private static final boolean[] HAS_CONTROL = {
-        true, false, true, true, true, true, true, false, true, true, true, true,
+    private static final NvgWidget[] CONTROLS = {
+        new TestWidgets.Inert(), null, new TestWidgets.Inert(), new TestWidgets.Inert(),
+        new TestWidgets.Inert(), new TestWidgets.Inert(), new TestWidgets.Inert(), null,
+        new TestWidgets.Inert(), new TestWidgets.Inert(), new TestWidgets.Inert(),
+        new TestWidgets.Inert(),
     };
-    private static final int ROWS = HAS_CONTROL.length;
+    private static final int ROWS = CONTROLS.length;
+    /** 这一行有没有控件（小节头没有）。 */
+    private static boolean hasControl(int row) {
+        return CONTROLS[row] != null;
+    }
     /** 真机那一档：1280x720 @ guiScale 3。 */
     private static final float CANVAS_W = 427f;
     private static final float CANVAS_H = 240f;
@@ -49,7 +59,7 @@ class TrellisHitParityTest {
     @DisplayName("判据 1：逐点扫整个配置列，Trellis 的命中与宿主的控件矩形只在左右边缘带里不一致")
     void trellisHitsMatchHostControlRects() {
         ConfigLayout lo = ConfigLayout.compute(CANVAS_W, CANVAS_H);
-        UiTree ui = TrellisBridge.buildColumn(HAS_CONTROL, ConfigRows.ROWS_TOP_INSET);
+        UiTree ui = TrellisBridge.buildColumn(CONTROLS, ConfigRows.ROWS_TOP_INSET);
         ui.layout(new Rect(lo.items().x(), lo.items().y(), lo.items().w(), lo.items().h()),
                 1f / GUI_SCALE);
 
@@ -77,7 +87,7 @@ class TrellisHitParityTest {
         // 每个控件的正中那一点：两边必须给<b>同一个答案</b>（含"在视口外 → 谁都点不到"）。
         int wholeRowsInViewport = 0;
         for (int i = 0; i < ROWS; i++) {
-            if (!HAS_CONTROL[i]) {
+            if (!hasControl(i)) {
                 continue;       // 小节头没有控件，中心点无从谈起
             }
             Rect r = hostControl(lo, i);
@@ -116,7 +126,7 @@ class TrellisHitParityTest {
             return -1;
         }
         for (int i = 0; i < ROWS; i++) {
-            if (HAS_CONTROL[i] && hostControl(lo, i).contains(x, y)) {
+            if (hasControl(i) && hostControl(lo, i).contains(x, y)) {
                 return i;
             }
         }
@@ -124,26 +134,12 @@ class TrellisHitParityTest {
     }
 
     /**
-     * Trellis 那一套：{@link UiTree#hitTest} 命中的组件往上走到根的直接子（那一行）；
-     * 而且必须落在<b>控件</b>那半边 —— 标签那半边宿主没有控件，两边都算"没命中"。
+     * Trellis 那一套：直接问生产代码那条 {@link TrellisBridge#controlRowAt} ——
+     * 宿主现在也用它（悬停缓动、底部说明、点击路由），所以对账比的就是真在跑的那一条，
+     * 不是测试里另抄一遍。
      */
     private static int trellisControlAt(UiTree ui, float x, float y) {
-        Component hit = ui.hitTest(x, y);
-        if (hit == null || hit == ui.root()) {
-            return -1;
-        }
-        Component line = hit;
-        while (line.parent() != null && line.parent() != ui.root()) {
-            line = line.parent();
-        }
-        if (line.parent() != ui.root()) {
-            return -1;
-        }
-        int row = ui.root().children().indexOf(line);
-        if (row < 0 || line.children().size() < 2) {
-            return -1;      // 小节头那一行没有控件
-        }
-        return line.children().get(1).isAncestorOf(hit) ? row : -1;
+        return TrellisBridge.controlRowAt(ui, x, y);
     }
 
     /**
@@ -154,7 +150,7 @@ class TrellisHitParityTest {
      */
     private static boolean insideEdgeBand(ConfigLayout lo, float x, float y) {
         for (int i = 0; i < ROWS; i++) {
-            if (!HAS_CONTROL[i]) {
+            if (!hasControl(i)) {
                 continue;
             }
             Rect r = hostControl(lo, i);

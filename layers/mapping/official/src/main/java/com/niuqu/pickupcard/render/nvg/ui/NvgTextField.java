@@ -74,14 +74,15 @@ public final class NvgTextField extends NvgWidget {
         return value.get();
     }
 
+    /** 按一下就进编辑态（草稿从当前值起）。命中已由调用方判过（行内控件是树）。 */
     @Override
-    public boolean mouseClicked(double mouseX, double mouseY, int button) {
-        boolean hit = super.mouseClicked(mouseX, mouseY, button);
-        if (hit) {
+    public boolean press(double mouseX, double mouseY, int button) {
+        boolean taken = super.press(mouseX, mouseY, button);
+        if (taken) {
             draft = value.get();
             editing = true;
         }
-        return hit;
+        return taken;
     }
 
     @Override

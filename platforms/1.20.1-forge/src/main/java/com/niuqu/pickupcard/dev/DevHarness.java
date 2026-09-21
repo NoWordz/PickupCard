@@ -568,6 +568,11 @@ public final class DevHarness {
                 // 从来没有被截过图——英文文案在不在框里只有真截一张才算数。
                 int look = configTicks - WARMUP_TICKS - 118 - CYCLE_EVERY * CYCLE_FRAMES;
                 if (look == 0) {
+                    // 【必须先把按标签伪造的悬停松开】过滤页那一步把 forcedHover 停在
+                    // "minecraft:cobblestone" 上没松手；不松的话外观页的每一行都不匹配它，
+                    // 于是"标签缓动"永远是 0 —— 截图上看不出来，读数里却骗人（第 18 轮实测）。
+                    // 这一张要验的正是"停住的指针 → 带子/标签/说明三处指同一行"。
+                    hoverByLabel(mc, null);
                     clickByLabel(mc, I18n.get("pickupcard.config.page.look.name"));
                     return;
                 }
@@ -580,6 +585,14 @@ public final class DevHarness {
                 if (look == 4) {
                     capture(mc, "look");
                     PickupCard.LOGGER.info("[harness-auto] 外观页: {}", configLabels(mc));
+                    // 【为什么这一张要把状态也打出来】A-10 起"悬停哪一行"由树回答：
+                    // 带子（树自己画）、标签缓动、底部说明三处必须指同一行。
+                    // 截图只看得出带子，看不出"缓动有没有跟上、说明是不是这一行"。
+                    PickupCard.LOGGER.info("[harness-auto] 外观页状态: {} | {}",
+                            configState(mc), columnDump(mc));
+                    if (mc.screen instanceof PickupCardConfigScreen screen) {
+                        PickupCard.LOGGER.info("[harness-auto] 外观页悬停路由: {}", screen.probeDump());
+                    }
                     return;
                 }
             }

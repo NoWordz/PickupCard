@@ -12,13 +12,15 @@ import dev.e33.trellis.text.TextAlign;
 import dev.e33.trellis.text.TextLayout;
 import dev.e33.trellis.text.TextMeasurer;
 import dev.e33.trellis.ui.Component;
+import dev.e33.trellis.ui.UiEvent;
 import dev.e33.trellis.ui.UiTree;
 
 /**
  * <b>Trellis 试点：把 Trellis 接进 PickupCard 已有的 NanoVG 上下文。</b>
  *
  * <p>【它现在管什么】配置列那一棵组件树（{@link #buildColumn}）由 Trellis 建、布局、命中、
- * 画悬停底；标签的<b>文本框</b>和<b>适配字号</b>也由它给（{@link #labelBox} / {@link #fitLabel}）。
+ * 画悬停底；标签的<b>文本框</b>和<b>适配字号</b>由它给（{@link #labelBox} / {@link #fitLabel}）；
+ * "指着哪一行、点到哪一行"也从它回答（{@link #controlRowAt}）。
  * 描框那层取证手段已经删了 —— 组件树自己在真帧里画（A-6b）。
  *
  * <p>【为什么先做这个而不是整屏】整屏换掉等于一上来就把渲染路径、事件、字体、
@@ -79,25 +81,29 @@ public final class TrellisBridge {
      * 验不到那一条；换到组件层之后，{@link UiTree#hitTest} 读的是 {@link Component#bounds()}，
      * 描框画的也是它 —— 同一个对象，不是相等的两个。
      *
-     * <p>树由<b>调用方持有</b>：{@link UiTree} 带着悬停状态，不能每帧重建。
+     * <p>树由<b>调用方持有</b>：{@link UiTree} 带着悬停/按下状态，不能每帧重建。
      *
-     * @param hasControl 每行<b>有没有控件</b>：小节头那一行只有标签、没有控件。
+     * <p>【控件为什么要交给树】A-10 起"指着哪一行、点到了哪一行"由树说了算
+     * （见 {@link #controlRowAt}）：控件那一格是 {@link ControlSlot}，它拿着的
+     * {@link NvgWidget} 只负责<b>行为</b>（按下/松开/悬停），几何一条都不留。
+     *
+     * @param controls   每行的控件；<b>{@code null} = 小节头</b>（只有标签、没有控件）。
      *                   宿主的小节头也是"占一行、没有控件"，这里必须照建 ——
      *                   给小节头也造一个控件，布局是对的，但那是宿主根本不存在的东西，
-     *                   描框和命中都会凭空多出一行。
+     *                   命中会凭空多出一行。
      * @param topInset   宿主第一行相对列顶的内缩（传 {@code ConfigRows.ROWS_TOP_INSET}）。
      *                   <b>必须由宿主交进来、当成树自己的内边距用，不能在桥里事后补</b>。
      */
-    public static UiTree buildColumn(boolean[] hasControl, float topInset) {
+    public static UiTree buildColumn(NvgWidget[] controls, float topInset) {
         Component root = new Box(columnStyle(topInset), false);
-        for (boolean control : hasControl) {
+        for (NvgWidget control : controls) {
             Component line = new Box(Style.row().withGap(GAP).withHeight(Sizing.fixed(ROW_H)), false);
             line.add(new Box(Style.row().withGrow(1f).withWidth(Sizing.atLeast(LABEL_MIN))
                     .withHeight(Sizing.fixed(ROW_H)), true));
-            if (control) {
-                line.add(new Box(Style.row()
+            if (control != null) {
+                line.add(new ControlSlot(control, Style.row()
                         .withWidth(Sizing.fraction(CONTROL_MIN, CONTROL_FRACTION, CONTROL_MAX))
-                        .withHeight(Sizing.fixed(ROW_H)), true));
+                        .withHeight(Sizing.fixed(ROW_H))));
             }
             root.add(line);
         }
@@ -139,6 +145,96 @@ public final class TrellisBridge {
      */
     public static void paint(NvgCanvas host, UiTree ui) {
         ui.draw(attach(host));
+    }
+
+    // -----------------------------------------------------------------------
+    // 命中：指着哪一行、点到哪一行，都从这棵树回答
+    // -----------------------------------------------------------------------
+
+    /**
+     * 指针指着<b>哪一行的控件</b>（不在任何控件上就是 {@code -1}）。
+     *
+     * <p>【为什么只认控件那一半】标签那一半不是点击目标，也不是悬停说明的对象 ——
+     * 宿主的语义一直是"指着控件才算指着这一行"，这里照着它来（换语义是另一件事，
+     * 得连着悬停底一起谈）。读的是 {@link UiTree#hitTest} → {@link Component#bounds()}，
+     * 也就是命中和绘制共用的那一个矩形。
+     *
+     * <p>调用方：宿主的悬停缓动、底部说明、点击路由（A-10）。
+     */
+    public static int controlRowAt(UiTree ui, float x, float y) {
+        Component hit = ui.hitTest(x, y);
+        if (hit == null) {
+            return -1;
+        }
+        Component line = hit;
+        while (line.parent() != null && line.parent() != ui.root()) {
+            line = line.parent();
+        }
+        if (line.parent() != ui.root() || line.children().size() < 2) {
+            return -1;      // 小节头那一行没有控件
+        }
+        return line.children().get(1).isAncestorOf(hit) ? ui.root().children().indexOf(line) : -1;
+    }
+
+    /**
+     * 把<b>树里的悬停状态</b>推给控件（{@link NvgWidget#hover(boolean)}）。
+     *
+     * <p>悬停从此只有一份真相：树按 {@code pointerMove} 判，控件只是接收者。
+     * 宿主那边每帧那一趟 {@code widget.mouseMoved(...)} 因此不再需要（树外的控件除外）。
+     */
+    public static void syncHover(UiTree ui) {
+        pushHover(ui.root());
+    }
+
+    private static void pushHover(Component component) {
+        if (component instanceof ControlSlot slot) {
+            slot.widget.hover(component.hovered());
+        }
+        for (Component child : component.children()) {
+            pushHover(child);
+        }
+    }
+
+    /**
+     * 一行里<b>控件那一格</b>：几何归树（{@code bounds()} 就是这一格），行为仍归宿主控件。
+     *
+     * <p>【这一步只交命中】{@code focusable(true)} 开着，于是按下会走
+     * {@code UiTree.pointerDown → requestFocus}（换焦点发的是 BLUR，见那里的注释）。
+     * 键还不在这条路上：宿主仍按控件自己的 {@code focused} 转发，BLUR 暂时没人接 ——
+     * 接它是"键盘也搬进树"那一步的事。
+     *
+     * <p>【"算不算一次点击"为什么在这里判】{@code UiTree.pointerUp} 保证抬起发给
+     * <b>按下的那一个</b>（指针捕获），但 {@code CLICK} 是在 {@code POINTER_UP}
+     * <b>之后</b>才发的 —— 在这里等 CLICK 的话，拖到格子外面松手就永远收不到"结束"，
+     * {@code pressed} 会留在控件上（症状：松了手还亮着）。所以用 {@link Component#bounds()}
+     * 判落点在不在格子里：那是<b>同一份几何</b>（命中测试读的也是它），不是第二份。
+     */
+    private static final class ControlSlot extends Component {
+        private final NvgWidget widget;
+
+        ControlSlot(NvgWidget widget, Style style) {
+            this.widget = widget;
+            style(style);
+            focusable(true);
+        }
+
+        @Override
+        protected boolean onEvent(UiEvent event) {
+            switch (event.type()) {
+                case POINTER_DOWN:
+                    return widget.press(event.x(), event.y(), 0);
+                case POINTER_UP:
+                    widget.release(event.x(), event.y(), bounds().contains(event.x(), event.y()));
+                    return true;
+                default:
+                    return false;
+            }
+        }
+
+        @Override
+        protected void drawContent(dev.e33.trellis.render.Canvas canvas) {
+            // 控件仍由宿主画（这一步只交命中）；下一轮把绘制也搬进来。
+        }
     }
 
     // -----------------------------------------------------------------------

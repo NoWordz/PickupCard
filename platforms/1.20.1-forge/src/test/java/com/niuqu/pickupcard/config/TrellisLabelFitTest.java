@@ -7,6 +7,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.niuqu.pickupcard.render.nvg.ui.ConfigLayout;
 import com.niuqu.pickupcard.render.nvg.ui.McFont;
+import com.niuqu.pickupcard.render.nvg.ui.NvgWidget;
 import com.niuqu.pickupcard.render.nvg.ui.TrellisBridge;
 import com.niuqu.pickupcard.render.nvg.ui.TrellisBridge.LabelFit;
 import dev.e33.trellis.geom.Rect;
@@ -30,9 +31,12 @@ import org.junit.jupiter.api.Test;
  */
 class TrellisLabelFitTest {
 
-    /** 外观页那一档的行形态（10 个控件行 + 2 个小节头）—— 与真机那份同源。 */
-    private static final boolean[] HAS_CONTROL = {
-        true, false, true, true, true, true, true, false, true, true, true, true,
+    /** 外观页那一档的行形态（10 个控件行 + 2 个小节头）—— 与真机那份同源，{@code null} = 小节头。 */
+    private static final NvgWidget[] CONTROLS = {
+        new TestWidgets.Inert(), null, new TestWidgets.Inert(), new TestWidgets.Inert(),
+        new TestWidgets.Inert(), new TestWidgets.Inert(), new TestWidgets.Inert(), null,
+        new TestWidgets.Inert(), new TestWidgets.Inert(), new TestWidgets.Inert(),
+        new TestWidgets.Inert(),
     };
     private static final float CANVAS_W = 427f;
     private static final float CANVAS_H = 240f;
@@ -84,7 +88,7 @@ class TrellisLabelFitTest {
     @DisplayName("标签盒就是树里那个标签叶子的 Rect 对象本身（判据 1 的文字版）")
     void labelBoxIsTheLeafsOwnRect() {
         UiTree ui = column(0f);
-        for (int i = 0; i < HAS_CONTROL.length; i++) {
+        for (int i = 0; i < CONTROLS.length; i++) {
             Rect leaf = ui.root().children().get(i).children().get(0).bounds();
             assertSame(leaf, TrellisBridge.labelBox(ui, i),
                     "第 " + i + " 行的标签盒不是叶子自己的那个对象 —— 那就又成了两份几何");
@@ -252,7 +256,7 @@ class TrellisLabelFitTest {
 
     private static UiTree column(float scrollOffset) {
         ConfigLayout lo = ConfigLayout.compute(CANVAS_W, CANVAS_H);
-        UiTree ui = TrellisBridge.buildColumn(HAS_CONTROL, ConfigRows.ROWS_TOP_INSET);
+        UiTree ui = TrellisBridge.buildColumn(CONTROLS, ConfigRows.ROWS_TOP_INSET);
         TrellisBridge.layoutColumn(ui, lo.items(), scrollOffset, 1f / GUI_SCALE);
         return ui;
     }

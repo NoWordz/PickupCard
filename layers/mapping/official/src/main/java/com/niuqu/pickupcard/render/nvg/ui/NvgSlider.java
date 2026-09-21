@@ -57,9 +57,10 @@ public final class NvgSlider extends NvgWidget {
         return y + h - 5f;
     }
 
+    /** 点在滑条上就跳到那儿。命中已由调用方判过（行内控件是树），这里只管手感。 */
     @Override
-    public boolean mouseClicked(double mouseX, double mouseY, int button) {
-        if (!super.mouseClicked(mouseX, mouseY, button)) {
+    public boolean press(double mouseX, double mouseY, int button) {
+        if (!super.press(mouseX, mouseY, button)) {
             return false;
         }
         dragTo(mouseX);

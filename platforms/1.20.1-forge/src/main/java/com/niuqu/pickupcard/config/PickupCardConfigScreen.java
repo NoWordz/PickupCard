@@ -216,23 +216,38 @@ public final class PickupCardConfigScreen extends Screen {
     /** 探针那棵树，按当前行的<b>形态</b>（几行、几个控件行）惰性建/重建。 */
     private UiTree trellisProbe() {
         List<ConfigRows.Row> rows = rowsModel.all();
-        boolean[] hasControl = new boolean[rows.size()];
-        int controls = 0;
+        NvgWidget[] controls = new NvgWidget[rows.size()];
+        int present = 0;
         for (int i = 0; i < rows.size(); i++) {
-            hasControl[i] = !rows.get(i).isHeader();
-            if (hasControl[i]) {
-                controls++;
+            controls[i] = rows.get(i).isHeader() ? null : rows.get(i).widget();
+            if (controls[i] != null) {
+                present++;
             }
         }
         if (trellisProbe == null || trellisProbeRows != rows.size()
-                || trellisProbeControls != controls) {
-            trellisProbe = TrellisBridge.buildColumn(hasControl, ConfigRows.ROWS_TOP_INSET);
+                || trellisProbeControls != present) {
+            trellisProbe = TrellisBridge.buildColumn(controls, ConfigRows.ROWS_TOP_INSET);
             trellisProbeRows = rows.size();
-            trellisProbeControls = controls;
+            trellisProbeControls = present;
             // 树一重建，每一行的标签盒子就换了一批 —— 那一帧把适配结果打进日志
             labelFitLogPending = true;
         }
         return trellisProbe;
+    }
+
+    /**
+     * 这一帧把树推到最新：时刻 → 布局（含滚动偏移）→ 指针 → 把悬停推给控件。
+     *
+     * <p>【为什么从 drawChrome 里搬出来、单独一趟】悬停缓动（{@link #driveAnimations}）、
+     * 底部说明、点击路由都要问"指着哪一行"，而它们有的发生在绘制之前 ——
+     * 树必须先算完。绘制那一趟因此只剩 {@link TrellisBridge#paint}。
+     */
+    private void updateTrellisProbe() {
+        UiTree probe = trellisProbe();
+        probe.tick(now * 1_000_000L);
+        TrellisBridge.layoutColumn(probe, layout().items(), scrollOffset(), deviceGrid());
+        probe.pointerMove(probePointerX(), probePointerY());
+        TrellisBridge.syncHover(probe);     // 悬停只有一份真相：树判，控件收
     }
 
     /**
@@ -243,6 +258,21 @@ public final class PickupCardConfigScreen extends Screen {
      * 看不出"缩了多少、有没有溢出"。
      */
     private boolean labelFitLogPending;
+
+    /**
+     * 给 harness 用：A-10 的悬停路由读数。
+     *
+     * <p>【为什么必须能读出来】"带子画在哪一行、缓动跟着哪一行、说明说的是哪一行"
+     * 是三个不同的消费者，但它们必须指同一行。截图只看得到第一条；后两条要靠这几个数。
+     */
+    public String probeDump() {
+        UiTree probe = trellisProbe();
+        return String.format(java.util.Locale.ROOT,
+                "探针指针=(%.1f,%.1f) 树判控件行=%d 树悬停=%s",
+                probePointerX(), probePointerY(),
+                TrellisBridge.controlRowAt(probe, probePointerX(), probePointerY()),
+                probe.hovered() == null ? "无" : probe.hovered().bounds().toString());
+    }
 
     /** 配置项那一列的滚动视口；每帧按当前几何重建（画布会变，视口跟着变）。 */
     private NvgScroll itemsScroll;
@@ -584,9 +614,13 @@ public final class PickupCardConfigScreen extends Screen {
             pendingRebuild = false;
             rebuild();
         }
-        driveAnimations(mouseX, mouseY);
         layoutRows();       // 每帧刷一遍：滚一下、换一页、改窗口尺寸，位置都要跟上
-        for (NvgWidget w : widgets()) {
+        // 【顺序不能换】树要先算完（含滚动偏移与指针），下面三件事才问得到"指着哪一行"：
+        // 悬停缓动、树外的控件悬停、以及绘制那趟里树的 paint。
+        updateTrellisProbe();
+        driveAnimations();
+        for (NvgWidget w : chips()) {
+            // 树外的控件（标签列、切样例按钮）：命中还是自己判 —— 它们不在树的几何里
             w.mouseMoved(mouseX, mouseY);
         }
 
@@ -760,15 +794,23 @@ public final class PickupCardConfigScreen extends Screen {
      * <p>【为什么统一在渲染前推】一个动画一件事：换页与强调条的目标恒为/随状态，悬停跟着鼠标。
      * 分散在各自的绘制里推进的话，"这一帧到底更新过谁"就没人说得清了。
      */
-    private void driveAnimations(int mouseX, int mouseY) {
+    private void driveAnimations() {
         preview.drive(now, sample);
         tabAccentAnim.retarget(page.ordinal(), now, TAB_MS);
-        for (ConfigRows.Row row : rowsModel.all()) {
+        // 悬停哪一行<b>问树</b>：它读的是 Component.bounds()，跟悬停底、命中是同一份几何。
+        // 指针位置用探针那一份（harness 可以让它假装停在某一行上）—— 这样缓动的行与
+        // 画出来的带子必然是同一条，不会出现"带子在这行、字亮的是那行"。
+        int hoveredControl = TrellisBridge.controlRowAt(trellisProbe(),
+                probePointerX(), probePointerY());
+        List<ConfigRows.Row> rows = rowsModel.all();
+        for (int i = 0; i < rows.size(); i++) {
+            ConfigRows.Row row = rows.get(i);
             if (row.isHeader()) {
                 continue;
             }
-            boolean on = forcedHover != null ? row.label().equals(forcedHover)
-                    : row.widget().hit(mouseX, mouseY);
+            boolean on = forcedHover != null
+                    ? row.label().equals(forcedHover)
+                    : i == hoveredControl;
             row.hover.retarget(on ? 1f : 0f, now, on ? HOVER_IN_MS : HOVER_OUT_MS);
         }
     }
@@ -780,14 +822,9 @@ public final class PickupCardConfigScreen extends Screen {
         // ---- Trellis 试点（配置列的悬停底改由 Trellis 画）----
         // 组件树自己画：命中（UiTree.hitTest）和绘制读的是同一个 bounds() 对象 —— 判据 1；
         // 悬停效果来自基类那一处，没有第二个地方知道 hover 长什么样 —— 判据 2。
-        UiTree probe = trellisProbe();
-        probe.tick(now * 1_000_000L);
-        // 行顶那 2px 从 ConfigRows 借过去当树的内边距；网格 = 1/guiScale（一个设备像素），
-        // 对齐放在布局层，渲染层再对就是恒等。滚动偏移也交给树 —— 不交的话，一滚起来
-        // 悬停底/命中/标签就与宿主那一份错开同样的 px（见 TrellisBridge.layoutColumn）。
-        TrellisBridge.layoutColumn(probe, lo.items(), scrollOffset(), deviceGrid());
-        probe.pointerMove(probePointerX(), probePointerY());
-        TrellisBridge.paint(ui.canvas(), probe);
+        // 布局/指针那几趟在 render() 开头的 updateTrellisProbe() 里（悬停缓动与说明都先用它），
+        // 这里只剩"画"。
+        TrellisBridge.paint(ui.canvas(), trellisProbe());
         PickupCardSettings eff = PickupCardConfig.snapshot();
         // 标题靠左、副标题跟同一个左缘（用户要求标题不居中；对齐 MARGIN 与标签列同一起点）。
         // 状态行钉在标题行右端 —— 总开关是"整体生效没生效"的唯一真源，藏进页里就得翻页才知道。
@@ -1004,13 +1041,17 @@ public final class PickupCardConfigScreen extends Screen {
         }
         // 夹在配置列里：滚出视口的行，它的矩形还在（只是被裁掉了）——
         // 不做这个判断的话，鼠标划过页眉时会说"这张卡的说明"，而那一行根本看不见。
+        // 【哪一行也问树】跟悬停底、点击是同一份几何（A-10）；host 那条 widget().hit() 删了。
+        // 【用探针那一份指针】生产环境它就是真指针；harness 可以让它假装停在某一行上。
+        // 说明、带子、标签缓动必须跟着同一个指针，否则截图里会出现"带子在这行、
+        // 说明说的是那行"——那种不一致只有数会露出来。
         ConfigLayout.Rect items = layout().items();
-        if (hint == null && mouseY >= items.y() && mouseY < items.bottom()) {
-            for (ConfigRows.Row row : rowsModel.all()) {
-                if (!row.isHeader() && row.widget().hit(mouseX, mouseY)) {
-                    hint = row.hint();
-                    break;
-                }
+        float pointerX = probePointerX();
+        float pointerY = probePointerY();
+        if (hint == null && pointerY >= items.y() && pointerY < items.bottom()) {
+            int row = TrellisBridge.controlRowAt(trellisProbe(), pointerX, pointerY);
+            if (row >= 0) {
+                hint = rowsModel.all().get(row).hint();
             }
         }
         if (hint == null) {
@@ -1126,7 +1167,16 @@ public final class PickupCardConfigScreen extends Screen {
 
     @Override
     public boolean mouseClicked(double mouseX, double mouseY, int button) {
-        trellisProbe().pointerDown((float) mouseX, (float) mouseY);
+        UiTree probe = trellisProbe();
+        // 【行内控件：命中由树说了算】controlRowAt 读的就是 Component.bounds()，
+        // 跟悬停底、标签、说明共用一份几何（判据 1）。滚出视口的行不再需要 host 那套
+        // "鼠标 y 在不在视口里"的补丁：视口外的盒子与指针不相交，树自己就判不到。
+        boolean onControl = button == 0
+                && TrellisBridge.controlRowAt(probe, (float) mouseX, (float) mouseY) >= 0;
+        if (button == 0) {
+            // 标签那一半也会收到按下（叠加层让"按下去了"看得见），只是那一格没有行为
+            probe.pointerDown((float) mouseX, (float) mouseY);
+        }
         // 【点预览 = 放一张】动画页来一张新的走完整时间线；其他页重播一次入场。
         // 【位置页例外】预览这时是整屏缩影 —— 点它直接开拖拽编辑场：在缩略图上看到
         // 位置不满意，下一步动作必然是"去调位置"，给他一步到位。
@@ -1141,13 +1191,11 @@ public final class PickupCardConfigScreen extends Screen {
             }
             return true;
         }
-        ConfigLayout.Rect items = layout().items();
-        for (NvgWidget w : widgets()) {
-            // 滚出视口的行不该还能被点到（它们的位置在视口外，只有 x 可能重合）
-            boolean rowWidget = rowsModel.all().stream().anyMatch(r -> !r.isHeader() && r.widget() == w);
-            if (rowWidget && (mouseY < items.y() || mouseY >= items.bottom())) {
-                continue;
-            }
+        if (onControl) {
+            return true;        // 树已经把它按下去了，控件也收到 press 了
+        }
+        for (NvgWidget w : chips()) {
+            // 树外的控件（标签列、切样例按钮）：命中还是自己判 —— 它们不在树的几何里
             if (w.mouseClicked(mouseX, mouseY, button)) {
                 return true;
             }
@@ -1155,20 +1203,24 @@ public final class PickupCardConfigScreen extends Screen {
         for (NvgWidget w : widgets()) {
             w.blur();       // 点在空白处：所有控件交还焦点（文本框的光标就该停）
         }
+        probe.requestFocus(null);
         return super.mouseClicked(mouseX, mouseY, button);
     }
 
     @Override
     public boolean mouseReleased(double mouseX, double mouseY, int button) {
+        // 行内控件：树把抬起<b>发给按下的那一个</b>（指针捕获）—— 拖到格子外面松手，
+        // 控件也能把手感收回去；落点还在格子里才算一次点击（见 ControlSlot）。
         trellisProbe().pointerUp((float) mouseX, (float) mouseY);
-        for (NvgWidget w : widgets()) {
-            w.mouseReleased(mouseX, mouseY);
+        for (NvgWidget w : chips()) {
+            w.mouseReleased(mouseX, mouseY);        // 树外的控件：命中还是自己判
         }
         return true;
     }
 
     @Override
     public boolean mouseDragged(double mouseX, double mouseY, int button, double dragX, double dragY) {
+        // 拖拽仍是广播：谁"正被按着"（pressed）谁自己动手，没有命中判断可做。
         for (NvgWidget w : widgets()) {
             w.mouseDragged(mouseX, mouseY);
         }

@@ -95,11 +95,21 @@ public abstract class NvgWidget {
     private long paintedFrame = -1L;
 
     // ------------------------------------------------------------------
-    // 事件：屏幕把真实鼠标事件转给控件，命中就吃掉
+    // 事件：命中由调用方判（行内控件是树，树外的控件是屏幕自己）
     // ------------------------------------------------------------------
 
-    public boolean mouseClicked(double mouseX, double mouseY, int button) {
-        if (button != 0 || !hit(mouseX, mouseY)) {
+    /**
+     * 按下。<b>命中已经由调用方判过了</b>：行内控件由 Trellis 的树判（{@code Component.bounds()}），
+     * 树外的控件（标签列、切样例按钮）由屏幕自己判。
+     *
+     * <p>【为什么控件不再自己判命中】判据 1 要的是"画出来的、点得到的、指到的是同一个
+     * {@code Rect}"。行内控件的几何现在由树算，控件自己那份 {@code x/y/w/h} 是宿主的整数
+     * 取整版 —— 让控件再判一次就是又一份几何，边带里会出现"树说点到了、控件说没有"。
+     *
+     * @return 这次按下要不要吃掉（按钮不对就吃不掉）
+     */
+    public boolean press(double mouseX, double mouseY, int button) {
+        if (button != 0) {
             return false;
         }
         pressed = true;
@@ -107,12 +117,36 @@ public abstract class NvgWidget {
         return true;
     }
 
-    public void mouseReleased(double mouseX, double mouseY) {
+    /**
+     * 松开。{@code activate} 是<b>调用方</b>的判断："按下与抬起是同一格"由它保证
+     * （树那边用的就是 {@code bounds().contains(落点)} —— 同一份几何，不是第二份）。
+     *
+     * <p>无论如何都把 {@code pressed} 收回去：拖到格子外面松手，手感也必须结束。
+     */
+    public void release(double mouseX, double mouseY, boolean activate) {
         boolean wasPressed = pressed;
         pressed = false;
-        if (wasPressed && hit(mouseX, mouseY)) {
+        if (wasPressed && activate) {
             onActivate();
         }
+    }
+
+    /** 悬停也由调用方给（行内控件来自树，树外的来自屏幕自己的命中）。 */
+    public void hover(boolean value) {
+        hovered = value;
+        if (!value && !pressed) {
+            focused = false;
+        }
+    }
+
+    // ---- 下面三个是"命中由自己判"的那条老路：树外的控件还在用 ----
+
+    public boolean mouseClicked(double mouseX, double mouseY, int button) {
+        return hit(mouseX, mouseY) && press(mouseX, mouseY, button);
+    }
+
+    public void mouseReleased(double mouseX, double mouseY) {
+        release(mouseX, mouseY, hit(mouseX, mouseY));
     }
 
     /** 拖拽：滑条要靠它才有手感。默认什么都不做。 */
@@ -120,10 +154,7 @@ public abstract class NvgWidget {
     }
 
     public void mouseMoved(double mouseX, double mouseY) {
-        hovered = hit(mouseX, mouseY);
-        if (!hovered && !pressed) {
-            focused = false;
-        }
+        hover(hit(mouseX, mouseY));
     }
 
     /** 敲键盘（只有文本框这类需要）。 */
