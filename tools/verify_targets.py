@@ -15,7 +15,7 @@
   7. 平台不许定义身份  各平台 gradle.properties 里不许出现身份键（否则就是第二个真源）
   8. buildable 不许有未验证字段
   9. 仓库地址只有一份  资源与文档里出现的本仓库地址必须与 mod_repo_url 一致，且不许硬编码进资源
- 10. 商店正文合规     docs/{modrinth,curseforge}-description.md 骨架齐全（头图/标题/标语/徽章）且两份一致
+ 10. 商店正文两份正本  docs/store/{zh,en}.md 逐节对等；三份产物必须等于从正本重生成的结果
 
 用法：python tools/verify_targets.py
 退出码 0 = 全绿，1 = 有问题（问题打在 stderr）。
@@ -179,41 +179,22 @@ def check_repo_url(props: dict[str, str]) -> None:
             # 同 owner 下的兄弟仓库、以及上游仓库：都是真的别的地址，放行
 
 
-# 商店正文：Modrinth 由 API 推、CurseForge 只能人工贴（官方 API 没有改描述的端点）。
-STORE_COPY = ["docs/modrinth-description.md", "docs/curseforge-description.md"]
+# 商店正文：**两份正本 → 三份产物**（`tools/store_copy.py`）。
+# 用户 2026-09-21 的原话是「好乱啊怎么办」—— 那天仓库里躺着四份描述文件、两种标记、两种语言，
+# 手写几遍就要同步几遍。现在只有两份人写的正本，产物是生成的。
+STORE_SOURCES = ["docs/store/zh.md", "docs/store/en.md"]
 
-# 正文骨架：头图 / 标题 / 斜体标语 / 徽章行。规范的正本是 AtomChat 那两份
-# （头图 + `# 名字` + `_标语_` + 徽章行 + 分节），2026-09-21 在 pickupcard 落地。
-STORE_TAGLINE_LINE = 6      # 标语必须出现在前 6 行内
-STORE_MIN_BADGES = 3        # 徽章行至少几个 img.shields.io
+# 产物名（与 tools/store_copy.py 的 OUTPUTS 一致；这里只用来报数）
+OUTPUT_FILES = ["modrinth.md", "curseforge.md", "mcmod.md"]
 
-# 【三份正文内容必须一致，只有标记与语言不同】
-# 用户原话（2026-09-21）：「mcmod，mr，cf，除了格式不同，内容要相同，都是概述+特点+配置+兼容性+faq+问题反馈等等」，
-# 以及「一定要简洁+突出重点！不要那么多标题」。正本是 AtomChat 那两页（EN 9 节 / ZH 用 [h1=] 与 [h2=] 分层）。
-# 这里把"内容相同"落成三件可机检的事：**节表一一对应**、**每节条目数相同**、**每节事实 token 两边都不许少**。
-# 光写进 skill 不够 —— 模型在推送那一刻未必知道有这条规范，闸才是不会忘的那一份。
-MCMOD_COPY = "docs/mcmod-description.md"
-
-# 节表：EN（Modrinth / CurseForge）↔ ZH（MC 百科）。顺序也必须一致。
-# `None` = 概述：EN 是第一个标题之前的那几段，ZH 是 [h1=概述] 那一段。
-STORE_SECTIONS = [
-    (None, "[h1=概述]"),
-    ("## Features", "[h2=主要功能]"),
-    ("## Configuration", "[h2=配置]"),
-    ("## Compatibility", "[h2=兼容性]"),
-    ("## Known Limitations", "[h2=已知限制]"),
-    ("## FAQ", "[h1=常见问题]"),
-    ("## Changelog", "[h1=更新日志]"),
-    ("## Feedback", "[h1=问题反馈]"),
-]
-
-# 数条目与抽事实时要跳过的"版式行"：头图 / 标题 / 斜体标语 / 徽章 / MC 百科的目录标记。
-# （徽章行里有 "1.20.1" 这种数字，不排掉的话概述那节的事实对等会假报。）
+# 数条目与抽事实时要跳过的"版式行"：头图 / 标题 / 斜体标语 / 徽章 / 百科的目录标记。
+# （正本里本来不该有这些，排掉是为了让闸也能读产物。）
 STORE_LAYOUT_LINE = re.compile(r"^(?:!\[|<img|#|_|\[mark)|img\.shields\.io")
 
 # 事实 token：反引号里的标识符 / 键名 / 路径，以及数字（含 ms、% 这类单位）。
 # 归一化去掉反引号与空白 —— "0.9 ms" 与 "0.9ms" 是同一件事（changelog 那套闸踩过这个坑）。
 FACT_TOKEN = re.compile(r"`[^`]+`|\d+(?:\.\d+)*(?:\s*(?:ms|%|MB|KB))?")
+
 
 
 
@@ -249,53 +230,35 @@ def banner_key(value: str | None) -> str | None:
 
 
 
-def split_sections(text: str, en: bool) -> tuple[list[str], list[tuple[str, str]]]:
-    """按标题切段。返回（概述行, [(标题, 正文), …]）。
-
-    EN 的标题是 `## X`，ZH（MC 百科）是 `[h1=X]` / `[h2=X]`；`[mark:…]` 是百科的目录标记，不算标题。
-    """
-    heading = re.compile(r"^##\s+(.+?)\s*$") if en else re.compile(r"^\[h[12]=(.+?)\]\s*$")
-    intro: list[str] = []
+def split_sections(text: str) -> list[tuple[str, str]]:
+    """按 `# 标题` 切段。正本两份共用同一种中立标记（产物才带平台标记）。"""
+    heading = re.compile(r"^#\s+(.+?)\s*$")
     sections: list[tuple[str, list[str]]] = []
     for line in text.splitlines():
         match = heading.match(line)
         if match:
-            sections.append((line.strip(), []))
+            sections.append((match.group(1), []))
             continue
         if sections:
             sections[-1][1].append(line)
-        else:
-            intro.append(line)
-    return intro, [(head, "\n".join(body)) for head, body in sections]
+    return [(head, "\n".join(body)) for head, body in sections]
 
 
 def store_items(body: str) -> int:
-    """数条目：表格数据行算一条，其余非空行各算一条（版式行不计）。
+    """数条目：非空行各算一条（版式行不计）。
 
-    表头与分隔行要排掉，否则"EN 用表格、ZH 用列表"这一处格式差异会假报条目数不等。
+    正本两份都是"一条一行"的形状，所以这一条跨语言可比 —— 而两者的**标记差异**已经由
+    `store_copy.py` 承担了，闸不用再为"表格 vs 列表"绕路。
     """
-    lines = [l.strip() for l in body.splitlines() if l.strip()]
-    total = 0
-    for i, line in enumerate(lines):
-        if STORE_LAYOUT_LINE.search(line):
-            continue
-        if line.startswith("|"):
-            if set(line) <= set("|-: "):          # 分隔行
-                continue
-            nxt = lines[i + 1] if i + 1 < len(lines) else ""
-            if set(nxt) <= set("|-: ") and nxt.startswith("|"):
-                continue                          # 表头（下一行是分隔行）
-            total += 1
-            continue
-        total += 1
-    return total
+    return sum(1 for line in body.splitlines()
+               if line.strip() and not STORE_LAYOUT_LINE.search(line.strip()))
 
 
 def store_facts(body: str) -> set[str]:
     """抽事实 token（反引号标识符 + 数字/单位），归一化掉反引号与空白。
 
     **先把 URL 抹掉**：`https://github.com/E33EPUS/...` 里的 "33" 会被当成一个数字事实，
-    而中文那边根本没有 URL（MC 百科不让正文塞外链）—— 不抹就是一片假报。
+    两份正本只要一处写链接另一处没写，就是一片假报。
     """
     facts = set()
     for line in body.splitlines():
@@ -308,103 +271,70 @@ def store_facts(body: str) -> set[str]:
     return facts
 
 
-def check_store_parity() -> None:
-    """三份正文的内容必须相同：节表一一对应、每节条目数相同、每节事实 token 两边都不许少。
+def check_store_sources() -> None:
+    """两份正本必须逐节对等：节数相同、每节条目数相同、每节事实 token 两边都不许少。
 
-    【为什么这三条】"内容相同、只有格式不同"是句人话，机器只能这么落：
-      · 节表 → 谁少了一节（或顺序变了）立刻看得见；
-      · 条目数 → "只补了半条"这类漏译（changelog 那边就是这么抓出来的）；
-      · 事实 token → 数字、键名、路径这些跨语言不变的东西，缺一个就是内容漂了。
+    【为什么不再需要节表映射】两份正本用同一种中立标记、同一个顺序，第 N 节对第 N 节 ——
+    2026-09-21 之前那张 EN↔ZH 的节表映射是"两份文件各写各的标记"逼出来的，现在没有了。
     """
-    en_path = ROOT / STORE_COPY[0]
-    zh_path = ROOT / MCMOD_COPY
-    if not (en_path.is_file() and zh_path.is_file()):
+    paths = [ROOT / rel for rel in STORE_SOURCES]
+    if not all(p.is_file() for p in paths):
         return  # 还没上架的仓库可以没有，但一旦有了就得对齐
 
-    en_intro, en_sections = split_sections(en_path.read_text(encoding="utf-8"), en=True)
-    _, zh_sections = split_sections(zh_path.read_text(encoding="utf-8"), en=False)
+    (zh_path, en_path) = paths  # STORE_SOURCES = [zh, en]
+    zh = split_sections(zh_path.read_text(encoding="utf-8"))
+    en = split_sections(en_path.read_text(encoding="utf-8"))
 
-    en_want = [h for h, _ in STORE_SECTIONS if h]
-    zh_want = [z for _, z in STORE_SECTIONS if z]
-    if [h for h, _ in en_sections] != en_want:
-        fail(f"{STORE_COPY[0]} 的节表与规范不符：\n      期望 {en_want}\n      "
-             f"实际 {[h for h, _ in en_sections]}")
-    if [h for h, _ in zh_sections] != zh_want:
-        fail(f"{MCMOD_COPY} 的节表与规范不符：\n      期望 {zh_want}\n      "
-             f"实际 {[h for h, _ in zh_sections]}")
-
-    # EN 的概述没有标题（在第一个 `## ` 之前），ZH 的概述是 `[h1=概述]` 那一段 ——
-    # 所以：概述单独配对，正文节表从 STORE_SECTIONS 的第二项起、与 ZH 的后半段一一对应。
-    pairs = [("（概述）", "\n".join(en_intro), zh_sections[0][1] if zh_sections else "")]
-    for (en_head, _), (_, en_body), (_, zh_body) in zip(STORE_SECTIONS[1:], en_sections,
-                                                        zh_sections[1:]):
-        pairs.append((en_head, en_body, zh_body))
-
-
-    for label, en_body, zh_body in pairs:
-        en_count, zh_count = store_items(en_body), store_items(zh_body)
-        if en_count != zh_count:
-            fail(f"商店正文「{label}」条目数不等：EN {en_count} 条 vs ZH {zh_count} 条 —— "
-                 f"内容要相同，只许格式不同")
-        en_facts, zh_facts = store_facts(en_body), store_facts(zh_body)
-        missing_in_zh = sorted(en_facts - zh_facts)
+    if len(zh) != len(en):
+        fail(f"商店正本节数不等：{STORE_SOURCES[0]} {len(zh)} 节 vs "
+             f"{STORE_SOURCES[1]} {len(en)} 节\n      "
+             f"中文 {[h for h, _ in zh]}\n      英文 {[h for h, _ in en]}")
+    for i, ((zh_head, zh_body), (en_head, en_body)) in enumerate(zip(zh, en), 1):
+        label = f"第 {i} 节（{zh_head} / {en_head}）"
+        zh_count, en_count = store_items(zh_body), store_items(en_body)
+        if zh_count != en_count:
+            fail(f"商店正本{label} 条目数不等：中文 {zh_count} 条 vs 英文 {en_count} 条 —— "
+                 f"内容要相同，只许语言不同")
+        zh_facts, en_facts = store_facts(zh_body), store_facts(en_body)
         missing_in_en = sorted(zh_facts - en_facts)
-        if missing_in_zh:
-            fail(f"商店正文「{label}」里这些事实只在 EN、中文那边没有：{missing_in_zh}")
+        missing_in_zh = sorted(en_facts - zh_facts)
         if missing_in_en:
-            fail(f"商店正文「{label}」里这些事实只在中文、EN 那边没有：{missing_in_en}")
+            fail(f"商店正本{label} 里这些事实只在中文、英文那边没有：{missing_in_en}")
+        if missing_in_zh:
+            fail(f"商店正本{label} 里这些事实只在英文、中文那边没有：{missing_in_zh}")
 
 
-def check_store_copy(props: dict[str, str]) -> None:
-    """商店正文（Modrinth / CurseForge）的骨架与一致性。
+def check_store_outputs() -> None:
+    """三份产物必须等于"从正本重生成"的结果，且头图与 README 顶部那张同源。
 
-    三件事，都是"没有闸就会漂"的那种：
-
-      · **两份必须逐字节一致**。CurseForge 只能人工贴，于是"改了 Modrinth 忘了 CF"是必然事件；
-        AtomChat 那两份现在只差一行徽章 —— 页面上的徽章是手贴的，谁也不知道哪份才准。
-      · **骨架必须齐全**：头图、`# 名字`、斜体标语、徽章行。少了头图或徽章，页面看着就是
-        "没做完"，而正文本身照样能被推上去 —— 没有构建会失败。
-      · **头图必须与 README 顶部那张同源**。商店后台上传的图不在仓库里，各用各的之后，
-        门面与商店就是两张不同的脸，而没有任何东西会把它们对起来。
+    【为什么这条比"三份互相比对"硬】比对只能发现两处不一致；重生成能发现**任何**手工改动 ——
+    包括"改了产物忘了改正本"（那是最容易发生的漂，因为产物才是大家顺手编辑的那份文件）。
     """
-    mod_name = props.get("mod_name", "").strip()
-    bodies: dict[str, str] = {}
-    for rel in STORE_COPY:
-        path = ROOT / rel
-        if not path.is_file():
-            continue  # 还没上架的仓库可以没有，但一旦有了就得合规
-        bodies[rel] = path.read_text(encoding="utf-8")
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    try:
+        import store_copy
+    except ImportError as exc:  # pragma: no cover - 只有文件被挪走才走得到
+        fail(f"读不到 tools/store_copy.py（{exc}）—— 商店产物由它生成，缺了就没法校验")
+        return
 
-    if len(bodies) == 2:
-        (a, text_a), (b, text_b) = bodies.items()
-        if text_a != text_b:
-            fail(f"{a} 与 {b} 内容不一致 —— CurseForge 只能人工贴，两份分头维护必然漂；"
-                 f"先合成一份再贴（真要平台差异，得先把差异写进这里的规则里）")
+    rendered = store_copy.render_all()
+    for name, expected in rendered.items():
+        path = store_copy.STORE / name
+        actual = path.read_text(encoding="utf-8") if path.is_file() else None
+        if actual != expected:
+            fail(f"docs/store/{name} 与正本重生成的结果不一致"
+                 + ("（文件不存在）" if actual is None else "")
+                 + " —— 改内容请改 docs/store/{zh,en}.md，然后跑 "
+                   "python tools/store_copy.py --write")
 
     readme = ROOT / "README.md"
-    banner = first_image_url(readme.read_text(encoding="utf-8")) if readme.is_file() else None
+    if readme.is_file():
+        store_banner = store_copy.BANNER
+        readme_image = banner_key(first_image_url(readme.read_text(encoding="utf-8")))
+        if readme_image and readme_image != banner_key(store_banner):
+            fail(f"README 顶部那张图（{readme_image}）与商店正文头图（{store_banner}）"
+                 f"不是同一张 —— 门面与商店各用各的图，就没有东西会把它们对起来")
 
-    for rel, text in bodies.items():
-        lines = [l for l in text.splitlines() if l.strip()]
-        if not lines:
-            fail(f"{rel} 是空的")
-            continue
-        if not re.match(r"^!\[[^\]]*\]\(https?://", lines[0]):
-            fail(f"{rel} 的第一行不是头图（`![名字](http…)`）—— 商店正文的开头就是那张图")
-        if mod_name and f"# {mod_name}" not in text:
-            fail(f"{rel} 里没有 `# {mod_name}` 标题")
-        head = lines[:STORE_TAGLINE_LINE]
-        if not any(l.startswith("_") and l.rstrip().endswith("_") for l in head):
-            fail(f"{rel} 的前 {STORE_TAGLINE_LINE} 行里没有斜体标语（`_…_`）")
-        badge_lines = [l for l in head if "img.shields.io" in l]
-        if not badge_lines:
-            fail(f"{rel} 的前 {STORE_TAGLINE_LINE} 行里没有徽章行")
-        elif badge_lines[0].count("img.shields.io") < STORE_MIN_BADGES:
-            fail(f"{rel} 的徽章行只有 {badge_lines[0].count('img.shields.io')} 个徽章"
-                 f"（少于 {STORE_MIN_BADGES}）—— MC / 加载器 / 侧别这几条是基本盘")
-        if banner and banner_key(first_image_url(text)) != banner_key(banner):
-            fail(f"{rel} 的头图与 README 顶部那张不是同一张（README 用的是 "
-                 f"{banner}）—— 门面与商店各用各的图，唯一没有闸盯着的地方就多出一张脸")
 
 
 
@@ -420,8 +350,9 @@ def main() -> int:
             fail(f"仓库根 gradle.properties 缺身份键 {key}")
     check_identity_values(root_props)
     check_repo_url(root_props)
-    check_store_copy(root_props)
-    check_store_parity()
+    check_store_sources()
+    check_store_outputs()
+    store_outputs = sorted(OUTPUT_FILES)
 
     # ---- 2. 矩阵是规则 ----
     by_version: dict[str, set[str]] = {}
@@ -522,7 +453,8 @@ def main() -> int:
         return 1
 
     print(f"verify_targets: 全绿（{len(targets)} 个目标，{len(layers)} 个层，"
-          f"约 {total_checks} 项检查；身份 {len(IDENTITY_KEYS)} 键、仓库链接 {stats['links']} 处一致）")
+          f"约 {total_checks} 项检查；身份 {len(IDENTITY_KEYS)} 键、仓库链接 {stats['links']} 处一致、"
+          f"商店正本 {len(STORE_SOURCES)} 份 → 产物 {len(store_outputs)} 份）")
     for version in sorted(by_version):
         loaders = ", ".join(sorted(by_version[version]))
         print(f"  MC {version}: {loaders}")

@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""把 docs/modrinth-description.md 同步到 Modrinth 项目正文。
+"""把 docs/store/modrinth.md 同步到 Modrinth 项目正文（那份由 store_copy.py 从正本生成）。
 
 【正文怎么写，看 skill `store-description`】三份商店正文（Modrinth / CurseForge / MC 百科）
 内容必须相同、只有标记与语言不同。改正文前后都要跑 `python tools/verify_targets.py` ——
-`check_store_copy` 与 `check_store_parity` 就是那道闸（骨架、两份一致、节表、条目数、事实 token）。
+`check_store_sources`（两份正本逐节对等）与 `check_store_outputs`（产物 = 重生成结果）就是那道闸。
 **别只信记忆**：闸是唯一不会忘的那一份。
 
 【为什么只有 Modrinth】CurseForge 的官方 Upload API 只有"上传文件"的端点，**没有改项目
@@ -30,7 +30,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 API = "https://api.modrinth.com/v2"
-DESC = ROOT / "docs" / "modrinth-description.md"
+DESC = ROOT / "docs" / "store" / "modrinth.md"
 
 
 def project_id() -> str:
@@ -67,7 +67,7 @@ def main() -> int:
     remote = request("GET", f"{API}/project/{pid}")
     remote_body = (remote.get("body") or "").strip()
     print(f"store_sync: 项目 {pid}（{remote.get('title')}）")
-    print(f"  本地 docs/modrinth-description.md: {len(local.splitlines())} 行")
+    print(f"  本地 docs/store/modrinth.md: {len(local.splitlines())} 行")
     print(f"  远端正文                        : {len(remote_body.splitlines())} 行")
 
     if local == remote_body:
