@@ -904,10 +904,11 @@ public final class PickupCardConfigScreen extends Screen {
     private static final float LABEL_MIN_FONT = 8f;
 
     /**
-     * 溢出报不报的门槛（逻辑 px）：缩到"刚好装下"的那一档，浮点会多出百万分之几 ——
-     * 那不是溢出。真溢出（到地板之后放不下）差的是好几个 px，量级差着三个数量级。
+     * 截断时接在末尾的串：<b>ASCII 三个点，不是 U+2026</b>。
+     * 能不能画出来是字体的事 —— MC 的默认图集里一定有 `...`，而 `…` 要靠 unifont 兜底
+     * （形状与基线都跟默认字体不是一套）。这一串也参与度量，所以它画得出来才算数。
      */
-    private static final float LABEL_OVERFLOW_EPSILON = 0.1f;
+    private static final String LABEL_ELLIPSIS = "...";
 
     /**
      * 标签列的文字：<b>文本框由 Trellis 算（树里每行的第 1 个孩子），字形由 MC 画</b>。
@@ -915,7 +916,8 @@ public final class PickupCardConfigScreen extends Screen {
      * <p>【为什么不再问 {@code ui.textFitted}】它的办法是"装不下就把整串字整体缩放
      * {@code k = maxW / tw}"，<b>没有下限</b> —— 长文案一路缩到看不清，而且什么都不报。
      * Trellis 的 {@code shrinkToFit} 重测一个<b>更小字号</b>（不是把画出来的东西拉伸），
-     * 并且把地板写进签名。位置也不再手算（{@code labelX() + 3 / yAt + 5} 那两份必然漂）。
+     * 并且把地板写进签名；到地板还装不下就 {@code ellipsize}（少几个字，不越界）。
+     * 位置也不再手算（{@code labelX() + 3 / yAt + 5} 那两份必然漂）。
      *
      * <p>【为什么文字要跟着视口裁】滚出视口的那几行，宿主自己也不画控件；标签不裁的话
      * 会糊在下面的说明带上。取整与 {@code NvgUi.close()} 提交文字时用的那一套一致。
@@ -932,12 +934,12 @@ public final class PickupCardConfigScreen extends Screen {
                 ConfigRows.Row row = rows.get(i);
                 Rect box = TrellisBridge.labelBox(probe, i);
                 TrellisBridge.LabelFit fit = TrellisBridge.fitLabel(trellisText(), row.label(),
-                        box, McFont.EM, LABEL_MIN_FONT);
+                        box, McFont.EM, LABEL_MIN_FONT, LABEL_ELLIPSIS);
                 // 悬停时标签由暗到亮：它、那条高亮带、底部那句说明指的是同一行
                 int argb = row.isHeader()
                         ? palette.textDim
                         : NvgUi.mix(palette.textDim, palette.text, row.hover.at(now));
-                drawLabel(gui, row.label(), fit, argb);
+                drawLabel(gui, fit, argb);
                 if (log != null) {
                     if (log.length() > 0) {
                         log.append(" | ");
@@ -947,8 +949,19 @@ public final class PickupCardConfigScreen extends Screen {
                                     fit.width()))
                             .append(" 缩放").append(String.format(java.util.Locale.ROOT, "%.3f",
                                     fit.scale()))
-                            .append(fit.shrunk() ? " 缩" : " 原")
-                            .append(fit.width() > box.width() + LABEL_OVERFLOW_EPSILON ? " 溢" : "");
+                            .append(switch (fit.mode()) {
+                                case ORIGINAL -> " 原";
+                                case SHRUNK -> " 缩";
+                                case ELLIPSIZED -> " 截";
+                            });
+                    if (fit.mode() == TrellisBridge.LabelFit.Mode.ELLIPSIZED) {
+                        // 画出来的串跟着进日志：只看"截了"三个字，看不出截成了什么
+                        log.append('→').append(fit.text());
+                    }
+                    if (fit.overflow()) {
+                        // 到这一步只有一种可能：盒子窄到连省略号都放不下（见 LabelFit#overflow）
+                        log.append(" 溢");
+                    }
                 }
             }
         } finally {
@@ -956,20 +969,20 @@ public final class PickupCardConfigScreen extends Screen {
         }
         if (log != null) {
             labelFitLogPending = false;
-            PickupCard.LOGGER.info("[trellis-label] 标签适配（盒宽 / Trellis 量宽 / 缩放 / 缩没缩 / 溢没溢）: {}",
+            PickupCard.LOGGER.info("[trellis-label] 标签适配（盒宽 / Trellis 量宽 / 缩放 / 原缩截 / 溢没溢）: {}",
                     log);
         }
     }
 
     /**
-     * 画一行字：MC 的字形，Trellis 给的位置与字号。
+     * 画一行字：MC 的字形，Trellis 给的位置、字号与串（截断那一档串是带省略号的）。
      *
      * <p>【为什么要 pose 缩放】MC 的字体只有一个尺寸（行高 9），"字号"只能靠矩阵表达；
      * 这里的倍数来自 {@code shrinkToFit} 量出的字号（带地板），不是宽度比当场算的。
      * 缩过的那一档本来就放弃了锐度，没缩的那一档必须落在设备整数上 ——
      * 位图字形停在设备半像素上会糊，而 {@code TextAlign} 居中出来的 y 带着 .5。
      */
-    private void drawLabel(GuiGraphics gui, String text, TrellisBridge.LabelFit fit, int argb) {
+    private void drawLabel(GuiGraphics gui, TrellisBridge.LabelFit fit, int argb) {
         float y = fit.scale() == 1f ? Snapping.edge(fit.top(), deviceGrid()) : fit.top();
         var pose = gui.pose();
         pose.pushPose();
@@ -978,7 +991,7 @@ public final class PickupCardConfigScreen extends Screen {
             pose.scale(fit.scale(), fit.scale(), 1f);
         }
         // 阴影开着：与从前那条路（NvgUi.textFitted）一致，不给这一轮多叠一个变量
-        gui.drawString(this.font, text, 0, 0, argb, true);
+        gui.drawString(this.font, fit.text(), 0, 0, argb, true);
         pose.popPose();
     }
 

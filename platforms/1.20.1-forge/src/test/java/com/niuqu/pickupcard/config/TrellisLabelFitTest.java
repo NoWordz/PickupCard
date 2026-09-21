@@ -40,6 +40,8 @@ class TrellisLabelFitTest {
     private static final float GUI_SCALE = 3f;
     /** 标签缩字地板，与屏幕里那个常量同一个值（这里是"接口的一侧"，不是抄数）。 */
     private static final float MIN_FONT = 8f;
+    /** 截断时接在末尾的串，与屏幕里那个常量同一个值。 */
+    private static final String ELLIPSIS = "...";
 
     /**
      * 照 MC 形状捏的假字体：每码点 1 em 宽、行框 = ascent(7/9) + descent(2/9) = 1 em。
@@ -135,18 +137,19 @@ class TrellisLabelFitTest {
     }
 
     // -----------------------------------------------------------------------
-    // 适配：缩的是字号，而且有地板
+    // 适配：缩的是字号、有地板，到地板还装不下就截断
     // -----------------------------------------------------------------------
 
     @Test
     @DisplayName("装得下：原字号，量宽就是自然宽")
     void fitsAtFullSize() {
         Rect box = TrellisBridge.labelBox(column(0f), 0);
-        LabelFit fit = TrellisBridge.fitLabel(METRICS, "abcd", box, McFont.EM, MIN_FONT);
+        LabelFit fit = TrellisBridge.fitLabel(METRICS, "abcd", box, McFont.EM, MIN_FONT, ELLIPSIS);
 
-        assertFalse(fit.shrunk(), "36px 的字在 73px 的盒子里不该缩");
+        assertEquals(LabelFit.Mode.ORIGINAL, fit.mode(), "36px 的字在 73px 的盒子里不该缩");
         assertEquals(1f, fit.scale(), 1e-4f);
         assertEquals(36f, fit.width(), 1e-3f);
+        assertEquals("abcd", fit.text(), "原字号那一档不该改串");
         assertEquals(box.x(), fit.x(), 1e-4f, "行框左端不是盒子的左端");
     }
 
@@ -155,25 +158,66 @@ class TrellisLabelFitTest {
     void shrinksToFitExactly() {
         Rect box = TrellisBridge.labelBox(column(0f), 0);
         // 9 个字符 = 81px > 盒宽（约 73.3），需要缩到 0.905 左右
-        LabelFit fit = TrellisBridge.fitLabel(METRICS, "abcdefghi", box, McFont.EM, MIN_FONT);
+        LabelFit fit = TrellisBridge.fitLabel(METRICS, "abcdefghi", box, McFont.EM, MIN_FONT,
+                ELLIPSIS);
 
-        assertTrue(fit.shrunk(), "81px 的字在 73px 的盒子里必须缩");
+        assertEquals(LabelFit.Mode.SHRUNK, fit.mode(), "81px 的字在 73px 的盒子里必须缩");
         assertEquals(box.width(), fit.width(), 1e-3f, "缩完的宽没有正好落在盒宽上");
         assertEquals(box.width() / 81f, fit.scale(), 1e-4f, "缩放倍数不是 maxW / 自然宽");
         assertTrue(fit.scale() * McFont.EM >= MIN_FONT, "缩过了地板");
+        assertEquals("abcdefghi", fit.text(), "缩字那一档不该改串");
     }
 
     @Test
-    @DisplayName("到地板就不再缩：宁可溢出，溢出量报得出来")
-    void stopsAtTheReadabilityFloor() {
+    @DisplayName("到地板还装不下就截断：串带省略号，量宽回到盒内")
+    void ellipsizesAfterTheFloor() {
         Rect box = TrellisBridge.labelBox(column(0f), 0);
         // 16 个字符 = 144px，线性缩到装下需要 0.51 < 地板 8/9
-        LabelFit fit = TrellisBridge.fitLabel(METRICS, "abcdefghijklmnop", box, McFont.EM, MIN_FONT);
+        LabelFit fit = TrellisBridge.fitLabel(METRICS, "abcdefghijklmnop", box, McFont.EM, MIN_FONT,
+                ELLIPSIS);
 
-        assertEquals(MIN_FONT / McFont.EM, fit.scale(), 1e-4f, "没有停在地板上");
-        assertEquals(144f * MIN_FONT / McFont.EM, fit.width(), 1e-2f);
-        assertTrue(fit.width() > box.width(),
-                "溢不溢要能报出来（宿主据此才知道该改文案还是改布局）");
+        assertEquals(LabelFit.Mode.ELLIPSIZED, fit.mode(), "到地板还装不下就该截断");
+        assertEquals(MIN_FONT / McFont.EM, fit.scale(), 1e-4f, "截断那一档不再是基准字号");
+        // 8px 下每字 8px，"..." 占 24px：73.3 - 24 = 49.3 → 留住 6 个字
+        assertEquals("abcdef" + ELLIPSIS, fit.text(), "截出来的串不是按簇边界切的");
+        assertTrue(fit.width() <= box.width(), "截断之后还是越界：" + fit.width());
+        assertTrue(fit.width() > 0f);
+    }
+
+    @Test
+    @DisplayName("盒子窄到连省略号都放不下：截断那一档也要把越界报出来")
+    void reportsOverflowWhenEvenTheEllipsisDoesNotFit() {
+        Rect box = TrellisBridge.labelBox(column(0f), 0);
+        Rect tiny = new Rect(box.x(), box.y(), 20f, box.height());
+        LabelFit fit = TrellisBridge.fitLabel(METRICS, "abcdefghijklmnop", tiny, McFont.EM,
+                MIN_FONT, ELLIPSIS);
+
+        assertEquals(LabelFit.Mode.ELLIPSIZED, fit.mode());
+        assertEquals(ELLIPSIS, fit.text(), "连一个簇都放不下时至少要说『这里有内容』");
+        assertTrue(fit.overflow(), "溢出必须报得出来（宿主据此才知道该改文案还是改布局）");
+        assertTrue(fit.width() > tiny.width());
+    }
+
+    @Test
+    @DisplayName("差千分之一 px 不算装不下：不许把整串字平白截掉（浮点余量）")
+    void slackKeepsTheTextIntact() {
+        Rect box = TrellisBridge.labelBox(column(0f), 0);
+        // 16 个字符在 8px 下量到 128px。把盒子做窄 0.001px —— 这不是"装不下"。
+        // 第 14 轮真机就是这个坑：`Entrance style` 缩到 0.978 正好贴合，却被打成"截"。
+        Rect justNarrow = new Rect(box.x(), box.y(), 128f - 0.001f, box.height());
+        LabelFit intact = TrellisBridge.fitLabel(METRICS, "abcdefghijklmnop", justNarrow,
+                McFont.EM, MIN_FONT, ELLIPSIS);
+        assertEquals(LabelFit.Mode.SHRUNK, intact.mode(), "差千分之一像素被当成了装不下");
+        assertEquals("abcdefghijklmnop", intact.text(), "整串字被平白截掉了");
+        assertFalse(intact.overflow(), "千分之一的越界不该报成溢出");
+
+        // 反过来，差半个 px 就是真的装不下 —— 那一档才该截
+        Rect tooNarrow = new Rect(box.x(), box.y(), 127.5f, box.height());
+        LabelFit cut = TrellisBridge.fitLabel(METRICS, "abcdefghijklmnop", tooNarrow,
+                McFont.EM, MIN_FONT, ELLIPSIS);
+        assertEquals(LabelFit.Mode.ELLIPSIZED, cut.mode(), "半个像素的越界没被当成装不下");
+        assertTrue(cut.width() <= tooNarrow.width(), "截完还是越界：" + cut.width());
+        assertFalse(cut.overflow());
     }
 
     @Test
@@ -181,7 +225,8 @@ class TrellisLabelFitTest {
     void lineBoxIsVerticallyCentered() {
         Rect box = TrellisBridge.labelBox(column(0f), 0);
         for (String text : new String[] {"abcd", "abcdefghi", "abcdefghijklmnop"}) {
-            LabelFit fit = TrellisBridge.fitLabel(METRICS, text, box, McFont.EM, MIN_FONT);
+            LabelFit fit = TrellisBridge.fitLabel(METRICS, text, box, McFont.EM, MIN_FONT,
+                    ELLIPSIS);
             // 宿主画出来的行框 = [top, top + (ascent + descent) * scale]
             float center = fit.top()
                     + (McFont.ASCENT_PX + McFont.DESCENT_PX) * fit.scale() / 2f;
@@ -191,12 +236,14 @@ class TrellisLabelFitTest {
     }
 
     @Test
-    @DisplayName("Trellis 量的宽 == MC 量出来的宽 × 缩放（A-7 那条对账的文字版）")
+    @DisplayName("Trellis 量的宽 == MC 量出来的宽 × 缩放（A-7 那条对账，三档都要成立）")
     void measuredWidthIsTheDrawnWidth() {
         Rect box = TrellisBridge.labelBox(column(0f), 0);
         for (String text : new String[] {"abcd", "abcdefghi", "abcdefghijklmnop"}) {
-            LabelFit fit = TrellisBridge.fitLabel(METRICS, text, box, McFont.EM, MIN_FONT);
-            assertEquals(METRICS.width(text, McFont.EM) * fit.scale(), fit.width(), 1e-3f,
+            LabelFit fit = TrellisBridge.fitLabel(METRICS, text, box, McFont.EM, MIN_FONT,
+                    ELLIPSIS);
+            // 比的是 <b>fit.text()</b>：截断那一档画出来的串和这一行的标签不是同一个
+            assertEquals(METRICS.width(fit.text(), McFont.EM) * fit.scale(), fit.width(), 1e-3f,
                     "『" + text + "』量出来的宽和宿主按倍数画出来的宽对不上");
         }
     }

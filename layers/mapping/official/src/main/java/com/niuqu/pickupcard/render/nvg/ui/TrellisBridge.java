@@ -55,6 +55,18 @@ public final class TrellisBridge {
         return dev.e33.trellis.render.nanovg.NvgCanvas.attach(host.handle());
     }
 
+    /**
+     * "装下了没有"留的浮点余量（逻辑 px）。
+     *
+     * <p>缩到<b>刚好</b>装下时，{@code shrinkToFit} 量回来的宽会比盒宽多出百万分之几
+     * （每个 advance 都乘过一次浮点）—— 那不是"装不下"。拿它去触发截断的后果很难看：
+     * 整串字平白少掉最后几个字。真装不下（地板顶住）差的是好几个 px，量级差三个数量级。
+     *
+     * <p>【这不是猜的】第 14 轮真机就是这么现形的：`Entrance style` 缩到 0.978 正好贴合，
+     * 却被打成"截→Entrance sty..."。
+     */
+    private static final float FIT_SLACK = 0.01f;
+
     // -----------------------------------------------------------------------
     // 探针：一棵组件树，命中和绘制读同一份 bounds()（判据 1 的真机验证）
     // -----------------------------------------------------------------------
@@ -150,13 +162,19 @@ public final class TrellisBridge {
     }
 
     /**
-     * 把一行标签的<b>位置与字号</b>算出来交给宿主画（字形仍由宿主提供，见 A-7）。
+     * 把一行标签的<b>位置、字号与串</b>算出来交给宿主画（字形仍由宿主提供，见 A-7）。
      *
      * <p>【适配为什么问度量层，而不是宿主自己算宽度比】装不下时"整体缩小"这条路上有两个
      * 选择：宿主自己算 {@code k = maxW / tw}（没有下限，长文案一路缩到看不清），
      * 或者问 {@link TextMeasurer#shrinkToFit}（重测一个更小的字号 + <b>地板</b>）。
      * 后者知道得更多，而且它的口径写在签名里（{@code minFontSize}）——
      * 到了地板就不再缩，<b>宁可溢出</b>：溢出看得见，缩到看不见没有东西会报。
+     *
+     * <p>【到地板还装不下就截断（{@link TextMeasurer#ellipsize}）】这一档是 A-8 真机
+     * 逼出来的：MC 的正文就是 9px、地板 8px 只留 11% 的缩字余量，英文长标签会一直
+     * 压到控件上 —— 那从玩家眼里看是绘制 bug，不是"框架的取舍"。截断把"越界"换成
+     * "少几个字 + 省略号"，而这一行是什么还能从宿主的悬停说明读回来。
+     * <b>截断按字形簇切</b>（组合记号不会被剁下来），切点与省略号的宽度都是量出来的。
      *
      * <p>【垂直位置问 {@code TextAlign}】基线不是 {@code y - h / 2} 手算出来的
      * （那个 {@code h} 到底是字高、行高还是墨迹高，每人理解不同）——
@@ -165,28 +183,53 @@ public final class TrellisBridge {
      * @param measurer    度量器（宿主喂的字体，真机上是 {@link McFont}）
      * @param fontSize    基准字号（MC 的正文就是 {@code McFont.EM}）
      * @param minFontSize 缩字地板
+     * @param ellipsis    截断时接在末尾的串（由宿主给：形如 {@code "..."} 或 {@code "…"}，
+     *                    能不能画出来是字体的事，不是度量层的事）
      */
     public static LabelFit fitLabel(TextMeasurer measurer, String text, Rect box,
-                                    float fontSize, float minFontSize) {
+                                    float fontSize, float minFontSize, String ellipsis) {
         TextLayout fitted = measurer.shrinkToFit(text, fontSize, box.width(), minFontSize);
+        boolean overflow = fitted.width() > box.width() + FIT_SLACK;
+        LabelFit.Mode mode = fitted.fontSize() < fontSize
+                ? LabelFit.Mode.SHRUNK : LabelFit.Mode.ORIGINAL;
+        if (overflow) {
+            fitted = measurer.ellipsize(text, fitted.fontSize(), ellipsis, box.width());
+            mode = LabelFit.Mode.ELLIPSIZED;
+            overflow = fitted.width() > box.width() + FIT_SLACK;
+        }
         Point baseline = TextAlign.baseline(box, fitted, TextAlign.H.START, TextAlign.V.CENTER);
         float scale = fitted.fontSize() / fontSize;
         // MC 的 drawString 吃"行框顶"、不是基线：从基线往上退<b>它自己的</b> ascent（缩放后那份）。
         // DESCENT 那边不用管 —— 行框高度由 MC 的 9 决定，与 fontSize 只差一个 scale。
-        return new LabelFit(baseline.x(), baseline.y() - McFont.ASCENT_PX * scale, scale,
-                fitted.width(), fitted.fontSize() < fontSize);
+        return new LabelFit(fitted.text(), baseline.x(),
+                baseline.y() - McFont.ASCENT_PX * scale, scale, fitted.width(), mode, overflow);
     }
 
     /**
      * 一行标签的绘制参数（见 {@link #fitLabel}）。
      *
-     * @param x      文本行框左端
-     * @param top    交给 MC {@code drawString} 的 y（行框顶）
-     * @param scale  字形缩放倍数（= 适配字号 / 基准字号）
-     * @param width  Trellis 量出来的字宽（宿主画出来的墨迹应当与它相等 —— A-7 那条对账）
-     * @param shrunk 为了装下缩小过（false = 原字号）
+     * @param text     要画的那个串 —— <b>截断时带省略号</b>，不一定等于那一行的标签
+     * @param x        文本行框左端
+     * @param top      交给 MC {@code drawString} 的 y（行框顶）
+     * @param scale    字形缩放倍数（= 适配字号 / 基准字号）
+     * @param width    Trellis 量出来的字宽（宿主画出来的墨迹应当与它相等 —— A-7 那条对账）
+     * @param mode     走了哪一档：原字号 / 缩小 / 截断
+     * @param overflow 最终<b>还是越界</b>了没有（只有"连省略号都放不下"那一种可能）——
+     *                 宿主据此才知道该改文案还是改布局。判定用的余量见 {@link #FIT_SLACK}，
+     *                 所以宿主不必也不许再自己拿宽去比一次。
      */
-    public record LabelFit(float x, float top, float scale, float width, boolean shrunk) {
+    public record LabelFit(String text, float x, float top, float scale, float width, Mode mode,
+                           boolean overflow) {
+
+        /** 适配的三档。日志与验收都按它说话，比两个 boolean 读得清楚。 */
+        public enum Mode {
+            /** 原字号就装得下。 */
+            ORIGINAL,
+            /** 缩到更小的字号（在地板之上）才装下。 */
+            SHRUNK,
+            /** 缩到地板还装不下，截断 + 省略号。 */
+            ELLIPSIZED
+        }
     }
 
     private static Style columnStyle(float topInset) {
