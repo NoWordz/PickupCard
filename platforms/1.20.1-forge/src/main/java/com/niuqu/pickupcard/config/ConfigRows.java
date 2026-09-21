@@ -85,11 +85,6 @@ final class ConfigRows {
         return Math.round(lo.items().x()) + 6;
     }
 
-    /** 标签能用多宽：从标签左缘到控件左缘。 */
-    static int labelW(ConfigLayout lo) {
-        return Math.max(24, controlX(lo) - labelX(lo) - 6);
-    }
-
     static int controlX(ConfigLayout lo) {
         return Math.round(lo.items().right()) - 6 - controlW(lo);
     }

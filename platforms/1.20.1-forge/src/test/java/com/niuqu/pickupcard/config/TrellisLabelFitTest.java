@@ -1,0 +1,212 @@
+package com.niuqu.pickupcard.config;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+import com.niuqu.pickupcard.render.nvg.ui.ConfigLayout;
+import com.niuqu.pickupcard.render.nvg.ui.McFont;
+import com.niuqu.pickupcard.render.nvg.ui.TrellisBridge;
+import com.niuqu.pickupcard.render.nvg.ui.TrellisBridge.LabelFit;
+import dev.e33.trellis.geom.Rect;
+import dev.e33.trellis.text.FontMetrics;
+import dev.e33.trellis.text.FontStack;
+import dev.e33.trellis.text.TextMeasurer;
+import dev.e33.trellis.ui.UiTree;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+
+/**
+ * 标签列搬到 Trellis 之后的离线对账：<b>文本框来自树、适配来自度量层</b>。
+ *
+ * <p>【为什么能离线做】这条路径上没有一个数需要游戏：{@code ConfigLayout} 是纯函数，
+ * 树是纯布局，适配是 {@link TextMeasurer}。字体用一份<b>照 MC 形状捏的</b>假度量
+ * （advance 1 em、ascent 7/9、descent 2/9）—— 这样断言全是闭式的，
+ * 而"垂直居中"那条能真的验到 {@code TextAlign} 用的是行框。
+ *
+ * <p>【为什么必须有这条对账】上一轮（A-4）已经证明"看着差不多"会漏掉 1.3 逻辑 px；
+ * 标签这件事上同样的差会变成"文字压在控件上"。盒子是谁的、宽多少、缩了多少 —— 都要有数。
+ */
+class TrellisLabelFitTest {
+
+    /** 外观页那一档的行形态（10 个控件行 + 2 个小节头）—— 与真机那份同源。 */
+    private static final boolean[] HAS_CONTROL = {
+        true, false, true, true, true, true, true, false, true, true, true, true,
+    };
+    private static final float CANVAS_W = 427f;
+    private static final float CANVAS_H = 240f;
+    /** 真机那一档：1280x720 @ guiScale 3。 */
+    private static final float GUI_SCALE = 3f;
+    /** 标签缩字地板，与屏幕里那个常量同一个值（这里是"接口的一侧"，不是抄数）。 */
+    private static final float MIN_FONT = 8f;
+
+    /**
+     * 照 MC 形状捏的假字体：每码点 1 em 宽、行框 = ascent(7/9) + descent(2/9) = 1 em。
+     * <p>宽度与字号成正比这一条与真字体一致，所以 {@code shrinkToFit} 那条闭式在这里成立。
+     */
+    private static final class McShapedFont implements FontMetrics {
+        @Override
+        public float advance(int codePoint) {
+            return 1f;
+        }
+
+        @Override
+        public float ascent() {
+            return McFont.ASCENT_PX / McFont.EM;
+        }
+
+        @Override
+        public float descent() {
+            return McFont.DESCENT_PX / McFont.EM;
+        }
+
+        @Override
+        public float lineGap() {
+            return 0f;
+        }
+
+        @Override
+        public boolean drawable() {
+            return true;
+        }
+    }
+
+    private static final TextMeasurer METRICS = new TextMeasurer(FontStack.of(new McShapedFont()));
+
+    // -----------------------------------------------------------------------
+    // 文本框：它必须就是树里那个叶子的矩形
+    // -----------------------------------------------------------------------
+
+    @Test
+    @DisplayName("标签盒就是树里那个标签叶子的 Rect 对象本身（判据 1 的文字版）")
+    void labelBoxIsTheLeafsOwnRect() {
+        UiTree ui = column(0f);
+        for (int i = 0; i < HAS_CONTROL.length; i++) {
+            Rect leaf = ui.root().children().get(i).children().get(0).bounds();
+            assertSame(leaf, TrellisBridge.labelBox(ui, i),
+                    "第 " + i + " 行的标签盒不是叶子自己的那个对象 —— 那就又成了两份几何");
+        }
+    }
+
+    @Test
+    @DisplayName("标签盒贴着列内容左缘，与控件之间正好一个 GAP")
+    void labelBoxSitsBetweenColumnPaddingAndControl() {
+        UiTree ui = column(0f);
+        ConfigLayout lo = ConfigLayout.compute(CANVAS_W, CANVAS_H);
+        Rect box = TrellisBridge.labelBox(ui, 0);
+        Rect control = ui.root().children().get(0).children().get(1).bounds();
+
+        // 6 = TrellisBridge 的 PAD/GAP。差一个设备像素以内是布局对齐的正常结果。
+        assertEquals(6f, box.x() - ui.root().bounds().x(), 1f / GUI_SCALE + 1e-3f,
+                "标签盒没有从列内容左缘开始");
+        assertEquals(6f, control.x() - box.right(), 1f / GUI_SCALE + 1e-3f,
+                "标签盒与控件之间不够一个 GAP（文字会贴到控件上）");
+        assertEquals(ConfigRows.ROW_H, box.height(), 0.5f, "标签盒高度不是行高");
+        assertTrue(box.right() <= control.x(), "标签盒压到控件上");
+        assertEquals(lo.items().x() + 6f, box.x(), 1f, "标签盒没落在配置列里");
+    }
+
+    @Test
+    @DisplayName("小节头那一行的标签盒更宽 —— 它没有控件，可用宽到列右缘")
+    void headerRowGetsTheWholeWidth() {
+        UiTree ui = column(0f);
+        Rect header = TrellisBridge.labelBox(ui, 1);
+        assertEquals(1, ui.root().children().get(1).children().size(),
+                "小节头不该有控件叶子");
+        assertTrue(header.width() > TrellisBridge.labelBox(ui, 0).width() + 50f,
+                "小节头的标签盒没有宽到列右缘：" + header.width());
+    }
+
+    @Test
+    @DisplayName("滚动偏移进了树：标签盒的行顶与宿主那一份对得上（不传就是错开 N px）")
+    void scrollOffsetMovesTheRows() {
+        float scroll = 13f;
+        Rect still = TrellisBridge.labelBox(column(0f), 3);
+        Rect moved = TrellisBridge.labelBox(column(scroll), 3);
+
+        assertEquals(scroll, still.y() - moved.y(), 0.5f, "滚动没有把行整体上移同样的距离");
+
+        ConfigLayout lo = ConfigLayout.compute(CANVAS_W, CANVAS_H);
+        float hostY = Math.round(lo.items().y()) + ConfigRows.ROWS_TOP_INSET
+                + 3 * (float) ConfigRows.ROW_STEP - Math.round(scroll);
+        assertEquals(hostY, moved.y(), 1f,
+                "滚动之后 Trellis 的行与宿主那一份错开了（悬停底、命中、标签会一起错）");
+    }
+
+    // -----------------------------------------------------------------------
+    // 适配：缩的是字号，而且有地板
+    // -----------------------------------------------------------------------
+
+    @Test
+    @DisplayName("装得下：原字号，量宽就是自然宽")
+    void fitsAtFullSize() {
+        Rect box = TrellisBridge.labelBox(column(0f), 0);
+        LabelFit fit = TrellisBridge.fitLabel(METRICS, "abcd", box, McFont.EM, MIN_FONT);
+
+        assertFalse(fit.shrunk(), "36px 的字在 73px 的盒子里不该缩");
+        assertEquals(1f, fit.scale(), 1e-4f);
+        assertEquals(36f, fit.width(), 1e-3f);
+        assertEquals(box.x(), fit.x(), 1e-4f, "行框左端不是盒子的左端");
+    }
+
+    @Test
+    @DisplayName("装不下：缩的是字号，量出来的宽正好落在盒宽上（不是把画出来的拉伸）")
+    void shrinksToFitExactly() {
+        Rect box = TrellisBridge.labelBox(column(0f), 0);
+        // 9 个字符 = 81px > 盒宽（约 73.3），需要缩到 0.905 左右
+        LabelFit fit = TrellisBridge.fitLabel(METRICS, "abcdefghi", box, McFont.EM, MIN_FONT);
+
+        assertTrue(fit.shrunk(), "81px 的字在 73px 的盒子里必须缩");
+        assertEquals(box.width(), fit.width(), 1e-3f, "缩完的宽没有正好落在盒宽上");
+        assertEquals(box.width() / 81f, fit.scale(), 1e-4f, "缩放倍数不是 maxW / 自然宽");
+        assertTrue(fit.scale() * McFont.EM >= MIN_FONT, "缩过了地板");
+    }
+
+    @Test
+    @DisplayName("到地板就不再缩：宁可溢出，溢出量报得出来")
+    void stopsAtTheReadabilityFloor() {
+        Rect box = TrellisBridge.labelBox(column(0f), 0);
+        // 16 个字符 = 144px，线性缩到装下需要 0.51 < 地板 8/9
+        LabelFit fit = TrellisBridge.fitLabel(METRICS, "abcdefghijklmnop", box, McFont.EM, MIN_FONT);
+
+        assertEquals(MIN_FONT / McFont.EM, fit.scale(), 1e-4f, "没有停在地板上");
+        assertEquals(144f * MIN_FONT / McFont.EM, fit.width(), 1e-2f);
+        assertTrue(fit.width() > box.width(),
+                "溢不溢要能报出来（宿主据此才知道该改文案还是改布局）");
+    }
+
+    @Test
+    @DisplayName("文字行框在标签盒里垂直居中（基线是 TextAlign 算的，不是 y - h / 2）")
+    void lineBoxIsVerticallyCentered() {
+        Rect box = TrellisBridge.labelBox(column(0f), 0);
+        for (String text : new String[] {"abcd", "abcdefghi", "abcdefghijklmnop"}) {
+            LabelFit fit = TrellisBridge.fitLabel(METRICS, text, box, McFont.EM, MIN_FONT);
+            // 宿主画出来的行框 = [top, top + (ascent + descent) * scale]
+            float center = fit.top()
+                    + (McFont.ASCENT_PX + McFont.DESCENT_PX) * fit.scale() / 2f;
+            assertEquals(box.y() + box.height() / 2f, center, 1e-3f,
+                    "『" + text + "』的行框中心不在盒中心");
+        }
+    }
+
+    @Test
+    @DisplayName("Trellis 量的宽 == MC 量出来的宽 × 缩放（A-7 那条对账的文字版）")
+    void measuredWidthIsTheDrawnWidth() {
+        Rect box = TrellisBridge.labelBox(column(0f), 0);
+        for (String text : new String[] {"abcd", "abcdefghi", "abcdefghijklmnop"}) {
+            LabelFit fit = TrellisBridge.fitLabel(METRICS, text, box, McFont.EM, MIN_FONT);
+            assertEquals(METRICS.width(text, McFont.EM) * fit.scale(), fit.width(), 1e-3f,
+                    "『" + text + "』量出来的宽和宿主按倍数画出来的宽对不上");
+        }
+    }
+
+    // -----------------------------------------------------------------------
+
+    private static UiTree column(float scrollOffset) {
+        ConfigLayout lo = ConfigLayout.compute(CANVAS_W, CANVAS_H);
+        UiTree ui = TrellisBridge.buildColumn(HAS_CONTROL, ConfigRows.ROWS_TOP_INSET);
+        TrellisBridge.layoutColumn(ui, lo.items(), scrollOffset, 1f / GUI_SCALE);
+        return ui;
+    }
+}

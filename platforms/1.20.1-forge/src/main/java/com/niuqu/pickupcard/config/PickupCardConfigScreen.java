@@ -13,6 +13,8 @@ import com.niuqu.pickupcard.render.nvg.ui.ScrollMath;
 import com.niuqu.pickupcard.render.nvg.ui.NvgUi;
 import com.niuqu.pickupcard.render.nvg.ui.TrellisBridge;
 import com.niuqu.pickupcard.render.nvg.ui.McFont;
+import dev.e33.trellis.geom.Rect;
+import dev.e33.trellis.geom.Snapping;
 import dev.e33.trellis.text.FontStack;
 import dev.e33.trellis.text.TextLayout;
 import dev.e33.trellis.text.TextMeasurer;
@@ -143,6 +145,17 @@ public final class PickupCardConfigScreen extends Screen {
         return (float) (1.0 / Minecraft.getInstance().getWindow().getGuiScale());
     }
 
+    /**
+     * 这一帧配置列的滚动偏移。
+     *
+     * <p>【为什么取整再给出去】宿主自己那份（{@code ConfigRows.layout}）就是
+     * {@code - Math.round(scrollOffset)}；给树的必须是同一个数，否则两边差半个像素，
+     * 而"半个像素的差"在命中上会变成"点到了隔壁那一行"。
+     */
+    private float scrollOffset() {
+        return itemsScroll == null ? 0f : Math.round(itemsScroll.offset());
+    }
+
     /** 探针这一帧用的指针位置：harness 指定过就用它，否则用真指针。 */
     private float probePointerX() {
         return Float.isNaN(probePointerX) ? frameMouseX : probePointerX;
@@ -216,9 +229,20 @@ public final class PickupCardConfigScreen extends Screen {
             trellisProbe = TrellisBridge.buildColumn(hasControl, ConfigRows.ROWS_TOP_INSET);
             trellisProbeRows = rows.size();
             trellisProbeControls = controls;
+            // 树一重建，每一行的标签盒子就换了一批 —— 那一帧把适配结果打进日志
+            labelFitLogPending = true;
         }
         return trellisProbe;
     }
+
+    /**
+     * 标签适配的日志闸门：<b>树重建的那一帧打一次</b>（换页/换语言/改窗口都会重建）。
+     *
+     * <p>【为什么这件事必须进日志】"长文案不再整体缩小"是这一轮的验收里唯一一条
+     * 只有数字能定的：盒宽、量出来的宽、缩放倍数、有没有到地板。截图看得出"变清楚了"，
+     * 看不出"缩了多少、有没有溢出"。
+     */
+    private boolean labelFitLogPending;
 
     /** 配置项那一列的滚动视口；每帧按当前几何重建（画布会变，视口跟着变）。 */
     private NvgScroll itemsScroll;
@@ -567,8 +591,10 @@ public final class PickupCardConfigScreen extends Screen {
         }
 
         gui.fill(0, 0, this.width, this.height, palette.backdrop);
+        boolean chromePainted = false;
         try (NvgUi ui = NvgUi.begin(gui, palette, mouseX, mouseY, now)) {
             if (ui != null) {
+                chromePainted = true;
                 drawChrome(ui);
                 drawTabAccent(ui);
                 // 【标签列必须自己画一遍】它不参与配置列的裁剪与换页淡入（换页时它不动）。
@@ -582,7 +608,7 @@ public final class PickupCardConfigScreen extends Screen {
                 // 悬停底改由 Trellis 画（见 drawChrome 的探针段）。宿主这边停手 ——
                 // 两边各画一条带子就是两份几何。drawRowHighlight 暂时没有调用方，
                 // 撤回试点时把它这一段接回去即可。
-                drawLabels(ui);
+                drawLabelMarks(ui);
                 for (ConfigRows.Row row : rowsModel.all()) {
                     if (!row.isHeader()) {
                         row.widget().draw(ui);
@@ -596,6 +622,16 @@ public final class PickupCardConfigScreen extends Screen {
                     w.draw(ui);
                 }
             }
+        }
+        // 标签列的文字：位置与适配是 Trellis 的，字形是 MC 的（A-7 那条分工）。
+        // 【为什么在 NvgUi 那一拍之后】原版批次本身就是延后提交的（`NvgUi.text` 也是登记到
+        // close() 才画），所以这一趟的层次与从前逐字一致；而它需要一个已经算好的树
+        // （drawChrome 里那一趟布局），以及"不能被 NanoVG 的即时路径盖住"的次序。
+        // 【为什么门控在 chromePainted 上】NanoVG 起不来时这一帧本来就"没有界面"
+        // （begin 的契约）：只把字画上去，等于在没有底的地方浮一层文字；而且树那一帧
+        // 根本没布局过，读 box 会读到空节点。
+        if (chromePainted) {
+            drawLabels(gui);
         }
         // 预览放在最后：它自己开一帧（里面还有原版图标与文字），压在自绘界面之上。
         long previewStart = System.nanoTime();
@@ -744,11 +780,12 @@ public final class PickupCardConfigScreen extends Screen {
         // ---- Trellis 试点（配置列的悬停底改由 Trellis 画）----
         // 组件树自己画：命中（UiTree.hitTest）和绘制读的是同一个 bounds() 对象 —— 判据 1；
         // 悬停效果来自基类那一处，没有第二个地方知道 hover 长什么样 —— 判据 2。
-        // 行顶那 2px 从 ConfigRows 借过去当树的内边距；网格 = 1/guiScale（一个设备像素），
-        // 对齐放在布局层，渲染层再对就是恒等。
         UiTree probe = trellisProbe();
         probe.tick(now * 1_000_000L);
-        TrellisBridge.layoutColumn(probe, lo.items(), deviceGrid());
+        // 行顶那 2px 从 ConfigRows 借过去当树的内边距；网格 = 1/guiScale（一个设备像素），
+        // 对齐放在布局层，渲染层再对就是恒等。滚动偏移也交给树 —— 不交的话，一滚起来
+        // 悬停底/命中/标签就与宿主那一份错开同样的 px（见 TrellisBridge.layoutColumn）。
+        TrellisBridge.layoutColumn(probe, lo.items(), scrollOffset(), deviceGrid());
         probe.pointerMove(probePointerX(), probePointerY());
         TrellisBridge.paint(ui.canvas(), probe);
         PickupCardSettings eff = PickupCardConfig.snapshot();
@@ -841,26 +878,108 @@ public final class PickupCardConfigScreen extends Screen {
                 ui.palette.radius, NvgUi.fade(0xFFFFFFFF, 0.05f * t));
     }
 
-    private void drawLabels(NvgUi ui) {
+    /**
+     * 小节头那一根强调色小刺 —— <b>形状仍走 NanoVG</b>（文字那一半搬到 {@link #drawLabels} 了：
+     * MC 的字形只能由 MC 画）。只用字号一种手段的话，小节头会和"没接控件的标签"混成一团
+     * （2026-09-19 真机截图抓过），所以这一根刺留着。
+     */
+    private void drawLabelMarks(NvgUi ui) {
         for (ConfigRows.Row row : rowsModel.all()) {
-            if (row.isHeader()) {
-                // 小节头：一根强调色小刺 + 暗色小字 —— 只用字号一种手段的话，它会和
-                // "没接控件的标签"混成一团（2026-09-19 真机截图抓过）。
-                ui.fillRoundRect(labelX() - 3f, row.yAt + 5f, 2f, 8f, 1f,
-                        NvgUi.fade(ui.palette.accent, 0.45f));
-                // 小节头独占一行：可用宽到配置列右缘为止，英文小节名也不裁尾
-                ui.textFitted(row.label(), labelX() + 3f, row.yAt + 5f, ui.palette.textDim,
-                        layout().items().right() - labelX() - 6f);
+            if (!row.isHeader()) {
                 continue;
             }
-            NvgWidget w = row.widget();
-            // 【缩字不裁字】英文行标签（"Reset this page"）比 labelW 宽一截时
-            // plainSubstrByWidth 会把尾巴裁掉（2026-09-19 英文截图 "Reset this pag"）——
-            // 缩字保完整。悬停时标签由暗到亮：它、那条高亮带、底部那句说明指的是同一行。
-            // 标签/按钮/带三处必须共用同一条 9px 中心线（缩放以文字垂直中心为锚，不破线）。
-            ui.textFitted(row.label(), labelX(), w.y() + (w.height() - 8) / 2f,
-                    NvgUi.mix(ui.palette.textDim, ui.palette.text, row.hover.at(now)), labelW());
+            ui.fillRoundRect(labelX() - 3f, row.yAt + 5f, 2f, 8f, 1f,
+                    NvgUi.fade(ui.palette.accent, 0.45f));
         }
+    }
+
+    /**
+     * 标签缩字的地板（逻辑 px）：<b>到了它就不再缩，宁可溢出。</b>
+     *
+     * <p>这是 Trellis 文本层的纪律（字号不许小到 8 逻辑 px 以下，见 {@code TextMeasurer.shrinkToFit}）：
+     * 溢出看得见（调用方能去裁、去换行、去改文案），缩到看不见没有任何东西会报。
+     * 拿 MC 的 9px 正文当基准时这条地板只留了 11% 的缩字余量 —— 英文长标签会溢到控件那一侧，
+     * 那是<b>设计上选的失败方式</b>，不是这一轮的意外（真机数字见 plan.md A-8）。
+     */
+    private static final float LABEL_MIN_FONT = 8f;
+
+    /**
+     * 溢出报不报的门槛（逻辑 px）：缩到"刚好装下"的那一档，浮点会多出百万分之几 ——
+     * 那不是溢出。真溢出（到地板之后放不下）差的是好几个 px，量级差着三个数量级。
+     */
+    private static final float LABEL_OVERFLOW_EPSILON = 0.1f;
+
+    /**
+     * 标签列的文字：<b>文本框由 Trellis 算（树里每行的第 1 个孩子），字形由 MC 画</b>。
+     *
+     * <p>【为什么不再问 {@code ui.textFitted}】它的办法是"装不下就把整串字整体缩放
+     * {@code k = maxW / tw}"，<b>没有下限</b> —— 长文案一路缩到看不清，而且什么都不报。
+     * Trellis 的 {@code shrinkToFit} 重测一个<b>更小字号</b>（不是把画出来的东西拉伸），
+     * 并且把地板写进签名。位置也不再手算（{@code labelX() + 3 / yAt + 5} 那两份必然漂）。
+     *
+     * <p>【为什么文字要跟着视口裁】滚出视口的那几行，宿主自己也不画控件；标签不裁的话
+     * 会糊在下面的说明带上。取整与 {@code NvgUi.close()} 提交文字时用的那一套一致。
+     */
+    private void drawLabels(GuiGraphics gui) {
+        List<ConfigRows.Row> rows = rowsModel.all();
+        UiTree probe = trellisProbe();
+        ConfigLayout.Rect items = layout().items();
+        StringBuilder log = labelFitLogPending ? new StringBuilder() : null;
+        gui.enableScissor(Math.round(items.x()), Math.round(items.y()),
+                Math.round(items.right()), Math.round(items.bottom()));
+        try {
+            for (int i = 0; i < rows.size(); i++) {
+                ConfigRows.Row row = rows.get(i);
+                Rect box = TrellisBridge.labelBox(probe, i);
+                TrellisBridge.LabelFit fit = TrellisBridge.fitLabel(trellisText(), row.label(),
+                        box, McFont.EM, LABEL_MIN_FONT);
+                // 悬停时标签由暗到亮：它、那条高亮带、底部那句说明指的是同一行
+                int argb = row.isHeader()
+                        ? palette.textDim
+                        : NvgUi.mix(palette.textDim, palette.text, row.hover.at(now));
+                drawLabel(gui, row.label(), fit, argb);
+                if (log != null) {
+                    if (log.length() > 0) {
+                        log.append(" | ");
+                    }
+                    log.append(row.label()).append("：盒").append(Math.round(box.width()))
+                            .append(" 量").append(String.format(java.util.Locale.ROOT, "%.1f",
+                                    fit.width()))
+                            .append(" 缩放").append(String.format(java.util.Locale.ROOT, "%.3f",
+                                    fit.scale()))
+                            .append(fit.shrunk() ? " 缩" : " 原")
+                            .append(fit.width() > box.width() + LABEL_OVERFLOW_EPSILON ? " 溢" : "");
+                }
+            }
+        } finally {
+            gui.disableScissor();
+        }
+        if (log != null) {
+            labelFitLogPending = false;
+            PickupCard.LOGGER.info("[trellis-label] 标签适配（盒宽 / Trellis 量宽 / 缩放 / 缩没缩 / 溢没溢）: {}",
+                    log);
+        }
+    }
+
+    /**
+     * 画一行字：MC 的字形，Trellis 给的位置与字号。
+     *
+     * <p>【为什么要 pose 缩放】MC 的字体只有一个尺寸（行高 9），"字号"只能靠矩阵表达；
+     * 这里的倍数来自 {@code shrinkToFit} 量出的字号（带地板），不是宽度比当场算的。
+     * 缩过的那一档本来就放弃了锐度，没缩的那一档必须落在设备整数上 ——
+     * 位图字形停在设备半像素上会糊，而 {@code TextAlign} 居中出来的 y 带着 .5。
+     */
+    private void drawLabel(GuiGraphics gui, String text, TrellisBridge.LabelFit fit, int argb) {
+        float y = fit.scale() == 1f ? Snapping.edge(fit.top(), deviceGrid()) : fit.top();
+        var pose = gui.pose();
+        pose.pushPose();
+        pose.translate(fit.x(), y, 0f);
+        if (fit.scale() != 1f) {
+            pose.scale(fit.scale(), fit.scale(), 1f);
+        }
+        // 阴影开着：与从前那条路（NvgUi.textFitted）一致，不给这一轮多叠一个变量
+        gui.drawString(this.font, text, 0, 0, argb, true);
+        pose.popPose();
     }
 
     /** 底部那行说明：悬停谁就说谁，这是这个界面唯一能自我解释的地方。 */
@@ -1182,11 +1301,6 @@ public final class PickupCardConfigScreen extends Screen {
     /** 标签左缘：配置列左边留 6px。 */
     private int labelX() {
         return ConfigRows.labelX(layout());
-    }
-
-    /** 标签能用多宽：从标签左缘到控件左缘。 */
-    private int labelW() {
-        return Math.max(24, controlX() - labelX() - 6);
     }
 
     /** 控件左缘：右对齐到配置列右缘留 6px。 */

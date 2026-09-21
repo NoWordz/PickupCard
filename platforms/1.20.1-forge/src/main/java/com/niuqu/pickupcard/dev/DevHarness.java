@@ -361,6 +361,13 @@ public final class DevHarness {
                 }
                 return;
             }
+            if (configTicks == WARMUP_TICKS + 45) {
+                // 【滚动之后必须补一张】滚动偏移要进 Trellis 的布局（见 TrellisBridge.layoutColumn）：
+                // 不进去的话标签、悬停底、命中会与宿主那一份整整错开一个偏移量，
+                // 而"整齐地错开 13px"这种错在静止的截图里非常像对的 —— 只有这一帧能钉住它。
+                capture(mc, "p2-scrolled");
+                return;
+            }
             if (configTicks == WARMUP_TICKS + 46) {
                 // 「位置」那颗钮：点开整屏拖拽编辑场，再 Esc 取消 —— 开关这条链要能自动走通
                 clickByLabel(mc, I18n.get("pickupcard.config.row.position.name"));
