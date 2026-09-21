@@ -25,6 +25,16 @@ final class ConfigRows {
     static final int ROW_STEP = 20;
     static final int ROW_H = 18;
 
+    /**
+     * 第一行相对配置列顶的内缩 —— 贴着列顶会和标题行糊在一起，留 2px 呼吸。
+     *
+     * <p>【为什么放在这里而不是写在屏幕里】它是"行模型"的几何，而且现在有第二个消费者：
+     * Trellis 试点要拿同一个数当布局树的内边距（{@code TrellisBridge.outlineControls}）。
+     * 放一处、两边取同一个源。反过来做（桥里补个 2）就是又一份口径 —— 2026-09-21 真机
+     * 实测过后果：整列 12 行集体高 2 逻辑 px。
+     */
+    static final int ROWS_TOP_INSET = 2;
+
     private final List<Row> list = new ArrayList<>();
 
     /** 一行选项（标签 + 控件 + 悬停说明）。 */

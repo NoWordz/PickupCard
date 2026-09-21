@@ -53,16 +53,21 @@ public final class TrellisBridge {
     /**
      * 用 Trellis 摆出配置列的每一行，并把控件那块描一圈。
      *
-     * @param items 配置列矩形（{@link ConfigLayout} 已经算好的）
-     * @param rows  行数
+     * @param items    配置列矩形（{@link ConfigLayout} 已经算好的）
+     * @param rows     行数
+     * @param topInset 宿主第一行相对列顶的内缩（传 {@code ConfigRows.ROWS_TOP_INSET}）。
+     *                 <b>这个数必须由宿主交进来、当成树自己的内边距用，不能在桥里事后补</b> ——
+     *                 补在桥里就是又造一份口径；交给树，它才是树算出来的几何。
+     *                 （2026-09-21 真机实测：漏了它，整列 12 行集体高 2 逻辑 px。）
      */
-    public static void outlineControls(NvgCanvas host, ConfigLayout.Rect items, int rows, int argb) {
+    public static void outlineControls(NvgCanvas host, ConfigLayout.Rect items, int rows,
+                                       float topInset, int argb) {
         dev.e33.trellis.render.nanovg.NvgCanvas canvas = attach(host);
         // 【两套 Rect 在这里会合】PickupCard 有自己的 ConfigLayout.Rect，Trellis 有 geom.Rect。
         // 两个 record 的字段几乎一样，却必须在这里互相翻译 —— 这本身就是"布局口径没统一"的证据，
         // 也正是 Trellis 要收掉的东西。真正接的时候这段话应该消失（只留一套几何）。
         Rect box = new Rect(items.x(), items.y(), items.w(), items.h());
-        LayoutNode root = column(rows);
+        LayoutNode root = column(rows, topInset);
         FlexLayout.solve(root, box);
         for (int i = 0; i < rows; i++) {
             Rect control = root.children().get(i).children().get(1).rect();
@@ -77,8 +82,11 @@ public final class TrellisBridge {
      * {@code controlW = clamp(room * 45 / 100, 48, 130)}、{@code controlX = right - 6 - controlW}、
      * {@code labelW = max(24, controlX - labelX - 6)} —— 三个公式互为输入。
      * 这边只有结构：<b>一个绝对坐标都没有</b>。
+     *
+     * @param topInset 上内边距。宿主那个「第一行别贴着列顶」的 2px 由它带进树 ——
+     *                 数是宿主的，桥只负责把它放进树里。
      */
-    private static LayoutNode column(int rows) {
+    private static LayoutNode column(int rows, float topInset) {
         LayoutNode[] line = new LayoutNode[rows];
         for (int i = 0; i < rows; i++) {
             line[i] = LayoutNode.of(Style.row().withGap(GAP).withHeight(Sizing.fixed(ROW_H)),
@@ -90,7 +98,8 @@ public final class TrellisBridge {
         }
         // STRETCH 必须有：交叉轴默认 START 的话每行只占自然宽，
         // 控件会停在列中间（离线试点踩过一次，不报错，只是看起来不对）。
-        return LayoutNode.of(Style.column().withPadding(Insets.symmetric(0f, PAD))
+        // 上 2 / 下 0：底下那 2px 不是留白，加了只会把列撑高。
+        return LayoutNode.of(Style.column().withPadding(Insets.of(topInset, PAD, 0f, PAD))
                 .withGap(ROW_GAP).withAlign(Align.STRETCH), line);
     }
 }

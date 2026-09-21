@@ -603,7 +603,9 @@ public final class PickupCardConfigScreen extends Screen {
         // ---- Trellis 试点（临时取证，验完就删）----
         // 用 Trellis 算配置列每一行的控件几何，并把它描一圈。
         // 目的是让"Trellis 算出的坐标真的出现在 MC 的帧里"这件事在截图里**看得见**。
-        TrellisBridge.outlineControls(ui.canvas(), lo.items(), rowsModel.all().size(), 0xFFFF3B30);
+        // 行顶那 2px 从 ConfigRows 借过去当树的内边距 —— 这个数只有那一个源。
+        TrellisBridge.outlineControls(ui.canvas(), lo.items(), rowsModel.all().size(),
+                ConfigRows.ROWS_TOP_INSET, 0xFFFF3B30);
         PickupCardSettings eff = PickupCardConfig.snapshot();
         // 标题靠左、副标题跟同一个左缘（用户要求标题不居中；对齐 MARGIN 与标签列同一起点）。
         // 状态行钉在标题行右端 —— 总开关是"整体生效没生效"的唯一真源，藏进页里就得翻页才知道。
@@ -1044,8 +1046,9 @@ public final class PickupCardConfigScreen extends Screen {
     }
 
     private int rowsTop() {
-        // 预览已经搬到右边那一列了，配置项从这一列的顶上开始
-        return Math.round(layout().items().y()) + 2;
+        // 预览已经搬到右边那一列了，配置项从这一列的顶上开始。
+        // 那 2px 是行模型自己的几何（ConfigRows.ROWS_TOP_INSET）—— Trellis 试点取同一个源。
+        return Math.round(layout().items().y()) + ConfigRows.ROWS_TOP_INSET;
     }
 
     // ------------------------------------------------------------------
