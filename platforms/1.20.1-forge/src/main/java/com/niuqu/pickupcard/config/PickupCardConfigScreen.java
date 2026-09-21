@@ -12,6 +12,10 @@ import com.niuqu.pickupcard.render.nvg.ui.NvgScroll;
 import com.niuqu.pickupcard.render.nvg.ui.ScrollMath;
 import com.niuqu.pickupcard.render.nvg.ui.NvgUi;
 import com.niuqu.pickupcard.render.nvg.ui.TrellisBridge;
+import com.niuqu.pickupcard.render.nvg.ui.McFont;
+import dev.e33.trellis.text.FontStack;
+import dev.e33.trellis.text.TextLayout;
+import dev.e33.trellis.text.TextMeasurer;
 import dev.e33.trellis.ui.UiTree;
 import com.niuqu.pickupcard.render.nvg.ui.NvgWidget;
 import com.niuqu.pickupcard.render.nvg.ui.Tween;
@@ -193,6 +197,8 @@ public final class PickupCardConfigScreen extends Screen {
     /** 这一帧 MC 交给 render 的指针位置（逻辑坐标）。探针默认读它。 */
     private float frameMouseX;
     private float frameMouseY;
+    /** Trellis 的文本度量器，主字体是 MC 自己的字体（见 {@code McFont}）。 */
+    private TextMeasurer trellisText;
 
     /** 探针那棵树，按当前行的<b>形态</b>（几行、几个控件行）惰性建/重建。 */
     private UiTree trellisProbe() {
@@ -596,8 +602,65 @@ public final class PickupCardConfigScreen extends Screen {
         drawPreview(gui);
         previewNanos = System.nanoTime() - previewStart;
         drawHint(gui, mouseX, mouseY);
+        drawTrellisTextSample(gui);
         frameCost(System.nanoTime() - frameStart);
     }
+
+    /** 试点的样本文本：故意带中文、带中点，专门试 MC 字形 + Trellis 摆位。 */
+    private static final String TRELLIS_SAMPLE = "拾取卡片·中文";
+
+    /** 惰性建（第一次画时才需要 MC 的字体）。 */
+    private TextMeasurer trellisText() {
+        if (trellisText == null) {
+            trellisText = new TextMeasurer(FontStack.of(new McFont()));
+        }
+        return trellisText;
+    }
+
+    /**
+     * A-7 验收：<b>位置由 Trellis 算，字形由 MC 画</b>。
+     *
+     * <p>画在一块空白上（第一行小节头的右边 —— 小节头没有控件，右边全空），
+     * 画两样东西：Trellis 量出来的<b>文本框</b>，和 MC 用<b>它自己的字形</b>画的那行字。
+     * 字画完的墨迹应当正好落在框里 —— 这一步成立，"文本框和背景谁是基准"才算有答案。
+     *
+     * <p>MC 画字吃的是"行顶"，而 Trellis 给的是基线，所以这里减 MC 自己的 ascent
+     * （{@link McFont#ASCENT_PX}）—— 两边都是声明过的数，没有临时拼的。
+     */
+    private void drawTrellisTextSample(GuiGraphics gui) {
+        List<ConfigRows.Row> rows = rowsModel.all();
+        ConfigRows.Row header = null;
+        for (ConfigRows.Row row : rows) {
+            if (row.isHeader()) {
+                header = row;
+                break;
+            }
+        }
+        if (header == null) {
+            return;     // 这一页没有小节头，样本没地方放
+        }
+        TextLayout layout = trellisText().measure(TRELLIS_SAMPLE, McFont.EM);
+        float x = ConfigRows.labelX(layout()) + 34f;    // 让开小节头自己的标题
+        float baselineY = header.yAt + 4f + layout.ascent();
+
+        gui.fill((int) x - 1, (int) (baselineY - layout.ascent()) - 1,
+                (int) (x + layout.width()) + 1, (int) (baselineY + layout.descent()) + 1,
+                0x40FFFFFF);
+        net.minecraft.client.gui.Font mc = Minecraft.getInstance().font;
+        gui.drawString(mc, TRELLIS_SAMPLE, (int) x,
+                Math.round(baselineY - McFont.ASCENT_PX), 0xFF101010, false);
+
+        if (!trellisSampleLogged) {
+            trellisSampleLogged = true;
+            PickupCard.LOGGER.info(
+                    "[trellis-text] 样本『{}』 Trellis 量到宽 {} px（{} 簇、画不出 {} 个），"
+                            + "MC 自己量到宽 {} px —— 两个数相等才算度量与字形同源",
+                    TRELLIS_SAMPLE, layout.width(), layout.clusterCount(), layout.undrawableCodePoints(),
+                    mc.width(TRELLIS_SAMPLE));
+        }
+    }
+
+    private boolean trellisSampleLogged;
 
     /**
      * 逐帧耗时统计 —— 用户报过「配置界面动画掉帧」，而掉帧只有数字能定死。
