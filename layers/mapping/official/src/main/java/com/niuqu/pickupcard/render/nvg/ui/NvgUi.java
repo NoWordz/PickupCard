@@ -49,6 +49,17 @@ public final class NvgUi implements AutoCloseable {
     private final GuiGraphics gui;
     private final Font font;
     private final NvgCanvas canvas;
+
+    /**
+     * 底层的 NvgCanvas。
+     *
+     * <p>【为什么需要它】Trellis 试点要从外面接进<b>同一个</b> NanoVG 上下文
+     * （见 {@code TrellisBridge}）。没有这个入口的话，外面只能自己再 {@code nvgCreate} 一个 ——
+     * 那就在一个线程上开出了两台互相不知道对方的状态机。
+     */
+    public NvgCanvas canvas() {
+        return canvas;
+    }
     private final MemoryStack stack;
     /** 登记的一条文字：内容 + **登记时所在的裁剪框**。 */
     private record Text(Runnable draw, Clip clip) {

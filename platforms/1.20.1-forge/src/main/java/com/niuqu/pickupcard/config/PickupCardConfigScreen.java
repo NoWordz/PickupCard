@@ -11,6 +11,7 @@ import com.niuqu.pickupcard.render.nvg.ui.ConfigLayout;
 import com.niuqu.pickupcard.render.nvg.ui.NvgScroll;
 import com.niuqu.pickupcard.render.nvg.ui.ScrollMath;
 import com.niuqu.pickupcard.render.nvg.ui.NvgUi;
+import com.niuqu.pickupcard.render.nvg.ui.TrellisBridge;
 import com.niuqu.pickupcard.render.nvg.ui.NvgWidget;
 import com.niuqu.pickupcard.render.nvg.ui.Tween;
 import com.niuqu.pickupcard.style.StyleModel;
@@ -599,6 +600,10 @@ public final class PickupCardConfigScreen extends Screen {
     private void drawChrome(NvgUi ui) {
         NvgPalette p = ui.palette;
         ConfigLayout lo = layout();
+        // ---- Trellis 试点（临时取证，验完就删）----
+        // 用 Trellis 算配置列每一行的控件几何，并把它描一圈。
+        // 目的是让"Trellis 算出的坐标真的出现在 MC 的帧里"这件事在截图里**看得见**。
+        TrellisBridge.outlineControls(ui.canvas(), lo.items(), rowsModel.all().size(), 0xFFFF3B30);
         PickupCardSettings eff = PickupCardConfig.snapshot();
         // 标题靠左、副标题跟同一个左缘（用户要求标题不居中；对齐 MARGIN 与标签列同一起点）。
         // 状态行钉在标题行右端 —— 总开关是"整体生效没生效"的唯一真源，藏进页里就得翻页才知道。

@@ -56,10 +56,14 @@ public final class TrellisBridge {
      * @param items 配置列矩形（{@link ConfigLayout} 已经算好的）
      * @param rows  行数
      */
-    public static void outlineControls(NvgCanvas host, Rect items, int rows, int argb) {
+    public static void outlineControls(NvgCanvas host, ConfigLayout.Rect items, int rows, int argb) {
         dev.e33.trellis.render.nanovg.NvgCanvas canvas = attach(host);
+        // 【两套 Rect 在这里会合】PickupCard 有自己的 ConfigLayout.Rect，Trellis 有 geom.Rect。
+        // 两个 record 的字段几乎一样，却必须在这里互相翻译 —— 这本身就是"布局口径没统一"的证据，
+        // 也正是 Trellis 要收掉的东西。真正接的时候这段话应该消失（只留一套几何）。
+        Rect box = new Rect(items.x(), items.y(), items.w(), items.h());
         LayoutNode root = column(rows);
-        FlexLayout.solve(root, items);
+        FlexLayout.solve(root, box);
         for (int i = 0; i < rows; i++) {
             Rect control = root.children().get(i).children().get(1).rect();
             canvas.strokeRoundRect(control, 2f, 1f, argb);
