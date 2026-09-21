@@ -23,14 +23,20 @@ def propsFile = new File(repoRoot, 'gradle.properties')
 if (!propsFile.isFile()) {
     throw new GradleException(
         "找不到 ${propsFile.path}。\n" +
-        "仓库级身份（mod_version / mod_id / mod_name / mod_license / mod_group_id / mod_authors / mod_description）\n" +
+        "仓库级身份（mod_version / mod_id / mod_name / mod_license / mod_group_id / mod_authors / mod_description /\n" +
+        "mod_repo_url / mod_credits）\n" +
         "只在仓库根那一份里，各平台不许自己定义。是不是把 platforms/<目标>/ 从仓库里单独拷出来构建了？\n" +
         "那样出来的 jar 版本号没有来源。")
 }
 def repoProps = new Properties()
-propsFile.withInputStream { repoProps.load(it) }
+// 【必须按 UTF-8 读】java.util.Properties.load(InputStream) 按 ISO-8859-1 解字节，这是规范
+// 行为不是 bug —— 于是 gradle.properties 里任何一个非 ASCII 的身份值（中文署名、
+// 中文描述）到了这里就成了乱码，而它一路写进 mods.toml 与 MANIFEST，构建全程绿灯，
+// 只有玩家在 mod 列表里看到一串「ææ²」。2026-09-21 就是这么踩到的，verify_jars 现在盯着它。
+propsFile.withReader('UTF-8') { repoProps.load(it) }
 
-['mod_id', 'mod_name', 'mod_license', 'mod_group_id', 'mod_authors', 'mod_description', 'mod_version'].each { k ->
+['mod_id', 'mod_name', 'mod_license', 'mod_group_id', 'mod_authors', 'mod_description',
+ 'mod_repo_url', 'mod_credits', 'mod_version'].each { k ->
     if (!repoProps.containsKey(k)) {
         throw new GradleException("仓库根的 gradle.properties 缺 ${k} —— 各平台不提供默认值，读不到就失败")
     }

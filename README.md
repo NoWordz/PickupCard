@@ -1,5 +1,9 @@
 [简体中文](README.md) | [English](README_EN.md)
 
+<p align="center">
+  <img alt="Pickup Card" src="design/logo.png" width="200">
+</p>
+
 <h1 align="center">Pickup Card</h1>
 
 <p align="center">
@@ -123,7 +127,7 @@
 - [docs/architecture.md](docs/architecture.md) —— 分层与装配、渲染路径、打包方式
 - [docs/design.md](docs/design.md) —— 卡面设计与参数对照
 - [docs/decision-rendering.md](docs/decision-rendering.md) —— 渲染方案定案与出局者
-- [CHANGELOG.md](CHANGELOG.md) —— 逐版本变更（含每次就地替换的产物指纹）
+- [CHANGELOG.md](CHANGELOG.md) —— 逐版本变更
 
 ## 开发与构建
 
@@ -139,5 +143,7 @@ python tools/verify_targets.py                   # 结构自洽性（CI 第一�
 ## 许可证
 
 MIT，见 [LICENSE](LICENSE)。内嵌组件（NanoVG 绑定与四平台 native、LWJGL）的许可见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。
+
+作者：[扭曲 (E33EPUS)](https://github.com/E33EPUS) · 仓库：[E33EPUS/PickupCard](https://github.com/E33EPUS/PickupCard) · 问题反馈：[Issues](https://github.com/E33EPUS/PickupCard/issues)
 
 Copyright (c) 2026 扭曲 (E33EPUS)

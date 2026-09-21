@@ -7,13 +7,14 @@
 检查项：
 
   1. 矩阵是规则     每个 Minecraft 版本都要有 Fabric / NeoForge / Forge 三条（缺了要显式记 buildable:false）
-  2. 身份只有一份   仓库根 gradle.properties 必须有全部身份键
+  2. 身份只有一份   仓库根 gradle.properties 必须有全部身份键，且值与 LICENSE 对得上
   3. 工程与条目互存 工程目录存在 → 矩阵里必须有它；矩阵里的 project → 目录必须存在
   4. 谓词与挂载一致 挂了版本层就必须够得到那个版本；加载器层/映射层同理
   5. 层目录由声明   层的目录路径必须能从它钉的轴推出来
   6. populated 如实 声明 populated:true 的层不能是空的；声明 false 的不能有内容
   7. 平台不许定义身份  各平台 gradle.properties 里不许出现身份键（否则就是第二个真源）
   8. buildable 不许有未验证字段
+  9. 仓库地址只有一份  资源与文档里出现的本仓库地址必须与 mod_repo_url 一致，且不许硬编码进资源
 
 用法：python tools/verify_targets.py
 退出码 0 = 全绿，1 = 有问题（问题打在 stderr）。
@@ -31,8 +32,15 @@ ROOT = Path(__file__).resolve().parents[1]
 # 仓库级身份：只在根 gradle.properties 里，各平台不许重复定义
 IDENTITY_KEYS = [
     "mod_id", "mod_name", "mod_license", "mod_group_id",
-    "mod_authors", "mod_description", "mod_version",
+    "mod_authors", "mod_description", "mod_repo_url", "mod_credits", "mod_version",
 ]
+
+# 这些身份键的值不许是占位符 —— 占位值跟实测值长得一模一样，只有对着名单才认得出来
+NO_PLACEHOLDER_KEYS = [
+    "mod_id", "mod_name", "mod_license", "mod_group_id",
+    "mod_authors", "mod_description", "mod_repo_url", "mod_credits",
+]
+PLACEHOLDER_VALUES = {"", "UNSET", "TBD", "TODO", "N/A", "none"}
 
 # 矩阵规则：每个 MC 版本都要有这三个加载器
 REQUIRED_LOADERS = ["Fabric", "NeoForge", "Forge"]
@@ -85,16 +93,103 @@ def entries(data: dict) -> dict:
     return {k: v for k, v in data.items() if not k.startswith("_")}
 
 
+# 仓库地址出现在任何地方（shields 徽章、actions 徽章、release 链接）都是这个形状
+REPO_URL_IN_TEXT = re.compile(r"(?:github\.com|shields\.io/github/[a-z/]*?)/([\w.-]+)/([\w.-]+)")
+GITHUB_REPO_URL = re.compile(r"^https://github\.com/([\w.-]+)/([\w.-]+)$")
+
+stats = {"links": 0}
+
+
+def check_identity_values(props: dict[str, str]) -> None:
+    """身份键的值要如实：不留占位符，署名与许可还要与 LICENSE 正本对得上。"""
+    for key in NO_PLACEHOLDER_KEYS:
+        value = props.get(key, "").strip()
+        if value in PLACEHOLDER_VALUES:
+            fail(f"身份键 {key} 的值是占位符「{value}」—— 占位值跟真值长得一模一样，"
+                 f"只有对着名单才认得出来")
+
+    license_name = props.get("mod_license", "").strip()
+    license_file = ROOT / "LICENSE"
+    if not license_file.is_file():
+        fail("仓库根没有 LICENSE —— mods.toml 的 license 指着它，jar 里也要带上它")
+        return
+    text = license_file.read_text(encoding="utf-8", errors="replace")
+    # 许可证名按整词找；带连字符的（Apache-2.0）退一步用 "-" 前的第一段去比（"Apache"）
+    names = [license_name] + ([license_name.split("-")[0]] if "-" in license_name else [])
+    if license_name and not any(re.search(rf"\b{re.escape(n)}\b", text, re.IGNORECASE) for n in names):
+        fail(f"mod_license={license_name}，但仓库根的 LICENSE 里找不到这个名字 —— "
+             f"署名与许可声明必须对得上，否则 jar 里那份声明说的是另一件事")
+
+    repo_url = props.get("mod_repo_url", "").strip()
+    if not GITHUB_REPO_URL.match(repo_url):
+        fail(f"mod_repo_url={repo_url} 不是 https://github.com/<owner>/<repo> 的形状")
+
+
+def check_repo_url(props: dict[str, str]) -> None:
+    """仓库地址只许有一个来源。
+
+    两件事一起查，因为它们的病根是同一个 —— "同一个地址写在很多地方，改的时候只改了几处"：
+
+      · **资源文件里不许硬编码**（`platforms/*/src/main/resources/**`）。那些文件进 jar，
+        出了错是玩家在游戏里点一个打不开的链接，而构建从头到尾是绿的。
+      · **README / docs 里的本仓库链接必须与 mod_repo_url 一致**。仓库改名、换账号、
+        换 owner 之后，文档里的链接会一处一处烂掉，没有任何构建会失败。
+
+    指向同一个 owner 下**别的**仓库（兄弟项目，如 UIDeck）以及上游仓库（如 memononen/nanovg）
+    的链接一律放行：那是真的别的地址，不是漂移。
+    """
+    repo_url = props.get("mod_repo_url", "").strip()
+    match = GITHUB_REPO_URL.match(repo_url)
+    if not match:
+        return  # 形状都不对，上面的 check_identity_values 已经报过了
+    owner, repo = match.group(1), match.group(2)
+    head = repo_url.removesuffix(".git")
+
+    for name, target in entries(json.loads((ROOT / "versions/targets.json").read_text("utf-8"))).items():
+        project = target.get("project")
+        if not project:
+            continue
+        resources = ROOT / project / "src" / "main" / "resources"
+        if not resources.is_dir():
+            continue
+        for path in sorted(resources.rglob("*")):
+            if not path.is_file():
+                continue
+            text = path.read_text(encoding="utf-8", errors="replace")
+            for found in REPO_URL_IN_TEXT.finditer(text):
+                fail(f"{path.relative_to(ROOT).as_posix()} 里硬编码了 "
+                     f"github.com/{found.group(1)}/{found.group(2)} —— 仓库地址的唯一来源是"
+                     f" gradle.properties 的 mod_repo_url（资源里写 ${{mod_repo_url}}）")
+
+    doc_files = [ROOT / "README.md", ROOT / "README_EN.md"]
+    if (ROOT / "docs").is_dir():
+        doc_files += sorted(p for p in (ROOT / "docs").glob("*.md"))
+    for path in doc_files:
+        if not path.is_file():
+            continue
+        for found in REPO_URL_IN_TEXT.finditer(path.read_text(encoding="utf-8", errors="replace")):
+            found_owner, found_repo = found.group(1), found.group(2)
+            stats["links"] += 1
+            if found_repo.lower() == repo.lower():
+                if found_owner != owner:
+                    fail(f"{path.relative_to(ROOT).as_posix()} 里的 "
+                         f"github.com/{found_owner}/{found_repo} 与本仓库 mod_repo_url（{head}）"
+                         f"不是同一处 —— 仓库地址搬过家就别只改一半")
+            # 同 owner 下的兄弟仓库、以及上游仓库：都是真的别的地址，放行
+
+
 def main() -> int:
     raw_targets = json.loads((ROOT / "versions/targets.json").read_text(encoding="utf-8"))
     targets = entries(raw_targets)
     layers = entries(json.loads((ROOT / "versions/layers.json").read_text(encoding="utf-8")))
 
-    # ---- 1. 身份只有一份 ----
+    # ---- 1. 身份只有一份（值也要如实、地址也要只有一份） ----
     root_props = read_properties(ROOT / "gradle.properties")
     for key in IDENTITY_KEYS:
         if key not in root_props:
             fail(f"仓库根 gradle.properties 缺身份键 {key}")
+    check_identity_values(root_props)
+    check_repo_url(root_props)
 
     # ---- 2. 矩阵是规则 ----
     by_version: dict[str, set[str]] = {}
@@ -194,7 +289,8 @@ def main() -> int:
             print(f"  ✗ {p}", file=sys.stderr)
         return 1
 
-    print(f"verify_targets: 全绿（{len(targets)} 个目标，{len(layers)} 个层，约 {total_checks} 项检查）")
+    print(f"verify_targets: 全绿（{len(targets)} 个目标，{len(layers)} 个层，"
+          f"约 {total_checks} 项检查；身份 {len(IDENTITY_KEYS)} 键、仓库链接 {stats['links']} 处一致）")
     for version in sorted(by_version):
         loaders = ", ".join(sorted(by_version[version]))
         print(f"  MC {version}: {loaders}")

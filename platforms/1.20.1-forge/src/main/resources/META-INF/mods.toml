@@ -1,14 +1,18 @@
 modLoader = "javafml"
 loaderVersion = "${loader_version_range}"
 license = "${mod_license}"
-issueTrackerURL = "https://github.com/E33EPUS/PickupCard/issues"
+# 仓库地址只在 gradle.properties 里写一次（mod_repo_url），这里拼出来用
+issueTrackerURL = "${mod_repo_url}/issues"
 
 [[mods]]
     modId = "${mod_id}"
     version = "${mod_version}"
     displayName = "${mod_name}"
     authors = "${mod_authors}"
-    # 图标：logo.png 在资源根，由 design/icon.py 按 tokens.css 里的配色重新产出 ——
+    # credits 与 displayURL 都是 mod 列表详细信息里会显示的两行（Forge 的 ModListScreen 读它们）
+    credits = '''${mod_credits}'''
+    displayURL = "${mod_repo_url}"
+    # 图标：logo.png 在资源根，由 design/icon.py 从 design/logo.png 派生 ——
     # 它是唯一一处没有门禁盯着的视觉资产，所以至少要能一键重来。
     logoFile = "logo.png"
     description = '''${mod_description}'''

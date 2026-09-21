@@ -1,5 +1,43 @@
 # Changelog
 
+## v0.2.3
+
+**新增**
+
+- 新的 mod 图标与项目 logo（卡片堆 + 镐子）
+- mod 列表的详细信息里补上仓库链接与内嵌组件致谢（NanoVG / LWJGL）
+
+**更改**
+
+- 作者署名改为「扭曲 (E33EPUS)」
+- mod 描述改为一句「Every item you pick up becomes a card on your HUD」
+- 仓库地址集中到 `gradle.properties` 的 `mod_repo_url`，资源与文档里不再各写一份
+- README 顶部放 logo，页脚补作者 / 仓库 / 问题反馈
+
+**修复**
+
+- README 里「CHANGELOG 含产物指纹」这句早已过期
+- 结构闸与产物闸补上身份校验：占位值、许可与 `LICENSE` 对不上、仓库地址硬编码进资源，现在都会红
+
+----
+
+**Added**
+
+- A new mod icon and project logo (a stack of cards and a pickaxe)
+- The mod list detail view now carries the repository link and a credit line for the bundled components (NanoVG / LWJGL)
+
+**Changed**
+
+- Author credit is now 扭曲 (E33EPUS)
+- Description is now the one-liner "Every item you pick up becomes a card on your HUD"
+- The repository URL lives in `gradle.properties` as `mod_repo_url` only; resources and docs no longer keep copies of their own
+- README gained the logo on top and author / repository / issues links at the bottom
+
+**Fixed**
+
+- README claimed the changelog carried artifact fingerprints; it has not for a while
+- The structural and artifact gates now check identity: placeholder values, a licence that disagrees with `LICENSE`, and a hardcoded repository URL all fail the build
+
 ## v0.2.2
 
 **修复**

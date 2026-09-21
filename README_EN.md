@@ -1,5 +1,9 @@
 [简体中文](README.md) | [English](README_EN.md)
 
+<p align="center">
+  <img alt="Pickup Card" src="design/logo.png" width="200">
+</p>
+
 <h1 align="center">Pickup Card</h1>
 
 <p align="center">
@@ -123,7 +127,7 @@ The model is "the theme provides defaults, the TOML only overrides what you chan
 - [docs/architecture.md](docs/architecture.md) — layering and wiring, the rendering path, how it is packaged
 - [docs/design.md](docs/design.md) — card design and the parameter cross-reference
 - [docs/decision-rendering.md](docs/decision-rendering.md) — the rendering decision and who lost
-- [CHANGELOG.md](CHANGELOG.md) — per-version changes, including the artifact fingerprint of each in-place replacement
+- [CHANGELOG.md](CHANGELOG.md) — per-version changes
 
 ## Development
 
@@ -139,5 +143,7 @@ Artifacts land in `platforms/1.20.1-forge/build/libs/`.
 ## License
 
 MIT — see [LICENSE](LICENSE). Licences for bundled components (the NanoVG bindings with their four-platform natives, and LWJGL) are listed in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+
+Author: [扭曲 (E33EPUS)](https://github.com/E33EPUS) · Repository: [E33EPUS/PickupCard](https://github.com/E33EPUS/PickupCard) · Issues: [Issues](https://github.com/E33EPUS/PickupCard/issues)
 
 Copyright (c) 2026 扭曲 (E33EPUS)

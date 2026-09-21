@@ -37,13 +37,18 @@ def fail(msg: str) -> None:
     problems.append(msg)
 
 
-def read_root_version() -> str:
+def read_root_identity(key: str) -> str:
+    """读仓库根的身份值。读到的东西拿来跟 jar 里的逐字对照 —— 这是"身份真的进了产物"的落点。"""
     text = (ROOT / "gradle.properties").read_text(encoding="utf-8")
-    match = re.search(r"^mod_version\s*=\s*(\S+)\s*$", text, re.MULTILINE)
+    match = re.search(rf"^{re.escape(key)}\s*=\s*(.*?)\s*$", text, re.MULTILINE)
     if not match:
-        fail("仓库根 gradle.properties 里找不到 mod_version")
-        return "?"
+        fail(f"仓库根 gradle.properties 里找不到 {key}")
+        return ""
     return match.group(1)
+
+
+def read_root_version() -> str:
+    return read_root_identity("mod_version") or "?"
 
 
 def main() -> int:
@@ -109,6 +114,40 @@ def main() -> int:
             elif zf.read("logo.png") != icon.read_bytes():
                 fail("jar 里的 logo.png 与 design/icon.png 不一致 —— 重跑 design/icon.py 之后要重新构建")
 
+        # 8. 身份必须真的展开进产物，而且要跟仓库根一字不差。
+        # 【为什么这条要有】processResources 的 expand 是"缺键就抛"，但**值写错**它一声不响：
+        # 作者写错、仓库地址还指着旧账号、致谢漏了某个组件 —— 全都会打出一个构建绿灯的 jar，
+        # 而拿到它的人只会在 mod 列表里看到错的东西（pointing 一个打不开的链接）。
+        toml_name = "META-INF/mods.toml"
+        if toml_name not in names:
+            fail("jar 里没有 META-INF/mods.toml —— Forge 读不到这个 mod 的身份")
+        else:
+            toml = zf.read(toml_name).decode("utf-8", "replace")
+            if "${" in toml:
+                fail("mods.toml 里还有没展开的 ${...} —— 身份没进产物")
+            authors = read_root_identity("mod_authors")
+            repo_url = read_root_identity("mod_repo_url")
+            for key, needle in (
+                ("mod_authors", f'authors = "{authors}"' if authors else ""),
+                ("mod_repo_url", f'displayURL = "{repo_url}"' if repo_url else ""),
+                ("mod_repo_url", f'issueTrackerURL = "{repo_url}/issues"' if repo_url else ""),
+                ("mod_license", f'license = "{read_root_identity("mod_license")}"'
+                 if read_root_identity("mod_license") else ""),
+                ("mod_credits", read_root_identity("mod_credits")),
+                ("mod_description", read_root_identity("mod_description")),
+            ):
+                if needle and needle not in toml:
+                    fail(f"jar 里的 mods.toml 对不上仓库根 {key} —— 找不到 {needle!r}")
+
+        # 9. 作者署名里带中文，而 MANIFEST 是另一条编码路径。Gradle 按 UTF-8 写，但这条
+        # 一旦漂了，表现是 mod 列表/jar 信息里一串乱码 —— 那种错没人会去查构建。
+        if "META-INF/MANIFEST.MF" in names:
+            manifest = zf.read("META-INF/MANIFEST.MF").decode("utf-8", "replace")
+            authors = read_root_identity("mod_authors")
+            if authors and authors not in manifest:
+                fail(f"MANIFEST.MF 里的 Vendor 对不上 mod_authors（{authors}）—— "
+                     f"署名没写进去，或者编码写成了非 UTF-8")
+
     print(f"verify_jars: {jar.name}（{len(names)} 个条目）")
     return report()
 
@@ -120,7 +159,7 @@ def report() -> int:
             print(f"  ✗ {p}", file=sys.stderr)
         return 1
     print("  全绿：无摊平类残留 / 嵌套成对同版 / 四平台 native 在主 jar / 构建戳与身份一致 / "
-          "mixin 与 refmap 齐 / 许可随产物 / 图标与设计正本一致")
+          "mixin 与 refmap 齐 / 许可随产物 / 图标与设计正本一致 / mods.toml 与 manifest 身份如实")
     return 0
 
 

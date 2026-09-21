@@ -1,171 +1,115 @@
 #!/usr/bin/env python3
-"""生成 mod 图标：把卡面的三段式按 token 画成一张 128×128 的 PNG。
+"""从 `design/logo.png` 派生 mod 图标：`design/icon.png`（128×128）。
 
-【为什么是脚本，而不是一张画好的 PNG】配色与几何全部从 `design/tokens.css` 读 —— 改主题
-之后重跑一次，图标就跟着变；手画的那张不会，而它漂了没人看得出来（图标是唯一一处
-"没有门禁盯着"的视觉资产）。
+【为什么还是脚本】图标是唯一一处没有门禁盯着的视觉资产 —— 只要"重来一次"这件事不可靠，
+它就一定会漂，而且漂了没人看得出来。脚本保证一条命令重出，产物再交给
+`tools/verify_jars.py` 与 jar 里的 `logo.png` 逐字节对照。
+
+【为什么不再读 tokens.css】2026-09-21 起图标的**正本**是 `design/logo.png`
+（手工画的那张：卡片堆 + 镐子），它不随主题配色变。这是有意的取舍：主题是给卡面的，
+项目 logo 要的是"一眼认得出"。所以这个脚本只剩两件事 —— **裁到主体**、**缩到 128**。
+
+【为什么要裁】原图四周留白很大，直接缩到 128 之后主体只占中间一小块；mod 列表里常见的
+显示尺寸是 32px，那一档上就只剩一团绿。裁到主体（含微光）再缩，同样 128 像素里主体大一圈。
 
 用法：
-    python design/icon.py                    # 出 design/icon.png（128×128）
-    python design/icon.py --size 256         # 更大的那份（商店用）
+    python design/icon.py                  # 出 design/icon.png（128×128）
+    python design/icon.py --size 256       # 更大的那份（不入库）
+    python design/icon.py --print-box      # 只打印裁切框，不写盘
 """
 
 from __future__ import annotations
 
 import argparse
-import re
 from pathlib import Path
 
-from PIL import Image, ImageDraw, ImageFilter
+from PIL import Image
 
 ROOT = Path(__file__).resolve().parent.parent
-TOKENS = ROOT / "design" / "tokens.css"
+SOURCE = ROOT / "design" / "logo.png"
 
-# 图标里用哪一档强调色：epic 紫在深底上最抓眼，也正好是"高稀有 + 有微光"的那一档
-ACCENT_TOKEN = "accent-epic"
+# 主体与背景的判定阈值（单通道最大差值）。原图背景是带噪的深色，主体是亮绿描边 + 微光；
+# 12 这一档能把微光算进主体（不然裁完描边贴边、看着像被切了），又不会把背景噪点吃进来。
+CONTENT_THRESHOLD = 12
 
-
-def token(name: str) -> str:
-    text = TOKENS.read_text(encoding="utf-8")
-    match = re.search(rf"--pc-{re.escape(name)}:\s*([^;]+);", text)
-    if not match:
-        raise SystemExit(f"tokens.css 里没有 --pc-{name} —— 图标不该自己编一个颜色")
-    return match.group(1).strip()
+# 裁切框外侧补的留白，按主体长边比例算 —— 太紧会让描边顶到画布边
+PADDING_RATIO = 0.07
 
 
-def rgba(value: str) -> tuple[int, int, int, int]:
-    v = value.lstrip("#")
-    r, g, b = int(v[0:2], 16), int(v[2:4], 16), int(v[4:6], 16)
-    a = int(v[6:8], 16) if len(v) >= 8 else 255
-    return r, g, b, a
+def background_color(img: Image.Image) -> tuple[int, int, int]:
+    """背景色取四条边框像素的中位数，比取单个角点稳（角上有噪或水印时会骗人）。"""
+    w, h = img.size
+    samples = []
+    for x in range(w):
+        samples.append(img.getpixel((x, 1)))
+        samples.append(img.getpixel((x, h - 2)))
+    for y in range(h):
+        samples.append(img.getpixel((1, y)))
+        samples.append(img.getpixel((w - 2, y)))
+    channels = list(zip(*samples))
+    return tuple(sorted(c)[len(c) // 2] for c in channels)  # type: ignore[return-value]
 
 
-def scale(value: str) -> float:
-    return float(value.replace("px", "").strip())
+def content_box(img: Image.Image, bg: tuple[int, int, int]) -> tuple[int, int, int, int]:
+    """主体（含微光）的外接矩形。逐像素比背景，取最大通道差。"""
+    w, h = img.size
+    pixels = img.load()
+    min_x, min_y, max_x, max_y = w, h, -1, -1
+    for y in range(h):
+        for x in range(w):
+            r, g, b = pixels[x, y]  # type: ignore[misc]
+            diff = max(abs(r - bg[0]), abs(g - bg[1]), abs(b - bg[2]))
+            if diff > CONTENT_THRESHOLD:
+                if x < min_x:
+                    min_x = x
+                if y < min_y:
+                    min_y = y
+                if x > max_x:
+                    max_x = x
+                if y > max_y:
+                    max_y = y
+    if max_x < 0:
+        raise SystemExit(f"{SOURCE.name} 里没找到与背景不同的像素 —— 阈值或图都不对")
+    return min_x, min_y, max_x + 1, max_y + 1
 
 
-def lerp(a: int, b: int, t: float) -> int:
-    return int(round(a + (b - a) * t))
+def build(source: Path, size: int) -> Image.Image:
+    img = Image.open(source).convert("RGB")
+    bg = background_color(img)
+    x0, y0, x1, y1 = content_box(img, bg)
+    content_w, content_h = x1 - x0, y1 - y0
+    pad = round(max(content_w, content_h) * PADDING_RATIO)
+    side = max(content_w, content_h) + 2 * pad
 
-
-def rounded_row_inset(dy: int, radius: float) -> int:
-    """圆角矩形里，距上下边缘 dy 的那一行要往里缩多少像素。"""
-    if dy >= radius:
-        return 0
-    dx = radius - (radius ** 2 - (radius - dy - 0.5) ** 2) ** 0.5
-    return int(round(dx))
-
-
-def draw_card(layer: Image.Image, box: tuple[float, float, float, float], radius: float,
-              top: tuple[int, int, int, int], bottom: tuple[int, int, int, int],
-              border: tuple[int, int, int, int], dim: float = 1.0) -> None:
-    """一张卡：渐变底 + 1px 描边。dim < 1 用来画压在后面的旧卡。"""
-    draw = ImageDraw.Draw(layer)
-    x0, y0, x1, y1 = (int(round(v)) for v in box)
-
-    # 描边先画：外圈一整块描边色，随后被内缩 1px 的渐变盖住中间，露出来的就是 1px 边
-    for y in range(y0, y1):
-        dy = min(y - y0, y1 - 1 - y)
-        inset = rounded_row_inset(dy, radius)
-        draw.line([(x0 + inset, y), (x1 - 1 - inset, y)],
-                  fill=(border[0], border[1], border[2], int(border[3] * dim)))
-
-    ix0, iy0, ix1, iy1 = x0 + 1, y0 + 1, x1 - 1, y1 - 1
-    height = max(1, iy1 - iy0 - 1)
-    inner_radius = max(0.0, radius - 1)
-    for y in range(iy0, iy1):
-        t = (y - iy0) / height
-        color = (lerp(top[0], bottom[0], t), lerp(top[1], bottom[1], t), lerp(top[2], bottom[2], t))
-        alpha = lerp(top[3], bottom[3], t)
-        dy = min(y - iy0, iy1 - 1 - y)
-        inset = rounded_row_inset(dy, inner_radius)
-        draw.line([(ix0 + inset, y), (ix1 - 1 - inset, y)],
-                  fill=color + (int(alpha * dim),))
+    # 正方形画布填背景色，主体居中贴进去 —— 主体是横的（卡是横的），上下留出来的是背景，
+    # 缩到 128 之后看起来就是"卡片居中"，而不是被拉扁。
+    canvas = Image.new("RGB", (side, side), bg)
+    canvas.paste(img.crop((x0, y0, x1, y1)),
+                 ((side - content_w) // 2, (side - content_h) // 2))
+    return canvas.resize((size, size), Image.LANCZOS)
 
 
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--size", type=int, default=128)
+    parser.add_argument("--source", type=Path, default=SOURCE)
     parser.add_argument("--out", type=Path, default=ROOT / "design" / "icon.png")
+    parser.add_argument("--print-box", action="store_true",
+                        help="只打印裁切框（调试用），不写盘")
     args = parser.parse_args()
 
-    size = args.size
-    unit = size / 128.0                      # 一切都按 128 设计，按需放大
+    if not args.source.is_file():
+        raise SystemExit(f"找不到图标正本 {args.source} —— 图标不该由脚本自己编一张")
+    if args.print_box:
+        img = Image.open(args.source).convert("RGB")
+        bg = background_color(img)
+        print(f"{args.source.name} {img.size} 背景 {bg} 主体框 {content_box(img, bg)}")
+        return 0
 
-    fill_top, fill_bottom = rgba(token("fill-top")), rgba(token("fill-bottom"))
-    border = rgba(token("border"))
-    accent = rgba(token(ACCENT_TOKEN))
-    name = rgba(token("name"))
-    radius = scale(token("radius")) * 2.4 * unit
-
-    img = Image.new("RGBA", (size, size), (0, 0, 0, 0))
-
-    # 背景：竖直渐变，比卡面更暗一档 —— 图标要能在浅色主题的列表里也看得出边界
-    bg = Image.new("RGBA", (size, size))
-    bgd = ImageDraw.Draw(bg)
-    for y in range(size):
-        t = y / max(1, size - 1)
-        bgd.line([(0, y), (size, y)],
-                 fill=(lerp(0x11, 0x1C, t), lerp(0x15, 0x22, t), lerp(0x1C, 0x2C, t), 255))
-    img = Image.alpha_composite(img, bg)
-
-    def box(cx: float, cy: float, w: float, h: float) -> tuple[float, float, float, float]:
-        return ((cx - w / 2) * unit, (cy - h / 2) * unit,
-                (cx + w / 2) * unit, (cy + h / 2) * unit)
-
-    # 后面两张旧卡：越往上越窄、越暗（真实的堆叠是"新的在下面，旧的被顶上去"）
-    stack = Image.new("RGBA", (size, size), (0, 0, 0, 0))
-    draw_card(stack, box(64, 42, 84, 30), radius * 0.9, fill_top, fill_bottom, border, dim=0.35)
-    draw_card(stack, box(64, 56, 94, 32), radius * 0.95, fill_top, fill_bottom, border, dim=0.55)
-
-    # 微光：主卡外侧一圈柔和的强调色，对应稀有卡的 glow
-    glow = Image.new("RGBA", (size, size), (0, 0, 0, 0))
-    gd = ImageDraw.Draw(glow)
-    gx0, gy0, gx1, gy1 = box(64, 82, 108, 40)
-    gd.rounded_rectangle([gx0, gy0, gx1, gy1], radius=radius + 2 * unit,
-                         fill=accent[:3] + (70,))
-    glow = glow.filter(ImageFilter.GaussianBlur(radius=5 * unit))
-    img = Image.alpha_composite(img, glow)
-    img = Image.alpha_composite(img, stack)
-
-    # 主卡
-    main = Image.new("RGBA", (size, size), (0, 0, 0, 0))
-    mx0, my0, mx1, my1 = box(64, 82, 104, 36)
-    draw_card(main, (mx0, my0, mx1, my1), radius, fill_top, fill_bottom, border)
-    d = ImageDraw.Draw(main)
-
-    card_h = my1 - my0
-    inset_y = card_h * 0.13
-    bar_x = mx0 + 7 * unit
-    bar_w = 5 * unit
-    d.rounded_rectangle([bar_x, my0 + inset_y, bar_x + bar_w, my1 - inset_y],
-                        radius=bar_w / 2, fill=accent)
-
-    icon_x = bar_x + bar_w + 6 * unit
-    icon_s = 15 * unit
-    icon_y = (my0 + my1) / 2 - icon_s / 2
-    d.rounded_rectangle([icon_x, icon_y, icon_x + icon_s, icon_y + icon_s],
-                        radius=3 * unit, fill=name[:3] + (70,))
-    d.rounded_rectangle([icon_x + 3.5 * unit, icon_y + 3.5 * unit,
-                         icon_x + icon_s - 3.5 * unit, icon_y + icon_s - 3.5 * unit],
-                        radius=1.5 * unit, fill=name[:3] + (150,))
-
-    # 名字只用**一条**线：缩到 32px（mod 列表里的真实尺寸）时，两条线的间隙会糊在一起，
-    # 读起来像一条脏边而不是两行字；数量那块紫色已经足够说明"这里还有个数字"。
-    text_x = icon_x + icon_s + 6 * unit
-    line_h = 4.0 * unit
-    d.rounded_rectangle([text_x, (my0 + my1) / 2 - line_h / 2,
-                         text_x + 38 * unit, (my0 + my1) / 2 + line_h / 2],
-                        radius=line_h / 2, fill=name[:3] + (235,))
-
-    count_w = 13 * unit
-    d.rounded_rectangle([mx1 - 8 * unit - count_w, (my0 + my1) / 2 - 4.5 * unit,
-                         mx1 - 8 * unit, (my0 + my1) / 2 + 4.5 * unit],
-                        radius=2 * unit, fill=accent)
-    img = Image.alpha_composite(img, main)
-
-    img.convert("RGB").save(args.out, "PNG")
-    print(f"icon -> {args.out}（{size}×{size}，强调色 {token(ACCENT_TOKEN)}）")
+    icon = build(args.source, args.size)
+    args.out.parent.mkdir(parents=True, exist_ok=True)
+    icon.save(args.out, "PNG", optimize=True)
+    print(f"icon -> {args.out}（{args.size}×{args.size}，正本 {args.source.name}）")
     return 0
 
 

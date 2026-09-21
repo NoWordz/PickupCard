@@ -1,22 +1,24 @@
-# design/ — 主题参数的正本与 mod 图标
+# design/ — 主题参数的正本、项目 logo，与 mod 图标
 
-这个目录只有两样东西：**参数正本**，和**由它生成的 mod 图标**。
+这个目录只有三样东西：**参数正本**、**项目 logo**，和**由它派生的 mod 图标**。
 
 ## 文件
 
 | 文件 | 用途 |
 | --- | --- |
 | `tokens.css` | **全部可调参数的唯一定义处**。`tools/css_tokens.py` 把它编译成 `assets/pickupcard/styles/*.json`，Java 读那份 JSON。改主题只动这里，不手改 JSON。 |
-| `icon.py` | 生成 mod 图标。配色与几何**从 `tokens.css` 读** —— 改主题后重跑一次，图标跟着变；手画的那张不会，漂了也没人看得出来。 |
-| `icon.png` | 图标正本（128×128）。构建时由 `processResources` 改名成 `logo.png` 进 jar（`mods.toml` 的 `logoFile` 指着它），**资源目录里没有第二份**；`tools/verify_jars.py` 盯着两者逐字节一致。 |
+| `logo.png` | **项目 logo 的正本**（512×512，卡片堆 + 镐子）。README 顶图与 GitHub 仓库页用的就是它；更大幅只用于商店/社交预览，不入库。 |
+| `icon.py` | 从 `logo.png` 派生图标：**裁到主体**（含微光）再缩到目标尺寸。 |
+| `icon.png` | mod 图标（128×128，由 `icon.py` 产出）。构建时由 `processResources` 改名成 `logo.png` 进 jar（`mods.toml` 的 `logoFile` 指着它），**资源目录里没有第二份**；`tools/verify_jars.py` 盯着两者逐字节一致。 |
 
 ## 用法
 
 ```bash
 python tools/css_tokens.py            # tokens.css -> assets/pickupcard/styles/*.json
 python tools/css_tokens.py --check    # 只校验不写盘（改完 tokens.css 忘了重跑，这里会红）
-python design/icon.py                 # 出 design/icon.png（128×128）
-python design/icon.py --size 512      # 商店用的那份，不入库
+python design/icon.py                 # logo.png -> design/icon.png（128×128）
+python design/icon.py --size 256      # 更大的那份，不入库
+python design/icon.py --print-box     # 只打印裁切框，看脚本认出的主体对不对
 ```
 
 ## 规矩
@@ -25,3 +27,9 @@ python design/icon.py --size 512      # 商店用的那份，不入库
   `tools/css_tokens.py` 抽取的部分。清单外的自定义属性 → 抽取脚本**直接失败退出**。
   （静默失败最毒：不认识的属性被悄悄忽略，改十版设计都不知道为什么没变化。）
 - **几何与文字宽度一律不进转换**，就地写死。卡宽在游戏里跟名字走，算不准。
+- **图标不再随主题配色变**（2026-09-21 起）：正本是手画的 `logo.png`，主题配色归卡面。
+  代价是"改主题图标自动跟着变"这条性质没有了 —— 换来的是项目 logo 认得出来。
+  仍然保留的是**一键重来**：`icon.py` 一条命令重出，`verify_jars.py` 再盯着 jar 里那份
+  与它逐字节一致（图标是唯一没有其它门禁的视觉资产，这两条不能一起丢）。
+- **换 logo 就是换 `logo.png` 然后重跑 `icon.py`**：别手改 `icon.png`，那会让"正本 → 派生"
+  这条链断掉，而下一次重跑会把手改的那份覆盖掉。

@@ -1,5 +1,25 @@
 # Release Notes
 
+## v0.2.3
+
+**换了新图标，署名与描述也一次写清楚。**
+
+**更改**
+
+- 新 mod 图标与项目 logo：卡片堆 + 镐子
+- mod 列表的详细信息里能看到仓库链接与内嵌组件（NanoVG / LWJGL）的致谢
+- 作者署名「扭曲 (E33EPUS)」，描述改为「Every item you pick up becomes a card on your HUD」
+
+----
+
+**A new icon, with the credits and the description written down properly.**
+
+**Changed**
+
+- New mod icon and project logo: a stack of cards and a pickaxe
+- The mod list detail view now shows the repository link and credits for the bundled components (NanoVG / LWJGL)
+- Author credit is 扭曲 (E33EPUS); description is "Every item you pick up becomes a card on your HUD"
+
 ## v0.2.2
 
 **卡片贴着物品栏上缘出现，旧的向上顶；常见分辨率能同时放满 5 张。**
