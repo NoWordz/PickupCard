@@ -7,9 +7,14 @@
 | 文件 | 用途 |
 | --- | --- |
 | `tokens.css` | **全部可调参数的唯一定义处**。`tools/css_tokens.py` 把它编译成 `assets/pickupcard/styles/*.json`，Java 读那份 JSON。改主题只动这里，不手改 JSON。 |
-| `logo.png` | **项目 logo 的正本**（512×512，卡片堆 + 镐子）。README 顶图与 GitHub 仓库页用的就是它；更大幅只用于商店/社交预览，不入库。 |
-| `icon.py` | 从 `logo.png` 派生图标：**裁到主体**（含微光）再缩到目标尺寸。 |
+| `logo.png` | **项目 logo 的正本**（512×512，卡片堆 + 镐子）。GitHub 仓库头像/社交预览、商店图标用的就是它。 |
+| `icon.py` | 从 `logo.png` 派生 mod 图标：**裁到主体**（含微光）再缩到目标尺寸。 |
 | `icon.png` | mod 图标（128×128，由 `icon.py` 产出）。构建时由 `processResources` 改名成 `logo.png` 进 jar（`mods.toml` 的 `logoFile` 指着它），**资源目录里没有第二份**；`tools/verify_jars.py` 盯着两者逐字节一致。 |
+
+**不在这里的东西：项目横幅（wordmark）**。README 顶图与两份商店正文的头部用的是同一张
+「PICKUP CARD」像素字横幅，它是**手工产出**的，以 GitHub 附件 URL 的形式被引用
+（`https://github.com/user-attachments/assets/…`，见 README 顶部与 `docs/*-description.md` 第一行）
+—— 仓库里没有它的正本。想换横幅 = 换那张图、更新这三处的 URL 一起改。
 
 ## 用法
 
@@ -33,3 +38,5 @@ python design/icon.py --print-box     # 只打印裁切框，看脚本认出的�
   与它逐字节一致（图标是唯一没有其它门禁的视觉资产，这两条不能一起丢）。
 - **换 logo 就是换 `logo.png` 然后重跑 `icon.py`**：别手改 `icon.png`，那会让"正本 → 派生"
   这条链断掉，而下一次重跑会把手改的那份覆盖掉。
+- **横幅只许有一张**：README 与商店正文必须指向同一张图（改一处就三处一起改）。
+  别为商店另外生成一张 —— 两处分家之后，没有任何闸盯得住商店后台里那张图。

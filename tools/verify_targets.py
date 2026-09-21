@@ -15,6 +15,7 @@
   7. 平台不许定义身份  各平台 gradle.properties 里不许出现身份键（否则就是第二个真源）
   8. buildable 不许有未验证字段
   9. 仓库地址只有一份  资源与文档里出现的本仓库地址必须与 mod_repo_url 一致，且不许硬编码进资源
+ 10. 商店正文合规     docs/{modrinth,curseforge}-description.md 骨架齐全（头图/标题/标语/徽章）且两份一致
 
 用法：python tools/verify_targets.py
 退出码 0 = 全绿，1 = 有问题（问题打在 stderr）。
@@ -178,6 +179,78 @@ def check_repo_url(props: dict[str, str]) -> None:
             # 同 owner 下的兄弟仓库、以及上游仓库：都是真的别的地址，放行
 
 
+# 商店正文：Modrinth 由 API 推、CurseForge 只能人工贴（官方 API 没有改描述的端点）。
+STORE_COPY = ["docs/modrinth-description.md", "docs/curseforge-description.md"]
+
+# 正文骨架：头图 / 标题 / 斜体标语 / 徽章行。规范的正本是 AtomChat 那两份
+# （头图 + `# 名字` + `_标语_` + 徽章行 + 分节），2026-09-21 在 pickupcard 落地。
+STORE_TAGLINE_LINE = 6      # 标语必须出现在前 6 行内
+STORE_MIN_BADGES = 3        # 徽章行至少几个 img.shields.io
+
+
+def first_image_url(text: str) -> str | None:
+    """取正文里的第一张图：Markdown `![…](url)` 或 HTML `<img … src="url">`。"""
+    for pattern in (r"!\[[^\]]*\]\((https?://[^)\s]+)\)",
+                    r"<img[^>]*\ssrc=[\"'](https?://[^\"']+)[\"']"):
+        match = re.search(pattern, text)
+        if match:
+            return match.group(1)
+    return None
+
+
+def check_store_copy(props: dict[str, str]) -> None:
+    """商店正文（Modrinth / CurseForge）的骨架与一致性。
+
+    三件事，都是"没有闸就会漂"的那种：
+
+      · **两份必须逐字节一致**。CurseForge 只能人工贴，于是"改了 Modrinth 忘了 CF"是必然事件；
+        AtomChat 那两份现在只差一行徽章 —— 页面上的徽章是手贴的，谁也不知道哪份才准。
+      · **骨架必须齐全**：头图、`# 名字`、斜体标语、徽章行。少了头图或徽章，页面看着就是
+        "没做完"，而正文本身照样能被推上去 —— 没有构建会失败。
+      · **头图必须与 README 顶部那张同源**。商店后台上传的图不在仓库里，各用各的之后，
+        门面与商店就是两张不同的脸，而没有任何东西会把它们对起来。
+    """
+    mod_name = props.get("mod_name", "").strip()
+    bodies: dict[str, str] = {}
+    for rel in STORE_COPY:
+        path = ROOT / rel
+        if not path.is_file():
+            continue  # 还没上架的仓库可以没有，但一旦有了就得合规
+        bodies[rel] = path.read_text(encoding="utf-8")
+
+    if len(bodies) == 2:
+        (a, text_a), (b, text_b) = bodies.items()
+        if text_a != text_b:
+            fail(f"{a} 与 {b} 内容不一致 —— CurseForge 只能人工贴，两份分头维护必然漂；"
+                 f"先合成一份再贴（真要平台差异，得先把差异写进这里的规则里）")
+
+    readme = ROOT / "README.md"
+    banner = first_image_url(readme.read_text(encoding="utf-8")) if readme.is_file() else None
+
+    for rel, text in bodies.items():
+        lines = [l for l in text.splitlines() if l.strip()]
+        if not lines:
+            fail(f"{rel} 是空的")
+            continue
+        if not re.match(r"^!\[[^\]]*\]\(https?://", lines[0]):
+            fail(f"{rel} 的第一行不是头图（`![名字](http…)`）—— 商店正文的开头就是那张图")
+        if mod_name and f"# {mod_name}" not in text:
+            fail(f"{rel} 里没有 `# {mod_name}` 标题")
+        head = lines[:STORE_TAGLINE_LINE]
+        if not any(l.startswith("_") and l.rstrip().endswith("_") for l in head):
+            fail(f"{rel} 的前 {STORE_TAGLINE_LINE} 行里没有斜体标语（`_…_`）")
+        badge_lines = [l for l in head if "img.shields.io" in l]
+        if not badge_lines:
+            fail(f"{rel} 的前 {STORE_TAGLINE_LINE} 行里没有徽章行")
+        elif badge_lines[0].count("img.shields.io") < STORE_MIN_BADGES:
+            fail(f"{rel} 的徽章行只有 {badge_lines[0].count('img.shields.io')} 个徽章"
+                 f"（少于 {STORE_MIN_BADGES}）—— MC / 加载器 / 侧别这几条是基本盘")
+        if banner and first_image_url(text) != banner:
+            fail(f"{rel} 的头图与 README 顶部那张不是同一张 —— 门面与商店各用各的图，"
+                 f"唯一没有闸盯着的地方就多出一张脸")
+
+
+
 def main() -> int:
     raw_targets = json.loads((ROOT / "versions/targets.json").read_text(encoding="utf-8"))
     targets = entries(raw_targets)
@@ -190,6 +263,7 @@ def main() -> int:
             fail(f"仓库根 gradle.properties 缺身份键 {key}")
     check_identity_values(root_props)
     check_repo_url(root_props)
+    check_store_copy(root_props)
 
     # ---- 2. 矩阵是规则 ----
     by_version: dict[str, set[str]] = {}
