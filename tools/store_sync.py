@@ -1,6 +1,11 @@
 #!/usr/bin/env python3
 """把 docs/modrinth-description.md 同步到 Modrinth 项目正文。
 
+【正文怎么写，看 skill `store-description`】三份商店正文（Modrinth / CurseForge / MC 百科）
+内容必须相同、只有标记与语言不同。改正文前后都要跑 `python tools/verify_targets.py` ——
+`check_store_copy` 与 `check_store_parity` 就是那道闸（骨架、两份一致、节表、条目数、事实 token）。
+**别只信记忆**：闸是唯一不会忘的那一份。
+
 【为什么只有 Modrinth】CurseForge 的官方 Upload API 只有"上传文件"的端点，**没有改项目
 描述的端点** —— 那边只能人工贴，脚本不去假装能做（AtomChat 那边查证过同一件事）。
 

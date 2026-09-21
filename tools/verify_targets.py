@@ -187,6 +187,36 @@ STORE_COPY = ["docs/modrinth-description.md", "docs/curseforge-description.md"]
 STORE_TAGLINE_LINE = 6      # 标语必须出现在前 6 行内
 STORE_MIN_BADGES = 3        # 徽章行至少几个 img.shields.io
 
+# 【三份正文内容必须一致，只有标记与语言不同】
+# 用户原话（2026-09-21）：「mcmod，mr，cf，除了格式不同，内容要相同，都是概述+特点+配置+兼容性+faq+问题反馈等等」，
+# 以及「一定要简洁+突出重点！不要那么多标题」。正本是 AtomChat 那两页（EN 9 节 / ZH 用 [h1=] 与 [h2=] 分层）。
+# 这里把"内容相同"落成三件可机检的事：**节表一一对应**、**每节条目数相同**、**每节事实 token 两边都不许少**。
+# 光写进 skill 不够 —— 模型在推送那一刻未必知道有这条规范，闸才是不会忘的那一份。
+MCMOD_COPY = "docs/mcmod-description.md"
+
+# 节表：EN（Modrinth / CurseForge）↔ ZH（MC 百科）。顺序也必须一致。
+# `None` = 概述：EN 是第一个标题之前的那几段，ZH 是 [h1=概述] 那一段。
+STORE_SECTIONS = [
+    (None, "[h1=概述]"),
+    ("## Features", "[h2=主要功能]"),
+    ("## Configuration", "[h2=配置]"),
+    ("## Compatibility", "[h2=兼容性]"),
+    ("## Known Limitations", "[h2=已知限制]"),
+    ("## FAQ", "[h1=常见问题]"),
+    ("## Changelog", "[h1=更新日志]"),
+    ("## Feedback", "[h1=问题反馈]"),
+]
+
+# 数条目与抽事实时要跳过的"版式行"：头图 / 标题 / 斜体标语 / 徽章 / MC 百科的目录标记。
+# （徽章行里有 "1.20.1" 这种数字，不排掉的话概述那节的事实对等会假报。）
+STORE_LAYOUT_LINE = re.compile(r"^(?:!\[|<img|#|_|\[mark)|img\.shields\.io")
+
+# 事实 token：反引号里的标识符 / 键名 / 路径，以及数字（含 ms、% 这类单位）。
+# 归一化去掉反引号与空白 —— "0.9 ms" 与 "0.9ms" 是同一件事（changelog 那套闸踩过这个坑）。
+FACT_TOKEN = re.compile(r"`[^`]+`|\d+(?:\.\d+)*(?:\s*(?:ms|%|MB|KB))?")
+
+
+
 
 def first_image_url(text: str) -> str | None:
     """取正文里的第一张图：Markdown `![…](url)` 或 HTML `<img … src="url">`。
@@ -217,6 +247,112 @@ def banner_key(value: str | None) -> str | None:
         return "/".join(parts[3:]) if len(parts) > 3 else value
     return value.lstrip("./")
 
+
+
+def split_sections(text: str, en: bool) -> tuple[list[str], list[tuple[str, str]]]:
+    """按标题切段。返回（概述行, [(标题, 正文), …]）。
+
+    EN 的标题是 `## X`，ZH（MC 百科）是 `[h1=X]` / `[h2=X]`；`[mark:…]` 是百科的目录标记，不算标题。
+    """
+    heading = re.compile(r"^##\s+(.+?)\s*$") if en else re.compile(r"^\[h[12]=(.+?)\]\s*$")
+    intro: list[str] = []
+    sections: list[tuple[str, list[str]]] = []
+    for line in text.splitlines():
+        match = heading.match(line)
+        if match:
+            sections.append((line.strip(), []))
+            continue
+        if sections:
+            sections[-1][1].append(line)
+        else:
+            intro.append(line)
+    return intro, [(head, "\n".join(body)) for head, body in sections]
+
+
+def store_items(body: str) -> int:
+    """数条目：表格数据行算一条，其余非空行各算一条（版式行不计）。
+
+    表头与分隔行要排掉，否则"EN 用表格、ZH 用列表"这一处格式差异会假报条目数不等。
+    """
+    lines = [l.strip() for l in body.splitlines() if l.strip()]
+    total = 0
+    for i, line in enumerate(lines):
+        if STORE_LAYOUT_LINE.search(line):
+            continue
+        if line.startswith("|"):
+            if set(line) <= set("|-: "):          # 分隔行
+                continue
+            nxt = lines[i + 1] if i + 1 < len(lines) else ""
+            if set(nxt) <= set("|-: ") and nxt.startswith("|"):
+                continue                          # 表头（下一行是分隔行）
+            total += 1
+            continue
+        total += 1
+    return total
+
+
+def store_facts(body: str) -> set[str]:
+    """抽事实 token（反引号标识符 + 数字/单位），归一化掉反引号与空白。
+
+    **先把 URL 抹掉**：`https://github.com/E33EPUS/...` 里的 "33" 会被当成一个数字事实，
+    而中文那边根本没有 URL（MC 百科不让正文塞外链）—— 不抹就是一片假报。
+    """
+    facts = set()
+    for line in body.splitlines():
+        if STORE_LAYOUT_LINE.search(line.strip()):
+            continue
+        for token in FACT_TOKEN.findall(re.sub(r"https?://\S+", "", line)):
+            cleaned = token.replace("`", "").replace(" ", "").strip()
+            if cleaned:
+                facts.add(cleaned)
+    return facts
+
+
+def check_store_parity() -> None:
+    """三份正文的内容必须相同：节表一一对应、每节条目数相同、每节事实 token 两边都不许少。
+
+    【为什么这三条】"内容相同、只有格式不同"是句人话，机器只能这么落：
+      · 节表 → 谁少了一节（或顺序变了）立刻看得见；
+      · 条目数 → "只补了半条"这类漏译（changelog 那边就是这么抓出来的）；
+      · 事实 token → 数字、键名、路径这些跨语言不变的东西，缺一个就是内容漂了。
+    """
+    en_path = ROOT / STORE_COPY[0]
+    zh_path = ROOT / MCMOD_COPY
+    if not (en_path.is_file() and zh_path.is_file()):
+        return  # 还没上架的仓库可以没有，但一旦有了就得对齐
+
+    en_intro, en_sections = split_sections(en_path.read_text(encoding="utf-8"), en=True)
+    _, zh_sections = split_sections(zh_path.read_text(encoding="utf-8"), en=False)
+
+    en_want = [h for h, _ in STORE_SECTIONS if h]
+    zh_want = [z for _, z in STORE_SECTIONS if z]
+    if [h for h, _ in en_sections] != en_want:
+        fail(f"{STORE_COPY[0]} 的节表与规范不符：\n      期望 {en_want}\n      "
+             f"实际 {[h for h, _ in en_sections]}")
+    if [h for h, _ in zh_sections] != zh_want:
+        fail(f"{MCMOD_COPY} 的节表与规范不符：\n      期望 {zh_want}\n      "
+             f"实际 {[h for h, _ in zh_sections]}")
+
+    # EN 的概述没有标题（在第一个 `## ` 之前），ZH 的概述是 `[h1=概述]` 那一段 ——
+    # 所以：概述单独配对，正文节表从 STORE_SECTIONS 的第二项起、与 ZH 的后半段一一对应。
+    pairs = [("（概述）", "\n".join(en_intro), zh_sections[0][1] if zh_sections else "")]
+    for (en_head, _), (_, en_body), (_, zh_body) in zip(STORE_SECTIONS[1:], en_sections,
+                                                        zh_sections[1:]):
+        pairs.append((en_head, en_body, zh_body))
+
+
+    for label, en_body, zh_body in pairs:
+        en_count, zh_count = store_items(en_body), store_items(zh_body)
+        if en_count != zh_count:
+            fail(f"商店正文「{label}」条目数不等：EN {en_count} 条 vs ZH {zh_count} 条 —— "
+                 f"内容要相同，只许格式不同")
+        en_facts, zh_facts = store_facts(en_body), store_facts(zh_body)
+        missing_in_zh = sorted(en_facts - zh_facts)
+        missing_in_en = sorted(zh_facts - en_facts)
+        if missing_in_zh:
+            fail(f"商店正文「{label}」里这些事实只在 EN、中文那边没有：{missing_in_zh}")
+        if missing_in_en:
+            fail(f"商店正文「{label}」里这些事实只在中文、EN 那边没有：{missing_in_en}")
 
 
 def check_store_copy(props: dict[str, str]) -> None:
@@ -285,6 +421,7 @@ def main() -> int:
     check_identity_values(root_props)
     check_repo_url(root_props)
     check_store_copy(root_props)
+    check_store_parity()
 
     # ---- 2. 矩阵是规则 ----
     by_version: dict[str, set[str]] = {}
