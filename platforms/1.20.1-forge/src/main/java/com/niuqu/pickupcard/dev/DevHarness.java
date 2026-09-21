@@ -564,6 +564,12 @@ public final class DevHarness {
                     clickByLabel(mc, I18n.get("pickupcard.config.page.look.name"));
                     return;
                 }
+                if (look == 2) {
+                    // 真指针停到「Bar width」那一行：Trellis 探针读的是真指针，
+                    // 这一张要证明"命中的那一行"和"画出来的那条悬停带"是同一条（判据 1）。
+                    pointProbeByLabel(mc, I18n.get("pickupcard.config.row.barWidth.name"));
+                    return;
+                }
                 if (look == 4) {
                     capture(mc, "look");
                     PickupCard.LOGGER.info("[harness-auto] 外观页: {}", configLabels(mc));
@@ -636,6 +642,14 @@ public final class DevHarness {
         private static void hoverByLabel(Minecraft mc, String label) {
             if (mc.screen instanceof PickupCardConfigScreen screen) {
                 screen.hoverForHarness(label);
+            }
+        }
+
+        /** 让 Trellis 探针把指针当作落在某一行控件的中心上（探针不吃按标签伪造的悬停）。 */
+        private static void pointProbeByLabel(Minecraft mc, String label) {
+            if (mc.screen instanceof PickupCardConfigScreen screen
+                    && !screen.pointProbeAtForHarness(label)) {
+                PickupCard.LOGGER.warn("[harness-auto] 界面上找不到『{}』这一行，探针指针没地方放", label);
             }
         }
 

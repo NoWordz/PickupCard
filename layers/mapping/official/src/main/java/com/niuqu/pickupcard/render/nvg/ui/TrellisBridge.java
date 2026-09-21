@@ -101,32 +101,18 @@ public final class TrellisBridge {
     }
 
     /**
-     * 描出每个控件的 {@code bounds()}；指针正指着的那一行描成 {@code hoverArgb}。
+     * 让组件树<b>自己画</b>。
      *
-     * <p>"画的就是命中读的那个矩形"：两边都是 {@link Component#bounds()}。
-     * 网格对齐由调用方在 {@link UiTree#layout(Rect, float)} 那一趟做 —— 对在布局层，
-     * 这里描出来的本来就是设备整数，渲染层不必也不需要再挪。
+     * <p>【描框为什么删了】描框只能证明"坐标算对了"。真让组件树画，同时证明两件事：
+     * 画出来的矩形就是命中读的那个 {@code bounds()}（判据 1），而悬停效果来自基类那一处
+     * （判据 2）。所以这一版起，配置列的**悬停底由 Trellis 画** —— 宿主那边对应的画法已停手，
+     * 两个都画就是"两份几何各画一条带子"，正是判据 1 要根除的东西。
+     *
+     * <p>对齐由调用方在 {@link UiTree#layout(Rect, float)} 那一趟做：对在布局层，
+     * 这里画出来的本来就是设备整数，渲染层不必也不需要再挪。
      */
-    public static void drawColumn(NvgCanvas host, UiTree ui, int argb, int hoverArgb) {
-        dev.e33.trellis.render.nanovg.NvgCanvas canvas = attach(host);
-        Component hoveredLine = hoveredLine(ui);
-        for (Component line : ui.root().children()) {
-            if (line.children().size() < 2) {
-                continue;       // 小节头：那一行没有控件，不描
-            }
-            Rect control = line.children().get(1).bounds();
-            canvas.strokeRoundRect(control, 2f, 1f, line == hoveredLine ? hoverArgb : argb);
-        }
-    }
-
-    /** 指针所在的那<b>一行</b>（根的直接子节点）；没悬停就是 null。 */
-    private static Component hoveredLine(UiTree ui) {
-        for (Component c = ui.hovered(); c != null; c = c.parent()) {
-            if (c.parent() == ui.root()) {
-                return c;
-            }
-        }
-        return null;
+    public static void paint(NvgCanvas host, UiTree ui) {
+        ui.draw(attach(host));
     }
 
     private static Style columnStyle(float topInset) {

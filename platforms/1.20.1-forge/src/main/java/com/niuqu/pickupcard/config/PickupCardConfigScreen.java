@@ -134,6 +134,44 @@ public final class PickupCardConfigScreen extends Screen {
         forcedHover = label;
     }
 
+    /** 一个设备像素（逻辑单位）。网格间距由宿主给 —— 框架不知道设备有多大。 */
+    private float deviceGrid() {
+        return (float) (1.0 / Minecraft.getInstance().getWindow().getGuiScale());
+    }
+
+    /** 探针这一帧用的指针位置：harness 指定过就用它，否则用真指针。 */
+    private float probePointerX() {
+        return Float.isNaN(probePointerX) ? frameMouseX : probePointerX;
+    }
+
+    /** 同上。 */
+    private float probePointerY() {
+        return Float.isNaN(probePointerY) ? frameMouseY : probePointerY;
+    }
+
+    /**
+     * 给 harness 用：让探针把指针当作落在某一行的控件中心上。
+     *
+     * <p>【为什么不是挪真指针】试过 {@code GLFW.glfwSetCursorPos}：GLFW 的 cursor 回调
+     * <b>只在窗口有输入焦点时才发</b>，自动化跑的那扇窗通常没焦点 —— 挪了等于没挪，
+     * 截图里那条悬停带根本不出现（2026-09-21 实测）。所以这里给探针一个指定的点。
+     *
+     * <p>这样做不影响要验的东西：几何、命中、绘制三件都还是 Trellis 的，
+     * 只是"指针在哪"由 harness 说了算 —— 宿主自己的悬停测试（{@code forcedHover}）也是这样。
+     */
+    public boolean pointProbeAtForHarness(String label) {
+        for (ConfigRows.Row row : rowsModel.all()) {
+            if (row.isHeader() || !row.label().equals(label)) {
+                continue;
+            }
+            NvgWidget w = row.widget();
+            probePointerX = w.x() + w.width() / 2f;
+            probePointerY = w.y() + w.height() / 2f;
+            return true;
+        }
+        return false;
+    }
+
     /** 三列几何（每次现算，纯函数）。 */
     private ConfigLayout layout() {
         return ConfigLayout.compute(this.width, this.height);
@@ -149,6 +187,12 @@ public final class PickupCardConfigScreen extends Screen {
     private UiTree trellisProbe;
     private int trellisProbeRows = -1;
     private int trellisProbeControls = -1;
+    /** harness 指定的探针指针（NaN = 用真指针）。见 {@link #pointProbeAtForHarness}。 */
+    private float probePointerX = Float.NaN;
+    private float probePointerY = Float.NaN;
+    /** 这一帧 MC 交给 render 的指针位置（逻辑坐标）。探针默认读它。 */
+    private float frameMouseX;
+    private float frameMouseY;
 
     /** 探针那棵树，按当前行的<b>形态</b>（几行、几个控件行）惰性建/重建。 */
     private UiTree trellisProbe() {
@@ -504,6 +548,8 @@ public final class PickupCardConfigScreen extends Screen {
     public void render(GuiGraphics gui, int mouseX, int mouseY, float partialTick) {
         long frameStart = System.nanoTime();
         now = System.currentTimeMillis();
+        frameMouseX = mouseX;
+        frameMouseY = mouseY;
         if (pendingRebuild) {
             pendingRebuild = false;
             rebuild();
@@ -527,9 +573,9 @@ public final class PickupCardConfigScreen extends Screen {
                 if (itemsScroll != null) {
                     itemsScroll.pushClip(ui);
                 }
-                for (ConfigRows.Row row : rowsModel.all()) {
-                    drawRowHighlight(ui, row);
-                }
+                // 悬停底改由 Trellis 画（见 drawChrome 的探针段）。宿主这边停手 ——
+                // 两边各画一条带子就是两份几何。drawRowHighlight 暂时没有调用方，
+                // 撤回试点时把它这一段接回去即可。
                 drawLabels(ui);
                 for (ConfigRows.Row row : rowsModel.all()) {
                     if (!row.isHeader()) {
@@ -632,17 +678,16 @@ public final class PickupCardConfigScreen extends Screen {
     private void drawChrome(NvgUi ui) {
         NvgPalette p = ui.palette;
         ConfigLayout lo = layout();
-        // ---- Trellis 试点（临时取证，验完就删）----
-        // 用组件层摆出配置列，把每个控件的 bounds() 描一圈；指针所在那一行描绿。
-        // 命中（UiTree.hitTest）和绘制读的是同一个 Rect 对象 —— 判据 1 的真机验证。
+        // ---- Trellis 试点（配置列的悬停底改由 Trellis 画）----
+        // 组件树自己画：命中（UiTree.hitTest）和绘制读的是同一个 bounds() 对象 —— 判据 1；
+        // 悬停效果来自基类那一处，没有第二个地方知道 hover 长什么样 —— 判据 2。
         // 行顶那 2px 从 ConfigRows 借过去当树的内边距；网格 = 1/guiScale（一个设备像素），
         // 对齐放在布局层，渲染层再对就是恒等。
         UiTree probe = trellisProbe();
         probe.tick(now * 1_000_000L);
-        TrellisBridge.layoutColumn(probe, lo.items(),
-                (float) (1.0 / Minecraft.getInstance().getWindow().getGuiScale()));
-        probe.pointerMove(ui.mouseX, ui.mouseY);
-        TrellisBridge.drawColumn(ui.canvas(), probe, 0xFFFF3B30, 0xFF34C759);
+        TrellisBridge.layoutColumn(probe, lo.items(), deviceGrid());
+        probe.pointerMove(probePointerX(), probePointerY());
+        TrellisBridge.paint(ui.canvas(), probe);
         PickupCardSettings eff = PickupCardConfig.snapshot();
         // 标题靠左、副标题跟同一个左缘（用户要求标题不居中；对齐 MARGIN 与标签列同一起点）。
         // 状态行钉在标题行右端 —— 总开关是"整体生效没生效"的唯一真源，藏进页里就得翻页才知道。
@@ -886,6 +931,7 @@ public final class PickupCardConfigScreen extends Screen {
 
     @Override
     public boolean mouseClicked(double mouseX, double mouseY, int button) {
+        trellisProbe().pointerDown((float) mouseX, (float) mouseY);
         // 【点预览 = 放一张】动画页来一张新的走完整时间线；其他页重播一次入场。
         // 【位置页例外】预览这时是整屏缩影 —— 点它直接开拖拽编辑场：在缩略图上看到
         // 位置不满意，下一步动作必然是"去调位置"，给他一步到位。
@@ -919,6 +965,7 @@ public final class PickupCardConfigScreen extends Screen {
 
     @Override
     public boolean mouseReleased(double mouseX, double mouseY, int button) {
+        trellisProbe().pointerUp((float) mouseX, (float) mouseY);
         for (NvgWidget w : widgets()) {
             w.mouseReleased(mouseX, mouseY);
         }
@@ -949,6 +996,7 @@ public final class PickupCardConfigScreen extends Screen {
 
     @Override
     public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
+        trellisProbe().keyDown(keyCode);      // 键盘跟着焦点走，宿主照样先收（返回值不动宿主）
         for (NvgWidget w : widgets()) {
             if (w.keyPressed(keyCode, modifiers)) {
                 return true;
@@ -959,6 +1007,7 @@ public final class PickupCardConfigScreen extends Screen {
 
     @Override
     public boolean charTyped(char codePoint, int modifiers) {
+        trellisProbe().charTyped(codePoint);
         for (NvgWidget w : widgets()) {
             if (w.charTyped(codePoint)) {
                 return true;
