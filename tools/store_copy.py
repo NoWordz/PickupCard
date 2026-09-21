@@ -2,9 +2,9 @@
 """把两份商店正文正本渲染成三份产物。
 
 【为什么要有这个脚本】同一份内容要在三个平台上出现（Modrinth / CurseForge / MC 百科），
-差异只有两处：**语言**与**标记**（`## X` ↔ `[h1=X]`、要不要徽章行与头图、条目之间空不空行）。
-手写三份 = 手同步三遍；2026-09-21 用户的原话是「好乱啊怎么办」—— 那一天仓库里同时躺着
-四份描述文件、两种标记、两种语言，闸一口气报了 15 条不一致。
+差异只有两处：**语言**与**标记**（`## X` ↔ `[h1=X]`、Markdown 表格 ↔ 百科的 `格| 格；`、
+要不要徽章行与头图、条目之间空不空行）。手写三份 = 手同步三遍；2026-09-21 用户的原话是
+「好乱啊怎么办」—— 那一天仓库里同时躺着四份描述文件、两种标记、两种语言，闸一口气报了 15 条不一致。
 
 现在的分工：
 
@@ -15,9 +15,12 @@
         ├─→ docs/store/curseforge.md  与上面逐字节相同
         └─→ docs/store/mcmod.md       中文 + [mark:title_menu] + [h1=]，无徽章无头图
 
+**结构以桌面《商店格式规范》为准**（用户 2026-09-21 提交）：
+一句话简介 → 概述 → 功能 → 兼容性（表格）→ 配置（表格）→ 已知限制 → FAQ → 问题反馈。
+
 **正本里不写的东西**（都由这里生成，写了就会被 --check 判为漂）：头图那一行、`# 名字`、
-斜体标语（= `gradle.properties` 的 `mod_description`）、徽章行（MC / 加载器 / 侧别 / Java /
-版本 / 许可，全部从仓库身份与目标声明里读出来）、`[mark:title_menu]`。
+徽章行（MC / 加载器 / 侧别 / Java / 版本 / 许可，全部从仓库身份与目标声明里读出来）、
+`[mark:title_menu]`。**一句话简介写在正本第一段**（它要分语言，不能从英文的 mod_description 派生）。
 
 用法：
     python tools/store_copy.py --write    # 重出三份产物
@@ -104,56 +107,85 @@ def header_block() -> list[str]:
     ]
 
 
-def parse_sections(text: str) -> list[tuple[str, list[list[str]]]]:
-    """切成 [(标题, [块, …]), …]；块 = 空行分隔的一段，连续 `- ` 行合成一个列表块。"""
+def parse_source(text: str) -> tuple[list[str], list[tuple[str, list[list[str]]]]]:
+    """切成（一句话简介, [(标题, [块, …]), …]）。
+
+    块 = 空行分隔的一段；同一种"形状"才合成一块（列表 / 表格 / 段落），
+    否则"段落后面紧跟一张表"会被粘成一块、渲染出错误的排版。
+    """
+    tagline: list[str] = []
     sections: list[tuple[str, list[list[str]]]] = []
     block: list[str] = []
+
+    def shape(line: str) -> str:
+        if line.startswith("- "):
+            return "list"
+        if line.startswith("|"):
+            return "table"
+        return "text"
+
+    def flush() -> None:
+        nonlocal block
+        if block:
+            if sections:
+                sections[-1][1].append(block)
+            block = []
+
     for raw in text.splitlines():
         line = raw.rstrip()
         heading = HEADING.match(line)
         if heading:
-            if block and sections:
-                sections[-1][1].append(block)
-            block = []
+            flush()
             sections.append((heading.group(1), []))
             continue
         if not line.strip():
-            if block:
-                if sections:
-                    sections[-1][1].append(block)
-                block = []
+            flush()
             continue
-        if block and block[0].startswith("- ") != line.startswith("- "):
-            # 列表与段落不能混在一个块里
-            if sections:
-                sections[-1][1].append(block)
-            block = []
+        if block and shape(block[0]) != shape(line):
+            flush()
         block.append(line)
-    if block and sections:
-        sections[-1][1].append(block)
-    return sections
+    flush()
+    return tagline, sections
 
 
 def strip_links(text: str) -> str:
     return LINK.sub(r"\1", text)
 
 
-def render(sections: list[tuple[str, list[list[str]]]], style: str) -> str:
+def mcmod_table(block: list[str]) -> list[str]:
+    """Markdown 表 → 百科的行式表：`格 | 格；`。
+
+    表头与 `| --- |` 分隔行丢掉（百科那边不需要表头，AtomChat 的百科页也是这么写的）。
+    """
+    rows = []
+    for i, line in enumerate(block):
+        cells = [c.strip() for c in line.strip().strip("|").split("|")]
+        if i == 0 or all(set(c) <= set("-: ") for c in cells):
+            continue                      # 表头 / 分隔行
+        rows.append("| ".join(cells) + "；")
+    return rows
+
+
+def render(tagline: list[str], sections: list[tuple[str, list[list[str]]]], style: str) -> str:
     out: list[str] = []
+    one_liner = " ".join(t.strip() for t in tagline) if tagline else ""
     if style == "markdown":
         for line in header_block():
             out += [line, ""]
         for title, blocks in sections:
             out += [f"## {title}", ""]
             for block in blocks:
-                out += block            # 列表块：一条一行；段落块：整段连着
+                out += block            # 列表：一条一行；表格：原样；段落：整段连着
                 out.append("")
-    else:  # mcmod：百科的标记与排版（无徽章/头图，条目之间空一行）
+    else:  # mcmod：百科的标记与排版（无徽章/头图，条目之间空一行，表格走行式）
         out += ["[mark:title_menu]", ""]
+        if one_liner:
+            out += [one_liner, ""]
         for title, blocks in sections:
             out += [f"[h1={title}]", ""]
             for block in blocks:
-                for line in block:
+                lines = mcmod_table(block) if block[0].startswith("|") else block
+                for line in lines:
                     out.append(strip_links(line))
                     out.append("")
     while out and not out[-1]:
@@ -166,8 +198,8 @@ def render_all() -> dict[str, str]:
     for lang, path in SOURCES.items():
         if not path.is_file():
             raise SystemExit(f"找不到正本 {path.relative_to(ROOT)}")
-        parsed[lang] = parse_sections(path.read_text(encoding="utf-8"))
-    return {name: render(parsed[spec["source"]], spec["style"])
+        parsed[lang] = parse_source(path.read_text(encoding="utf-8"))
+    return {name: render(*parsed[spec["source"]], spec["style"])
             for name, spec in OUTPUTS.items()}
 
 

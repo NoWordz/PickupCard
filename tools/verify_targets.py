@@ -230,9 +230,14 @@ def banner_key(value: str | None) -> str | None:
 
 
 
-def split_sections(text: str) -> list[tuple[str, str]]:
-    """按 `# 标题` 切段。正本两份共用同一种中立标记（产物才带平台标记）。"""
+def split_sections(text: str) -> tuple[str, list[tuple[str, str]]]:
+    """按 `# 标题` 切段。返回（一句话简介, [(标题, 正文), …]）。
+
+    正本两份共用同一种中立标记（产物才带平台标记）：`# 概述` → `## Overview` / `[h1=概述]`。
+    标题之前的那些行就是**一句话简介**（规范里正文的第一行），它也要两份对等。
+    """
     heading = re.compile(r"^#\s+(.+?)\s*$")
+    tagline: list[str] = []
     sections: list[tuple[str, list[str]]] = []
     for line in text.splitlines():
         match = heading.match(line)
@@ -241,7 +246,9 @@ def split_sections(text: str) -> list[tuple[str, str]]:
             continue
         if sections:
             sections[-1][1].append(line)
-    return [(head, "\n".join(body)) for head, body in sections]
+        else:
+            tagline.append(line)
+    return "\n".join(tagline), [(head, "\n".join(body)) for head, body in sections]
 
 
 def store_items(body: str) -> int:
@@ -282,15 +289,20 @@ def check_store_sources() -> None:
         return  # 还没上架的仓库可以没有，但一旦有了就得对齐
 
     (zh_path, en_path) = paths  # STORE_SOURCES = [zh, en]
-    zh = split_sections(zh_path.read_text(encoding="utf-8"))
-    en = split_sections(en_path.read_text(encoding="utf-8"))
+    zh_tagline, zh = split_sections(zh_path.read_text(encoding="utf-8"))
+    en_tagline, en = split_sections(en_path.read_text(encoding="utf-8"))
 
     if len(zh) != len(en):
         fail(f"商店正本节数不等：{STORE_SOURCES[0]} {len(zh)} 节 vs "
              f"{STORE_SOURCES[1]} {len(en)} 节\n      "
              f"中文 {[h for h, _ in zh]}\n      英文 {[h for h, _ in en]}")
-    for i, ((zh_head, zh_body), (en_head, en_body)) in enumerate(zip(zh, en), 1):
-        label = f"第 {i} 节（{zh_head} / {en_head}）"
+
+    # 一句话简介（正文第一行）也按一节比：规范里它必须在，且两份都得有
+    pairs = [("（一句话简介）", zh_tagline, en_tagline)]
+    pairs += [(f"第 {i} 节（{zh_head} / {en_head}）", zh_body, en_body)
+              for i, ((zh_head, zh_body), (en_head, en_body)) in enumerate(zip(zh, en), 1)]
+
+    for label, zh_body, en_body in pairs:
         zh_count, en_count = store_items(zh_body), store_items(en_body)
         if zh_count != en_count:
             fail(f"商店正本{label} 条目数不等：中文 {zh_count} 条 vs 英文 {en_count} 条 —— "
