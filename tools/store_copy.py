@@ -48,6 +48,19 @@ OUTPUTS = {
     "mcmod.md": {"source": "zh", "style": "mcmod"},
 }
 
+# 横幅：**正本**是仓库里的 design/banner.png，但对外引用的是用户自己上传的 GitHub 附件 URL。
+#
+# 【为什么不用 raw 链接】2026-09-21 用户实测：raw.githubusercontent.com 在他的网络下加载不出来；
+# 而且 README 里写相对路径也没用 —— GitHub 渲染 README 时会把相对图片路径重写成 raw 域名，
+# 于是"仓库门面"和"商店正文"会一起坏。附件 URL（user-attachments）是他自己传的，能加载。
+# 【换横幅时要做三件事】换 design/banner.png → 重新上传拿到新 URL → 改这里的 BANNER_URL
+# （README 两份由闸盯着必须与它一致）。
+# 【长期更好的一档】Modrinth 项目建好后，把图传进它的图库、换成 cdn.modrinth.com 的地址
+# （AtomChat 那两份文件就是这么做的；那个 CDN 在用户网络下也通）—— 到那天只改这一行。
+BANNER_URL = "https://github.com/user-attachments/assets/5bbce647-df3a-4c51-b87b-d63dfc7c4bdc"
+
+# 仓库里的横幅正本（用户在 GitHub 上手动上传后收进仓库的那一份，1395 字节的像素字 wordmark）。
+# 它不进 jar，也不被正文直接引用 —— 它的作用是"附件没了还能再传一次"。
 BANNER = "design/banner.png"
 
 HEADING = re.compile(r"^#\s+(.+?)\s*$")
@@ -99,8 +112,7 @@ def header_block() -> list[str]:
         f"![License](https://img.shields.io/badge/License-{license_name}-brightgreen)"
     )
     return [
-        f"![{name}](https://raw.githubusercontent.com/{repo.split('github.com/')[-1]}"
-        f"/main/{BANNER})",
+        f"![{name}]({BANNER_URL})",
         f"# {name}",
         f"_{tagline}_",
         badge,

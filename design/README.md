@@ -8,7 +8,7 @@
 | --- | --- |
 | `tokens.css` | **全部可调参数的唯一定义处**。`tools/css_tokens.py` 把它编译成 `assets/pickupcard/styles/*.json`，Java 读那份 JSON。改主题只动这里，不手改 JSON。 |
 | `logo.png` | **项目 logo**（512×512，卡片堆 + 镐子）。GitHub 仓库头像/社交预览、商店图标用的就是它。 |
-| `banner.png` | **项目横幅**（512×257 像素字 wordmark）。README 顶图与两份商店正文的头图都用它 —— README 写相对路径，正文写 GitHub raw 绝对 URL（正文没有基准路径）。 |
+| `banner.png` | **项目横幅**（512×257 像素字 wordmark）的**正本**。README 顶图与两份商店正文的头图在**引用上**用的是它的 GitHub 附件 URL（见下），这份文件是"附件没了还能再传一次"的那个备份。 |
 | `icon.py` | 从 `logo.png` 派生 mod 图标：**裁到主体**（含微光）再缩到目标尺寸。 |
 | `icon.png` | mod 图标（128×128，由 `icon.py` 产出）。构建时由 `processResources` 改名成 `logo.png` 进 jar（`mods.toml` 的 `logoFile` 指着它），**资源目录里没有第二份**；`tools/verify_jars.py` 盯着两者逐字节一致。 |
 
@@ -34,6 +34,8 @@ python design/icon.py --print-box     # 只打印裁切框，看脚本认出的�
   与它逐字节一致（图标是唯一没有其它门禁的视觉资产，这两条不能一起丢）。
 - **换 logo 就是换 `logo.png` 然后重跑 `icon.py`**：别手改 `icon.png`，那会让"正本 → 派生"
   这条链断掉，而下一次重跑会把手改的那份覆盖掉。
-- **横幅是手工资产，不经脚本派生**：换就整份换 `banner.png`，然后确认 README 与两份商店正文
-  三处指的还是它（`tools/verify_targets.py` 会比对三处的同一性）。
-  别为商店另外生成一张 —— 两处分家之后，没有任何闸盯得住商店后台里那张图。
+- **横幅是手工资产，不经脚本派生**，而且**对外用的是 GitHub 附件 URL**（`tools/store_copy.py` 的 `BANNER_URL`）。
+  为什么不用仓库里的相对/raw 链接：2026-09-21 实测 —— raw.githubusercontent.com 在用户网络下拉不动，
+  而 README 写相对路径也没用，GitHub 渲染时会把相对图片路径重写成 raw 域名，于是门面与商店一起坏。
+  **换横幅 = 三件事**：换 `banner.png` → 在 GitHub 上传拿到新的附件 URL → 改 `BANNER_URL`（README 两份由闸盯着必须与它一致）。
+  长期更好的一档：Modrinth 项目建好后把图传进图库，换成 `cdn.modrinth.com` 的地址（AtomChat 就是这么做的，那个 CDN 在用户网络下也通）。

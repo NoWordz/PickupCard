@@ -341,11 +341,19 @@ def check_store_outputs() -> None:
 
     readme = ROOT / "README.md"
     if readme.is_file():
-        store_banner = store_copy.BANNER
-        readme_image = banner_key(first_image_url(readme.read_text(encoding="utf-8")))
-        if readme_image and readme_image != banner_key(store_banner):
+        # 门面与商店必须是同一张图。头图对外用的是**附件 URL**（raw 域名在用户网络下拉不动，
+        # 而 README 写相对路径也会被 GitHub 重写成 raw 域名 —— 两处一起坏，2026-09-21 实测）。
+        store_banner = store_copy.BANNER_URL
+        readme_image = first_image_url(readme.read_text(encoding="utf-8"))
+        if readme_image and readme_image != store_banner:
             fail(f"README 顶部那张图（{readme_image}）与商店正文头图（{store_banner}）"
                  f"不是同一张 —— 门面与商店各用各的图，就没有东西会把它们对起来")
+
+    # 横幅正本在仓库里：附件 URL 是"对外引用"，正本是"还能再传一次"的那份文件
+    banner_file = ROOT / store_copy.BANNER
+    if not banner_file.is_file():
+        fail(f"仓库里没有横幅正本 {store_copy.BANNER} —— 对外用的是附件 URL，"
+             f"正本丢了就再也没法重新上传同一张图")
 
 
 
