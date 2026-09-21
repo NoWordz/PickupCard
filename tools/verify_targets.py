@@ -339,6 +339,19 @@ def check_store_outputs() -> None:
                  + " —— 改内容请改 docs/store/{zh,en}.md，然后跑 "
                    "python tools/store_copy.py --write")
 
+    # mcmod 必须是**纯文本**：MC 百科的编辑器不解析 Markdown（用户 2026-09-21 原话：
+    # 「mcmod 里还保留 markdown 写法？编辑器就不支持代码格式，只能用他们的可视化编辑器去改格式」）。
+    # 漏一个标记，页面上就是一堆没被解析的符号 —— 所以这里逐类扫一遍，别只靠渲染器自觉。
+    mcmod = rendered.get("mcmod.md")
+    if mcmod is not None:
+        for pattern, what in ((r"\*\*", "粗体标记 `**`"),
+                              (r"`", "反引号代码"),
+                              (r"\]\(", "Markdown 链接"),
+                              (r"(?m)^\s*[-*]\s", "列表标记")):
+            if re.search(pattern, mcmod):
+                fail(f"docs/store/mcmod.md 里出现了{what} —— 百科的编辑器不认 Markdown，"
+                     f"渲染时要用纯文本（tools/store_copy.py 的 mcmod_plain）")
+
     readme = ROOT / "README.md"
     if readme.is_file():
         # 门面与商店必须是同一张图。头图对外用的是**附件 URL**（raw 域名在用户网络下拉不动，

@@ -160,14 +160,26 @@ def parse_source(text: str) -> tuple[list[str], list[tuple[str, list[list[str]]]
     return tagline, sections
 
 
-def strip_links(text: str) -> str:
-    return LINK.sub(r"\1", text)
+def mcmod_plain(text: str) -> str:
+    """把一行 Markdown 抹成**纯文本** —— 这是 MC 百科那份最关键的一步。
+
+    2026-09-21 用户原话：「**mcmod 里还保留 markdown 写法？mcmod 编辑器就不支持代码格式，
+    只能用他们的可视化编辑器去改格式**」。百科正文里出现 `**`、反引号、`[文字](链接)`、`- ` 这类
+    标记，页面上就是一堆没被解析的符号（他们的编辑器只认自己的工具栏，不解析 Markdown）。
+
+    所以：粗体去星号、代码去反引号、链接留文字、列表去前缀。`tools/verify_targets.py` 会再扫一遍，
+    漏一个就红 —— 别只靠这里自觉。
+    """
+    text = LINK.sub(r"\1", text)                    # [文字](url) -> 文字
+    text = re.sub(r"\*\*(.+?)\*\*", r"\1", text)    # **粗体**   -> 粗体
+    text = re.sub(r"^\s*[-*]\s+", "", text)         # - 条目     -> 条目
+    return text.replace("`", "")
 
 
 def mcmod_table(block: list[str]) -> list[str]:
-    """Markdown 表 → 百科的行式表：`格 | 格；`。
+    """Markdown 表 → 百科的行式表：`格| 格；`（AtomChat 的百科页就是这么写的）。
 
-    表头与 `| --- |` 分隔行丢掉（百科那边不需要表头，AtomChat 的百科页也是这么写的）。
+    表头与 `| --- |` 分隔行丢掉（百科那边不需要表头）。
     """
     rows = []
     for i, line in enumerate(block):
@@ -176,6 +188,11 @@ def mcmod_table(block: list[str]) -> list[str]:
             continue                      # 表头 / 分隔行
         rows.append("| ".join(cells) + "；")
     return rows
+
+
+# 百科里当"大标题"（[h1=]）的节：概述与收尾那几节。中间的正文节用 [h2=] 挂在概述下面 ——
+# 这是 AtomChat 那页的实际层级（[h1=概述] → [h2=原版优化] … → [h1=常见问题] → [h1=问题反馈]）。
+MCMOD_H1 = {"概述", "常见问题", "更新日志", "问题反馈", "画廊"}
 
 
 def render(tagline: list[str], sections: list[tuple[str, list[list[str]]]], style: str) -> str:
@@ -189,16 +206,17 @@ def render(tagline: list[str], sections: list[tuple[str, list[list[str]]]], styl
             for block in blocks:
                 out += block            # 列表：一条一行；表格：原样；段落：整段连着
                 out.append("")
-    else:  # mcmod：百科的标记与排版（无徽章/头图，条目之间空一行，表格走行式）
+    else:  # mcmod：百科的可视化编辑器不认 Markdown —— 标记全抹掉，条目之间空一行，表格走行式
         out += ["[mark:title_menu]", ""]
         if one_liner:
-            out += [one_liner, ""]
+            out += [mcmod_plain(one_liner), ""]
         for title, blocks in sections:
-            out += [f"[h1={title}]", ""]
+            level = "h1" if title in MCMOD_H1 else "h2"
+            out += [f"[{level}={title}]", ""]
             for block in blocks:
                 lines = mcmod_table(block) if block[0].startswith("|") else block
                 for line in lines:
-                    out.append(strip_links(line))
+                    out.append(mcmod_plain(line))
                     out.append("")
     while out and not out[-1]:
         out.pop()
