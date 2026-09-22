@@ -10,6 +10,7 @@ import com.niuqu.pickupcard.render.nvg.ui.ConfigLayout;
 import com.niuqu.pickupcard.render.nvg.ui.NvgWidget;
 import com.niuqu.pickupcard.render.nvg.ui.PaintCtx;
 import com.niuqu.pickupcard.render.nvg.ui.TrellisColumn;
+import dev.e33.trellis.tokens.Tokens;
 import dev.e33.trellis.geom.Rect;
 import dev.e33.trellis.ui.UiTree;
 import java.util.ArrayList;
@@ -36,6 +37,14 @@ class TrellisKeyRoutingTest {
     private static final float CANVAS_W = 427f;
     private static final float CANVAS_H = 240f;
     private static final float GUI_SCALE = 3f;
+
+    /**
+     * 这些测试量的是<b>几何关系</b>（谁在谁旁边、差多少），所以跑在<b>设计基准 u</b> 上 ——
+     * 关系对任何 u 都成立，钉在基准上就让断言值保持"设计稿那一版"的整数，读起来一眼能对。
+     * 自适应路径本身由 {@link TrellisTokenGeometryTest#adaptiveGeometryFollowsCanvasHeight} 与
+     * 框架的 {@code UnitsTest} 盯着。
+     */
+    private static final float U = Tokens.Unit.BASE;
 
     /** 随便两个键码：这几条验的是路由，不是某个具体键的语义。 */
     private static final int KEY_A = 65;
@@ -195,7 +204,7 @@ class TrellisKeyRoutingTest {
     private UiTree column() {
         ConfigLayout lo = ConfigLayout.compute(CANVAS_W, CANVAS_H);
         NvgWidget[] controls = {first, null, third};
-        UiTree ui = TrellisColumn.buildColumn(controls, ConfigRows.ROWS_TOP_INSET);
+        UiTree ui = TrellisColumn.buildColumn(controls, ConfigRows.topInset(U), U);
         TrellisColumn.layoutColumn(ui, lo.items(), 0f, 1f / GUI_SCALE);
         return ui;
     }

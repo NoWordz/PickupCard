@@ -23,29 +23,41 @@ import java.util.List;
 final class ConfigRows {
 
     /**
-     * 全界面统一的行距/行高：放不下就滚，节奏不随内容变。
+     * 行距/行高/列顶内缩 —— <b>全是 token 的 N 个 u，u 每帧按画布高算</b>。
      *
-     * <p>【为什么是 token 而不是写死的 20 / 18】这两个数、加上下面那个内缩，是同一把尺子在宿主的
-     * 那一份；适配器（{@code TrellisColumn}）从前还得再抄一遍。现在两边都读 L0 Token，
-     * 单位是 u —— 今天 u 取基准 {@link Tokens.Unit#BASE}，所以数值**逐位不变**。
+     * <p>【为什么不再是 {@code static final}】从前写 {@code Tokens.Size.ROW_H * Tokens.Unit.BASE}，
+     * 把"基准 u"烤进编译期常量。A-14 起 u 是活的（{@code Units.u(画布高)}，见框架
+     * {@code dev.e33.trellis.tokens.Units}），任何 {@code static final} 都会**静默沿用基准 2** ——
+     * 屏幕换一档 guiScale，行距却不动。所以改成一族**纯函数**，u 由调用方每帧给。
      *
-     * <p>【为什么还留着 int】这一列的行 y 是整数算术（{@code Math.round(scrollOffset)} 那套）。
-     * 等密度模型接上（u 按屏幕尺寸算）时，这里要跟着改成**每帧算**，不能停在 static final。
+     * <p>【为什么取整】这一列的行 y 走整数算术（{@code Math.round(scrollOffset)} 那套）；
+     * Trellis 适配器读同一份 token 时也照**同样的取整**（{@code Math.round(N * u)}）——
+     * 竖直方向必须逐位同（A-4 的 1.3px 是水平差，竖直从来没错过一格）。
      */
-    static final int ROW_H = Math.round(Tokens.Size.ROW_H * Tokens.Unit.BASE);
+    static int rowH(float u) {
+        return Math.round(Tokens.Size.ROW_H * u);
+    }
+
     /** 行缝 = 1u：行距是"行高 + 行缝"，不是第三个独立常数（20 = 18 + 2）。 */
-    static final int ROW_GAP = Math.round(Tokens.Space.STEP_1 * Tokens.Unit.BASE);
-    static final int ROW_STEP = ROW_H + ROW_GAP;
+    static int rowGap(float u) {
+        return Math.round(Tokens.Space.STEP_1 * u);
+    }
+
+    static int rowStep(float u) {
+        return rowH(u) + rowGap(u);
+    }
 
     /**
      * 第一行相对配置列顶的内缩 = 1u —— 贴着列顶会和标题行糊在一起。
      *
      * <p>【为什么放在这里而不是写在屏幕里】它是"行模型"的几何，而且有第二个消费者：
-     * Trellis 组件列要拿同一个数当布局树的内边距（{@code TrellisColumn.buildColumn(..., topInset)}）。
+     * Trellis 组件列要拿同一个数当布局树的内边距（{@code TrellisColumn.buildColumn(..., topInset, u)}）。
      * 放一处、两边取同一个源。反过来做（适配器里补个 2）就是又一份口径 —— 2026-09-21 真机
      * 实测过后果：整列 12 行集体高 2 逻辑 px。
      */
-    static final int ROWS_TOP_INSET = Math.round(Tokens.Space.STEP_1 * Tokens.Unit.BASE);
+    static int topInset(float u) {
+        return Math.round(Tokens.Space.STEP_1 * u);
+    }
 
     private final List<Row> list = new ArrayList<>();
 
@@ -64,21 +76,23 @@ final class ConfigRows {
     }
 
     /** 这一帧配置项内容有多高（滚动的依据）。 */
-    float contentHeight() {
-        return list.size() * (float) ROW_STEP;
+    float contentHeight(float u) {
+        return list.size() * (float) rowStep(u);
     }
 
     /**
-     * 逐行摆：**一行一项**（标签左、控件右），行距恒 {@link #ROW_STEP}px，放不下就滚。
+     * 逐行摆：**一行一项**（标签左、控件右），行距恒 {@link #rowStep(float)} px，放不下就滚。
      *
      * @param scrollOffset 滚动偏移（扣掉它，控件与它画出来的位置才是同一个坐标系，
      *                     否则点了会"选错行"）
      * @param rowsTop      第一行的顶 y（预览搬到右列后，配置列从自己的顶部开始）
+     * @param u            这一帧的自适应单位（由屏幕按画布高算）
      */
-    void layout(ConfigLayout lo, float scrollOffset, float rowsTop) {
+    void layout(ConfigLayout lo, float scrollOffset, float rowsTop, float u) {
+        float step = rowStep(u);
         for (int i = 0; i < list.size(); i++) {
             Row row = list.get(i);
-            float y = rowsTop + i * (float) ROW_STEP - Math.round(scrollOffset);
+            float y = rowsTop + i * step - Math.round(scrollOffset);
             row.yAt = y;
             // 【控件的格子不在这里摆了（A-10 第二步）】行内控件的几何由 Trellis 的树算
             // （{@code TrellisColumn.controlBox}），控件自己不再存 {@code x/y/w/h} ——
@@ -87,18 +101,24 @@ final class ConfigRows {
     }
 
     // ---- 几何：按画布算，不写死（控件右对齐到配置列右缘，留滚动条那侧的呼吸位） ----
+    //
+    // 【这是对照侧，不是生产路径（A-14 起也跟着 u 缩放）】下面三条是**独立实现**的一份算术：
+    // 生产上控件矩形由 Trellis 的树给（{@code TrellisColumn.controlBox}），宿主不再自己算。
+    // 留着它是为了让 {@code TrellisHitParityTest} 有一份"别人写一遍"的口径可比 ——
+    // 那 1.3 逻辑 px 的水平差就是这么量出来的。u 变了它必须跟着缩，否则对的就不是同一件事了。
 
-    static int controlW(ConfigLayout lo) {
-        int room = Math.round(lo.items().w()) - 12;
-        return Math.max(48, Math.min(130, room * 45 / 100));
+    static int controlW(ConfigLayout lo, float u) {
+        int room = Math.round(lo.items().w()) - Math.round(2f * Tokens.Space.STEP_3 * u);
+        return Math.max(Math.round(Tokens.Size.CONTROL_MIN_W * u),
+                Math.min(Math.round(Tokens.Size.CONTROL_MAX_W * u), room * 45 / 100));
     }
 
-    static int labelX(ConfigLayout lo) {
-        return Math.round(lo.items().x()) + 6;
+    static int labelX(ConfigLayout lo, float u) {
+        return Math.round(lo.items().x()) + Math.round(Tokens.Space.STEP_3 * u);
     }
 
-    static int controlX(ConfigLayout lo) {
-        return Math.round(lo.items().right()) - 6 - controlW(lo);
+    static int controlX(ConfigLayout lo, float u) {
+        return Math.round(lo.items().right()) - Math.round(Tokens.Space.STEP_3 * u) - controlW(lo, u);
     }
 
     /** 一行：标签 + 控件 + 悬停提示 + 悬停进度。

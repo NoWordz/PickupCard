@@ -104,15 +104,20 @@ public final class NvgSlider extends NvgWidget {
         float ty = trackY(h);
         float tx = trackX();
         float tw = trackW(w);
+        // 细条厚度/圆角从调色板来（与屏幕滚动条是同一个角色，A-13 评审列的"细条 3u + 1.5u"）。
+        float tt = p.trackThickness;
+        float tr = p.trackRadius;
         // 轨道底（凹槽）→ 已选段（强调色）→ 圆钮：三段一眼看出"现在到哪了"
-        ctx.fillRoundRect(tx, ty, tw, 3f, 1.5f, pressed ? p.wellPressed : p.well);
+        ctx.fillRoundRect(tx, ty, tw, tt, tr, pressed ? p.wellPressed : p.well);
         float filled = (float) (tw * ratio);
         if (filled > 0.5f) {
-            ctx.fillRoundRect(tx, ty, filled, 3f, 1.5f, p.accent);
+            ctx.fillRoundRect(tx, ty, filled, tt, tr, p.accent);
         }
         float knobR = p.knobRadius;
-        ctx.circle(tx + filled, ty + 1.5f, knobR,
-                (hovered || pressed || focused) ? 0xFFFFFFFF : 0xFFD5DAE5);
+        // 钮面两色走调色板（A-13 评审列的"钮面颜色对"）：与 NvgToggle 是同一个角色，
+        // 从前两处各写一遍 0xFFFFFFFF / 0xFFD5DAE5 —— 值一个字没改。
+        ctx.circle(tx + filled, ty + tr, knobR,
+                (hovered || pressed || focused) ? p.knobActive : p.knobIdle);
         if (hovered || focused) {
             ctx.strokeRoundRect(0f, 0f, w, h, p.radius, p.outline);
         }

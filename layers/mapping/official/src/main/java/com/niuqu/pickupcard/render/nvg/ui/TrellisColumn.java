@@ -60,29 +60,22 @@ public final class TrellisColumn {
     /**
      * 这一列的几何口径：<b>只从 L0 Token 来，一个裸数字都不留</b>。
      *
-     * <p>【为什么是 token × u，不是像素】这些数的单位是 u（自适应单位，见
-     * {@link Tokens.Unit}）。今天 u 取基准 {@link Tokens.Unit#BASE}，所以数值和从前**逐位相同**
-     * （6 / 6 / 24 / 48 / 130 / 0.45 / 18 / 2）。
+     * <p>【为什么是一族局部变量，不是 {@code static final} 常量】从前这里是
+     * {@code private static final float U = Tokens.Unit.BASE;} 加一串 {@code Tokens.* * U} ——
+     * 把"基准 u"烤进了编译期常量。A-14 起 u 是<b>每帧按画布高算</b>的（{@code Units.u}），
+     * 那些常量只会静默沿用基准 2（屏幕换档它不动）。所以 u 从 {@link #buildColumn} 的参数进来，
+     * 每次建树现算 —— 这不是"改 token 就够了"能解决的问题，是常量必须消失。
      *
-     * <p>【⚠️ 但 {@link #U} 是 {@code static final}，密度模型接不上来】等 u 变成每帧按屏幕算时，
-     * 这些常量会**静默沿用基准值 2** —— 也就是说：接密度那一步**必须改这里**，把 {@code U} 换成
-     * 每帧读进来的那个数（{@code ConfigRows} 那三个 int 是同一个坑）。别以为"改 token 就够了"。
-     *
-     * <p>【为什么不再抄 {@code ConfigRows} 的数】从前这里抄了宿主那份口径，理由是那个类是包私有、
-     * 跨包看不见 —— 那正是"同一把尺子散在三处"的样子。现在两边读同一份 token
-     * （宿主那边 {@code controlW / controlX / labelX} 三处仍各有一份算术，那是 A-4 那 1.3px
-     * 口径差的来源，**留作独立对照侧**，别随手删）。
+     * <p>【为什么行高/行缝要跟着 {@code Math.round}} 宿主那份行模型（{@code ConfigRows}）
+     * 的行 y 走整数算术；竖直方向两边必须**逐位同**（A-4 那个 1.3px 是水平差），
+     * 所以这里对 rowH / ROW_GAP 取同样的整。其余（内边距、控件上下限）保留浮点 ——
+     * 它们只影响水平排列，本来就是"允许差一个边缘带"的那部分。
      */
-    private static final float U = Tokens.Unit.BASE;
-    private static final float PAD = Tokens.Space.STEP_3 * U;
-    private static final float GAP = Tokens.Space.STEP_3 * U;
-    private static final float LABEL_MIN = Tokens.Size.LABEL_MIN_W * U;
-    private static final float CONTROL_MIN = Tokens.Size.CONTROL_MIN_W * U;
-    private static final float CONTROL_MAX = Tokens.Size.CONTROL_MAX_W * U;
-    private static final float CONTROL_FRACTION = Tokens.Size.CONTROL_WIDTH_FRACTION;
-    private static final float ROW_H = Tokens.Size.ROW_H * U;
-    /** 行缝 = 1u：行距与行高在声明式里是同一个事实的两面（20 = 18 + 2），不是两个独立常数。 */
-    private static final float ROW_GAP = Tokens.Space.STEP_1 * U;
+    private static final float STEP_PAD = Tokens.Space.STEP_3;
+    private static final float STEP_LABEL_MIN = Tokens.Size.LABEL_MIN_W;
+    private static final float STEP_CONTROL_MIN = Tokens.Size.CONTROL_MIN_W;
+    private static final float STEP_CONTROL_MAX = Tokens.Size.CONTROL_MAX_W;
+    private static final float STEP_ROW_H = Tokens.Size.ROW_H;
 
     /**
      * 接进宿主上下文。帧由宿主开也由宿主关，这里只画。
@@ -129,23 +122,36 @@ public final class TrellisColumn {
      *                   宿主的小节头也是"占一行、没有控件"，这里必须照建 ——
      *                   给小节头也造一个控件，布局是对的，但那是宿主根本不存在的东西，
      *                   命中会凭空多出一行。
-     * @param topInset   宿主第一行相对列顶的内缩（传 {@code ConfigRows.ROWS_TOP_INSET}）。
+     * @param topInset   宿主第一行相对列顶的内缩（传 {@code ConfigRows.topInset(u)}）。
      *                   <b>必须由宿主交进来、当成树自己的内边距用，不能在适配器里事后补</b>。
+     * @param u          这一帧的自适应单位（{@code Units.u(画布高)}）。<b>不是基准常量</b> ——
+     *                   行高/行距/内边距/控件上下限全部按它缩放，u 变了就重建树。
      */
-    public static UiTree buildColumn(NvgWidget[] controls, float topInset) {
-        Component root = new Box(columnStyle(topInset), false);
+    public static UiTree buildColumn(NvgWidget[] controls, float topInset, float u) {
+        float pad = STEP_PAD * u;
+        float gap = STEP_PAD * u;
+        float labelMin = STEP_LABEL_MIN * u;
+        float controlMin = STEP_CONTROL_MIN * u;
+        float controlMax = STEP_CONTROL_MAX * u;
+        // 竖直两格跟宿主取同样的整（见上面 STEP_* 的注释：竖直必须逐位同）
+        float rowH = Math.round(STEP_ROW_H * u);
+        float rowGap = Math.round(Tokens.Space.STEP_1 * u);
+
+        Component root = new Box(columnStyle(topInset, pad, rowGap), false);
         for (NvgWidget control : controls) {
-            Component line = new Box(Style.row().withGap(GAP).withHeight(Sizing.fixed(ROW_H)), false);
-            line.add(new Box(Style.row().withGrow(1f).withWidth(Sizing.atLeast(LABEL_MIN))
-                    .withHeight(Sizing.fixed(ROW_H)), true));
+            Component line = new Box(Style.row().withGap(gap).withHeight(Sizing.fixed(rowH)), false);
+            line.add(new Box(Style.row().withGrow(1f).withWidth(Sizing.atLeast(labelMin))
+                    .withHeight(Sizing.fixed(rowH)), true));
             if (control != null) {
                 line.add(new ControlSlot(control, Style.row()
-                        .withWidth(Sizing.fraction(CONTROL_MIN, CONTROL_FRACTION, CONTROL_MAX))
-                        .withHeight(Sizing.fixed(ROW_H))));
+                        .withWidth(Sizing.fraction(controlMin,
+                                Tokens.Size.CONTROL_WIDTH_FRACTION, controlMax))
+                        .withHeight(Sizing.fixed(rowH))));
             }
             root.add(line);
         }
-        return new UiTree(root);
+        // u 挂到树上：{@code layoutColumn} 之后控件自己就能问"这一帧的 u 是多少"。
+        return new UiTree(root, u);
     }
 
     /**
@@ -522,10 +528,10 @@ public final class TrellisColumn {
         }
     }
 
-    private static Style columnStyle(float topInset) {
+    private static Style columnStyle(float topInset, float pad, float rowGap) {
         // 上 topInset / 下 0：底下那点不是留白，加了只会把列撑高。
-        return Style.column().withPadding(Insets.of(topInset, PAD, 0f, PAD))
-                .withGap(ROW_GAP).withAlign(Align.STRETCH);
+        return Style.column().withPadding(Insets.of(topInset, pad, 0f, pad))
+                .withGap(rowGap).withAlign(Align.STRETCH);
     }
 
     /**

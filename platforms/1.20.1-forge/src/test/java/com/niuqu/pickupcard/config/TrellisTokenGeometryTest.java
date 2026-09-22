@@ -5,7 +5,9 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import com.niuqu.pickupcard.render.nvg.ui.ConfigLayout;
 import com.niuqu.pickupcard.render.nvg.ui.NvgWidget;
 import com.niuqu.pickupcard.render.nvg.ui.TrellisColumn;
+import dev.e33.trellis.tokens.Tokens;
 import dev.e33.trellis.geom.Rect;
+import dev.e33.trellis.tokens.Units;
 import dev.e33.trellis.ui.UiTree;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -35,6 +37,14 @@ class TrellisTokenGeometryTest {
     private static final float GUI_SCALE = 3f;
 
     /**
+     * 这些测试量的是<b>几何关系</b>（谁在谁旁边、差多少），所以跑在<b>设计基准 u</b> 上 ——
+     * 关系对任何 u 都成立，钉在基准上就让断言值保持"设计稿那一版"的整数，读起来一眼能对。
+     * 自适应路径本身由 {@link TrellisTokenGeometryTest#adaptiveGeometryFollowsCanvasHeight} 与
+     * 框架的 {@code UnitsTest} 盯着。
+     */
+    private static final float U = Tokens.Unit.BASE;
+
+    /**
      * 外观页的行形态：10 个控件行 + 2 个小节头行（下标 1 = Shape、7 = Colors）。
      *
      * <p>控件用 {@link TestWidgets.Inert} 替身 —— 这条测的是几何，真控件会去碰 Forge 配置，
@@ -50,10 +60,10 @@ class TrellisTokenGeometryTest {
     @Test
     @DisplayName("宿主那份行模型：18 / 2 / 20 / 2 —— 全部是 token × 基准 u")
     void hostRowMetrics() {
-        assertEquals(18, ConfigRows.ROW_H, "行高 = Size.ROW_H(9u) × u(2)");
-        assertEquals(2, ConfigRows.ROW_GAP, "行缝 = Space.STEP_1(1u) × u(2)");
-        assertEquals(20, ConfigRows.ROW_STEP, "行距 = 行高 + 行缝（不是第三个独立常数）");
-        assertEquals(2, ConfigRows.ROWS_TOP_INSET, "列顶内缩 = Space.STEP_1(1u) × u(2)");
+        assertEquals(18, ConfigRows.rowH(U), "行高 = Size.ROW_H(9u) × u(2)");
+        assertEquals(2, ConfigRows.rowGap(U), "行缝 = Space.STEP_1(1u) × u(2)");
+        assertEquals(20, ConfigRows.rowStep(U), "行距 = 行高 + 行缝（不是第三个独立常数）");
+        assertEquals(2, ConfigRows.topInset(U), "列顶内缩 = Space.STEP_1(1u) × u(2)");
     }
 
     @Test
@@ -76,14 +86,45 @@ class TrellisTokenGeometryTest {
 
         Rect first = TrellisColumn.controlBox(ui, 0);
         Rect third = TrellisColumn.controlBox(ui, 2);
-        assertEquals(2f * ConfigRows.ROW_STEP, third.y() - first.y(), 0.01f,
+        assertEquals(2f * ConfigRows.rowStep(U), third.y() - first.y(), 0.01f,
                 "第 0 行到第 2 行隔了一个小节头 = 两个行距；行缝跑掉的话这里会先红");
+    }
+
+    /**
+     * A-14 的自适应钉子：<b>u 跟着画布高走，行高/行距/内缩都跟着缩</b>。
+     *
+     * <p>【为什么必须有这一条】A-14 之前宿主那三个数是 {@code static final}（烤死基准 u），
+     * 换一档 guiScale 它们纹丝不动 —— 而且**没有任何东西会报**。这条把"u 变了几何必须变"
+     * 钉住：拿真机那档 427×240 算，u 落到 1.5（{@code Units.u}），行高 18→14、行距 20→16。
+     */
+    @Test
+    @DisplayName("A-14：画布 240 高 → u=1.5，行高 14 / 行缝 2 / 行距 16 / 内缩 2")
+    void adaptiveGeometryFollowsCanvasHeight() {
+        float u = Units.u(CANVAS_H);
+        assertEquals(1.5f, u, 1e-6f, "240 在地板线(400×0.8=320)之下 → fit=0.6 → 被 MIN 抬到 1.5");
+
+        assertEquals(14, ConfigRows.rowH(u), "round(9u × 1.5) = round(13.5) = 14");
+        assertEquals(2, ConfigRows.rowGap(u), "round(1u × 1.5) = round(1.5) = 2");
+        assertEquals(16, ConfigRows.rowStep(u), "行距 = 14 + 2");
+        assertEquals(2, ConfigRows.topInset(u), "列顶内缩 = round(1.5) = 2");
+
+        UiTree ui = TrellisColumn.buildColumn(CONTROLS, ConfigRows.topInset(u), u);
+        ConfigLayout lo = ConfigLayout.compute(CANVAS_W, CANVAS_H);
+        ui.layout(new Rect(lo.items().x(), lo.items().y(), lo.items().w(), lo.items().h()),
+                1f / GUI_SCALE);
+
+        Rect box = TrellisColumn.controlBox(ui, 2);
+        assertEquals(14.0f, box.height(), 1e-3f, "树里的控件高必须跟着 u 缩到 14");
+        // 第 2 行 = 第 3 行 → 相对列顶偏移 2 × 行距 = 32（列顶内缩另加）
+        assertEquals(2f * ConfigRows.rowStep(u),
+                box.y() - (Math.round(lo.items().y()) + ConfigRows.topInset(u)),
+                0.6f, "第 2 行的 y 相对列顶 ≈ 2 × 行距");
     }
 
     /** 按真机那一档建一棵树（12 行的外观页形态，滚动为 0），布局到 views 的矩形上。 */
     private static UiTree column() {
         ConfigLayout lo = ConfigLayout.compute(CANVAS_W, CANVAS_H);
-        UiTree ui = TrellisColumn.buildColumn(CONTROLS, ConfigRows.ROWS_TOP_INSET);
+        UiTree ui = TrellisColumn.buildColumn(CONTROLS, ConfigRows.topInset(U), U);
         ui.layout(new Rect(lo.items().x(), lo.items().y(), lo.items().w(), lo.items().h()),
                 1f / GUI_SCALE);
         return ui;

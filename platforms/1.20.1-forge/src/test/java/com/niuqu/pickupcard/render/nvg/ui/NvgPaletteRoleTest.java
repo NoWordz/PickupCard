@@ -57,6 +57,20 @@ class NvgPaletteRoleTest {
         UNUSED_ROLES.put("FOCUS_RING", "焦点环还没画 —— 与框架侧同一条欠账（A-11 的记录里点名了）");
     }
 
+    /**
+     * <b>宿主自己的</b>颜色字段：框架里没有对应角色，所以不在这张对应表里。
+     *
+     * <p>每一条都要写清"为什么框架里没有" —— 和 {@link #UNUSED_ROLES} 一个道理：
+     * 不写的话下一个人分不清"故意不加"和"忘了加"。
+     */
+    private static final Map<String, String> HOST_OWN_FIELDS = new LinkedHashMap<>();
+
+    static {
+        HOST_OWN_FIELDS.put("backdrop", "界面底色：框架不知道「压在游戏画面上」这件事");
+        HOST_OWN_FIELDS.put("knobActive", "圆钮的亮面：框架的图层里没有「圆钮」（它是控件自己的形状）");
+        HOST_OWN_FIELDS.put("knobIdle", "圆钮的沉面：同上");
+    }
+
     @Test
     @DisplayName("框架的每个颜色角色都被交代过：要么映射到字段，要么写明为什么不用")
     void everyTrellisRoleIsAccountedFor() {
@@ -90,6 +104,10 @@ class NvgPaletteRoleTest {
         assertEquals(1f, palette.outlineWidth, 0.001f,
                 "Size.HAIRLINE：绝对 1px，**不乘 u**（细线不该随屏幕放大）");
         assertEquals(5f, palette.knobRadius, 0.001f, "Size.KNOB_RADIUS(2.5u) × u(2)");
+        // 细条：滑条轨道与滚动条共用的那一对（A-13 评审列的"细条 3u + 1.5u"）。
+        // 绝对 px、不乘 u —— 与 HAIRLINE 同一个理由（细线不该随屏幕变粗）。
+        assertEquals(3f, palette.trackThickness, 0.001f, "细条厚度（滑条轨道 / 滚动条共用）");
+        assertEquals(1.5f, palette.trackRadius, 0.001f, "细条圆角 = 厚度的一半");
     }
 
     @Test
@@ -103,9 +121,10 @@ class NvgPaletteRoleTest {
             fields.add(field.getName());
         }
         Set<String> expected = new TreeSet<>(ROLE_TO_FIELD.values());
-        expected.add("backdrop");      // 唯一一个"框架里没有对应角色"的，见它的 javadoc
+        expected.addAll(HOST_OWN_FIELDS.keySet());   // 宿主自己的角色（框架里没有对应 token）
         assertEquals(expected, fields,
-                "宿主的颜色字段与对应表对不上：新加字段要给角色，删字段要从表里去掉");
+                "宿主的颜色字段与对应表对不上：新加字段要给角色（框架的进 ROLE_TO_FIELD、"
+                        + "自己的进 HOST_OWN_FIELDS 并写清为什么框架里没有），删字段要从表里去掉");
     }
 
     /** 反射出 `Tokens.Color` 的常量名（= 框架的颜色角色集合）。 */

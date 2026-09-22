@@ -61,8 +61,10 @@ public final class NvgToggle extends NvgWidget {
             ctx.strokeRoundRect(pillX, pillY, pillW, pillH, r, p.outline);
         }
         // 钮：开在右边、关在左边（圆钮位置本身就是状态）
+        // 钮面两色走调色板（A-13 评审列的"钮面颜色对"）：与 NvgSlider 是同一个角色，
+        // 从前两处各写一遍 0xFFFFFFFF / 0xFFD5DAE5 —— 值一个字没改。
         float knobX = on ? pillX + pillW - r : pillX + r;
-        ctx.circle(knobX, pillY + r, r - 1f, on ? 0xFFFFFFFF : 0xFFD5DAE5);
+        ctx.circle(knobX, pillY + r, r - 1f, on ? p.knobActive : p.knobIdle);
         if (hovered || focused) {
             ctx.strokeRoundRect(0f, 0f, w, h, p.radius, p.outline);
         }

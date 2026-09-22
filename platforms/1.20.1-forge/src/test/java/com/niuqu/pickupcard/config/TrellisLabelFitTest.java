@@ -10,6 +10,7 @@ import com.niuqu.pickupcard.render.nvg.ui.McFont;
 import com.niuqu.pickupcard.render.nvg.ui.NvgWidget;
 import com.niuqu.pickupcard.render.nvg.ui.TrellisColumn;
 import com.niuqu.pickupcard.render.nvg.ui.TrellisColumn.LabelFit;
+import dev.e33.trellis.tokens.Tokens;
 import dev.e33.trellis.geom.Rect;
 import dev.e33.trellis.text.FontMetrics;
 import dev.e33.trellis.text.FontStack;
@@ -42,6 +43,14 @@ class TrellisLabelFitTest {
     private static final float CANVAS_H = 240f;
     /** 真机那一档：1280x720 @ guiScale 3。 */
     private static final float GUI_SCALE = 3f;
+
+    /**
+     * 这些测试量的是<b>几何关系</b>（谁在谁旁边、差多少），所以跑在<b>设计基准 u</b> 上 ——
+     * 关系对任何 u 都成立，钉在基准上就让断言值保持"设计稿那一版"的整数，读起来一眼能对。
+     * 自适应路径本身由 {@link TrellisTokenGeometryTest#adaptiveGeometryFollowsCanvasHeight} 与
+     * 框架的 {@code UnitsTest} 盯着。
+     */
+    private static final float U = Tokens.Unit.BASE;
     /** 标签缩字地板，与屏幕里那个常量同一个值（这里是"接口的一侧"，不是抄数）。 */
     private static final float MIN_FONT = 8f;
     /** 截断时接在末尾的串，与屏幕里那个常量同一个值。 */
@@ -108,7 +117,7 @@ class TrellisLabelFitTest {
                 "标签盒没有从列内容左缘开始");
         assertEquals(6f, control.x() - box.right(), 1f / GUI_SCALE + 1e-3f,
                 "标签盒与控件之间不够一个 GAP（文字会贴到控件上）");
-        assertEquals(ConfigRows.ROW_H, box.height(), 0.5f, "标签盒高度不是行高");
+        assertEquals(ConfigRows.rowH(U), box.height(), 0.5f, "标签盒高度不是行高");
         assertTrue(box.right() <= control.x(), "标签盒压到控件上");
         assertEquals(lo.items().x() + 6f, box.x(), 1f, "标签盒没落在配置列里");
     }
@@ -134,8 +143,8 @@ class TrellisLabelFitTest {
         assertEquals(scroll, still.y() - moved.y(), 0.5f, "滚动没有把行整体上移同样的距离");
 
         ConfigLayout lo = ConfigLayout.compute(CANVAS_W, CANVAS_H);
-        float hostY = Math.round(lo.items().y()) + ConfigRows.ROWS_TOP_INSET
-                + 3 * (float) ConfigRows.ROW_STEP - Math.round(scroll);
+        float hostY = Math.round(lo.items().y()) + ConfigRows.topInset(U)
+                + 3 * (float) ConfigRows.rowStep(U) - Math.round(scroll);
         assertEquals(hostY, moved.y(), 1f,
                 "滚动之后 Trellis 的行与宿主那一份错开了（悬停底、命中、标签会一起错）");
     }
@@ -256,7 +265,7 @@ class TrellisLabelFitTest {
 
     private static UiTree column(float scrollOffset) {
         ConfigLayout lo = ConfigLayout.compute(CANVAS_W, CANVAS_H);
-        UiTree ui = TrellisColumn.buildColumn(CONTROLS, ConfigRows.ROWS_TOP_INSET);
+        UiTree ui = TrellisColumn.buildColumn(CONTROLS, ConfigRows.topInset(U), U);
         TrellisColumn.layoutColumn(ui, lo.items(), scrollOffset, 1f / GUI_SCALE);
         return ui;
     }

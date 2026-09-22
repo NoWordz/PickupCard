@@ -7,6 +7,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import com.niuqu.pickupcard.render.nvg.ui.ConfigLayout;
 import com.niuqu.pickupcard.render.nvg.ui.NvgWidget;
 import com.niuqu.pickupcard.render.nvg.ui.TrellisColumn;
+import dev.e33.trellis.tokens.Tokens;
 import dev.e33.trellis.geom.Rect;
 import dev.e33.trellis.ui.UiTree;
 import org.junit.jupiter.api.DisplayName;
@@ -29,6 +30,14 @@ class TrellisControlInputTest {
     private static final float CANVAS_W = 427f;
     private static final float CANVAS_H = 240f;
     private static final float GUI_SCALE = 3f;
+
+    /**
+     * 这些测试量的是<b>几何关系</b>（谁在谁旁边、差多少），所以跑在<b>设计基准 u</b> 上 ——
+     * 关系对任何 u 都成立，钉在基准上就让断言值保持"设计稿那一版"的整数，读起来一眼能对。
+     * 自适应路径本身由 {@link TrellisTokenGeometryTest#adaptiveGeometryFollowsCanvasHeight} 与
+     * 框架的 {@code UnitsTest} 盯着。
+     */
+    private static final float U = Tokens.Unit.BASE;
 
     /** 三行：控件 / 小节头 / 控件 —— 小节头那一行没有任何控件可以收到事件。 */
     private final TestWidgets.Recorder first = new TestWidgets.Recorder();
@@ -142,7 +151,7 @@ class TrellisControlInputTest {
     private UiTree column() {
         ConfigLayout lo = ConfigLayout.compute(CANVAS_W, CANVAS_H);
         NvgWidget[] controls = {first, null, third};
-        UiTree ui = TrellisColumn.buildColumn(controls, ConfigRows.ROWS_TOP_INSET);
+        UiTree ui = TrellisColumn.buildColumn(controls, ConfigRows.topInset(U), U);
         TrellisColumn.layoutColumn(ui, lo.items(), 0f, 1f / GUI_SCALE);
         return ui;
     }

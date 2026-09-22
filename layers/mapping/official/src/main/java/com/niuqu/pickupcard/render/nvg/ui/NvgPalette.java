@@ -62,6 +62,20 @@ public final class NvgPalette {
     public final int text;
     /** 次要文字（标签、说明）—— 角色：{@code Color.TEXT_SECONDARY}。 */
     public final int textDim;
+    /**
+     * 圆钮的"亮面"（滑条被指/按住/聚焦时、开关处于开时）。
+     *
+     * <p>【为什么它进了调色板】它原来在 {@code NvgSlider} 与 {@code NvgToggle} 里
+     * <b>各写了一遍</b> {@code 0xFFFFFFFF}（A-13 评审列的"钮面颜色对"）——
+     * 既不在 {@code NvgPalette} 也不在 {@code Tokens}，于是"角色跟着框架走"这条规矩
+     * 管不到它，改一处就漏一处。**值一个字没改**（原来就是纯白）。
+     *
+     * <p>【角色：框架里没有对应 token】和 {@link #backdrop} 一样是宿主自己的角色
+     * （框架的图层里没有"圆钮"这件事）—— 豁免登记在 {@code NvgPaletteRoleTest}。
+     */
+    public final int knobActive;
+    /** 圆钮的"沉面"（滑条常态、开关处于关时）。角色同上，也是宿主自己的。值不变（原 {@code 0xFFD5DAE5}）。 */
+    public final int knobIdle;
 
     // ---- 尺寸（token × u；u 今天取基准，见 {@link Tokens.Unit}）----
     private static final float U = Tokens.Unit.BASE;
@@ -71,6 +85,19 @@ public final class NvgPalette {
     public float outlineWidth = Tokens.Size.HAIRLINE;
     /** 滑块（圆）半径 = {@code Size.KNOB_RADIUS} × u（基准下 5）。 */
     public float knobRadius = Tokens.Size.KNOB_RADIUS * U;
+    /**
+     * 细条（滑条轨道 / 屏幕滚动条）的厚度与圆角。
+     *
+     * <p>【为什么是绝对 px、不乘 u】和 {@code Size.HAIRLINE} 同一个理由：一条细线看起来
+     * 该多细是"看得清"的事，屏幕大一号它不该跟着变粗（那就不像细条、像边框了）。
+     *
+     * <p>【为什么进调色板】A-13 评审列的"细条 3u + 圆角 1.5u"：{@code NvgSlider} 的轨道与
+     * 屏幕里的滚动条**各写了一遍** {@code 3f / 1.5f}。它们是同一个角色（"一条细的圆头条"），
+     * 收在这里一处。**值一个字没改**。
+     */
+    public float trackThickness = 3f;
+    /** 细条的圆角（= 厚度的一半，胶囊端）。见 {@link #trackThickness}。 */
+    public float trackRadius = 1.5f;
     // 【删掉的两个字段（2026-09-22）】`rowHeight = 18f` 与 `trackHeight = 6f` —— **全仓没有任何读点**：
     // 行高由 `ConfigRows` / 组件树用 `Size.ROW_H × u` 给；轨道高**还没有 token**（`NvgSlider` 里那句
     // 细条 3u + 圆角 1.5u，与屏幕里滚动条那一对是同一份裸数字，两处各写一遍 —— 记在下一片）。
@@ -79,13 +106,13 @@ public final class NvgPalette {
     /** 深色界面。默认就是它 —— 游戏里九成时间在暗环境，浅色面板会晃眼。 */
     public static NvgPalette dark(StyleModel.Accents a) {
         return new NvgPalette(0xF0101218, 0xC0202836, 0x80202836, 0xB0364152, 0xC04A5871,
-                a.xp(), 0x40FFFFFF, 0xFFEBEFF6, 0xFF9AA4AD);
+                a.xp(), 0x40FFFFFF, 0xFFEBEFF6, 0xFF9AA4AD, 0xFFFFFFFF, 0xFFD5DAE5);
     }
 
     /** 浅色：跟着主题走（主题是浅色时用这套）。 */
     public static NvgPalette light(StyleModel.Accents a) {
         return new NvgPalette(0xF0E9ECF3, 0xC0FFFFFF, 0x60D5DAE5, 0xA0C3CAD8, 0xC0A9B2C4,
-                a.xp(), 0x40000000, 0xFF1B1F27, 0xFF5A6272);
+                a.xp(), 0x40000000, 0xFF1B1F27, 0xFF5A6272, 0xFFFFFFFF, 0xFFD5DAE5);
     }
 
     /**
@@ -106,7 +133,8 @@ public final class NvgPalette {
     }
 
     private NvgPalette(int backdrop, int panel, int well, int wellHover, int wellPressed,
-                       int accent, int outline, int text, int textDim) {
+                       int accent, int outline, int text, int textDim,
+                       int knobActive, int knobIdle) {
         this.backdrop = backdrop;
         this.panel = panel;
         this.well = well;
@@ -116,5 +144,7 @@ public final class NvgPalette {
         this.outline = outline;
         this.text = text;
         this.textDim = textDim;
+        this.knobActive = knobActive;
+        this.knobIdle = knobIdle;
     }
 }

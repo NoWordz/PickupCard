@@ -85,7 +85,7 @@ public final class PickupCardConfigScreen extends Screen {
                         : "收起",
                 lo.previewVisible() ? (lo.switcherVisible() ? " 切样例行" : " 无切样例行") : "",
                 rowsModel.all().size(),
-                Math.max(1, (int) (lo.items().h() / ConfigRows.ROW_STEP)),
+                Math.max(1, (int) (lo.items().h() / ConfigRows.rowStep(unit()))),
                 itemsScroll == null ? 0f : itemsScroll.offset());
     }
 
@@ -161,6 +161,20 @@ public final class PickupCardConfigScreen extends Screen {
     }
 
     /**
+     * 这一帧的<b>自适应单位 u</b>（逻辑 px）：框架按<b>画布高</b>算出来
+     * （{@link dev.e33.trellis.tokens.Units#u(float)}，口径照 UIDeck，源码出处见那个类）。
+     *
+     * <p>【为什么传 {@code this.height}，不是配置列的高度】u 是"屏幕多大"的一件事，
+     * 与某一列多高无关 —— 传 items 矩形的高会得到一个滚动时还会变的数。
+     *
+     * <p>【为什么它是全屏一份几何的入口】行距（{@link ConfigRows}）、列顶内缩、
+     * 控件上下限全部从它缩放 —— 一个数变了，整屏一起变，这就是"统一性来自同一个 u"。
+     */
+    private float unit() {
+        return dev.e33.trellis.tokens.Units.u(this.height);
+    }
+
+    /**
      * 这一帧配置列的滚动偏移。
      *
      * <p>【为什么取整再给出去】宿主自己那份（{@code ConfigRows.layout}）就是
@@ -228,6 +242,8 @@ public final class PickupCardConfigScreen extends Screen {
     private UiTree trellisColumn;
     private int trellisColumnRows = -1;
     private int trellisColumnControls = -1;
+    /** 建那棵树时用的 u（{@link #unit()}）。u 一变（换 guiScale / 改窗口高）就必须重建。 */
+    private float trellisColumnU = Float.NaN;
     /** harness 指定的列指针（NaN = 用真指针）。见 {@link #pointColumnAtForHarness}。 */
     private float columnPointerX = Float.NaN;
     private float columnPointerY = Float.NaN;
@@ -237,7 +253,9 @@ public final class PickupCardConfigScreen extends Screen {
     /** Trellis 的文本度量器，主字体是 MC 自己的字体（见 {@code McFont}）。 */
     private TextMeasurer trellisText;
 
-    /** 配置列那棵树，按当前行的<b>形态</b>（几行、几个控件行）惰性建/重建。 */
+    /**
+     * 配置列那棵树，按当前行的<b>形态</b>（几行、几个控件行）<b>和这一帧的 u</b>惰性建/重建。
+     */
     private UiTree trellisColumn() {
         List<ConfigRows.Row> rows = rowsModel.all();
         NvgWidget[] controls = new NvgWidget[rows.size()];
@@ -248,9 +266,12 @@ public final class PickupCardConfigScreen extends Screen {
                 present++;
             }
         }
+        float u = unit();
+        // 【u 也要进"要不要重建"的判据（A-14）】组件的 Style（行高/行距/内边距）是**建树时**
+        // 烘进去的 —— u 变了而树不重建，那些 px 就还是旧 u 算的（换 guiScale 后行距不动）。
         if (trellisColumn == null || trellisColumnRows != rows.size()
-                || trellisColumnControls != present) {
-            trellisColumn = TrellisColumn.buildColumn(controls, ConfigRows.ROWS_TOP_INSET);
+                || trellisColumnControls != present || trellisColumnU != u) {
+            trellisColumn = TrellisColumn.buildColumn(controls, ConfigRows.topInset(u), u);
             // 【建完必须当场布局】事件（点击/拖拽）落在两次 render 之间，而 {@code bounds()} 要
             // 布局过才有值 —— 只建不摆的话，"树刚作废、下一帧还没到"时来的那次点击会撞
             // NullPointerException（真机第 21 轮就是这么崩的：`Component.node()` is null）。
@@ -258,6 +279,7 @@ public final class PickupCardConfigScreen extends Screen {
             TrellisColumn.layoutColumn(trellisColumn, layout().items(), scrollOffset(), deviceGrid());
             trellisColumnRows = rows.size();
             trellisColumnControls = present;
+            trellisColumnU = u;
             // 树一重建，每一行的标签盒子就换了一批 —— 那一帧把适配结果打进日志
             labelFitLogPending = true;
         }
@@ -332,7 +354,7 @@ public final class PickupCardConfigScreen extends Screen {
 
     /** 这一帧配置项内容有多高（滚动的依据）。 */
     private float itemsContentHeight() {
-        return rowsModel.contentHeight();
+        return rowsModel.contentHeight(unit());
     }
 
     /** 当前页。 */
@@ -665,7 +687,7 @@ public final class PickupCardConfigScreen extends Screen {
         }
         itemsScroll.reflow(itemsContentHeight());
         // 逐行摆：行模型（ConfigRows）只认几何，屏幕把滚动偏移与列顶交给它
-        rowsModel.layout(layout(), itemsScroll.offset(), rowsTop());
+        rowsModel.layout(layout(), itemsScroll.offset(), rowsTop(), unit());
     }
 
     // ------------------------------------------------------------------
@@ -783,7 +805,7 @@ public final class PickupCardConfigScreen extends Screen {
             return;     // 这一页没有小节头，样本没地方放
         }
         TextLayout layout = trellisText().measure(TRELLIS_SAMPLE, McFont.EM);
-        float x = ConfigRows.labelX(layout()) + 34f;    // 让开小节头自己的标题
+        float x = ConfigRows.labelX(layout(), unit()) + 34f;    // 让开小节头自己的标题
         float baselineY = header.yAt + 4f + layout.ascent();
 
         gui.fill((int) x - 1, (int) (baselineY - layout.ascent()) - 1,
@@ -1171,7 +1193,9 @@ public final class PickupCardConfigScreen extends Screen {
                 : itemsScroll.offset() / ScrollMath.maxOffset(content, lo.items().h());
         float x = lo.items().right() - 3f;
         float y = lo.items().y() + 4f + t * (trackH - barH);
-        ui.fillRoundRect(x, y, 3f, barH, 1.5f, ui.palette.textDim);
+        // 细条厚度/圆角从调色板来（与滑条轨道是同一个角色，A-13 评审列的"细条 3u + 1.5u"）。
+        ui.fillRoundRect(x, y, ui.palette.trackThickness, barH, ui.palette.trackRadius,
+                ui.palette.textDim);
     }
 
     // ------------------------------------------------------------------
@@ -1305,7 +1329,7 @@ public final class PickupCardConfigScreen extends Screen {
             return super.mouseScrolled(mouseX, mouseY, delta);
         }
         // 一格滚三行（按行不按像素：跨缩放档手感一致，见 ScrollMath）
-        itemsScroll.wheel(delta, itemsContentHeight(), ConfigRows.ROW_STEP * 3f);
+        itemsScroll.wheel(delta, itemsContentHeight(), ConfigRows.rowStep(unit()) * 3f);
         layoutRows();
         return true;
     }
@@ -1462,14 +1486,14 @@ public final class PickupCardConfigScreen extends Screen {
 
     /** 标签左缘：配置列左边留 6px。 */
     private int labelX() {
-        return ConfigRows.labelX(layout());
+        return ConfigRows.labelX(layout(), unit());
     }
 
 
     private int rowsTop() {
         // 预览已经搬到右边那一列了，配置项从这一列的顶上开始。
-        // 那 2px 是行模型自己的几何（ConfigRows.ROWS_TOP_INSET）—— Trellis 试点取同一个源。
-        return Math.round(layout().items().y()) + ConfigRows.ROWS_TOP_INSET;
+        // 那 2px 是行模型自己的几何（ConfigRows.topInset(unit())）—— Trellis 试点取同一个源。
+        return Math.round(layout().items().y()) + ConfigRows.topInset(unit());
     }
 
     // ------------------------------------------------------------------

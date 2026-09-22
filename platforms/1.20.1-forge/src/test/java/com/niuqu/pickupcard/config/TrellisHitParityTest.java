@@ -6,6 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import com.niuqu.pickupcard.render.nvg.ui.ConfigLayout;
 import com.niuqu.pickupcard.render.nvg.ui.NvgWidget;
 import com.niuqu.pickupcard.render.nvg.ui.TrellisColumn;
+import dev.e33.trellis.tokens.Tokens;
 import dev.e33.trellis.geom.Rect;
 import dev.e33.trellis.ui.UiTree;
 import java.util.ArrayList;
@@ -50,6 +51,14 @@ class TrellisHitParityTest {
     private static final float CANVAS_W = 427f;
     private static final float CANVAS_H = 240f;
     private static final float GUI_SCALE = 3f;
+
+    /**
+     * 这些测试量的是<b>几何关系</b>（谁在谁旁边、差多少），所以跑在<b>设计基准 u</b> 上 ——
+     * 关系对任何 u 都成立，钉在基准上就让断言值保持"设计稿那一版"的整数，读起来一眼能对。
+     * 自适应路径本身由 {@link TrellisTokenGeometryTest#adaptiveGeometryFollowsCanvasHeight} 与
+     * 框架的 {@code UnitsTest} 盯着。
+     */
+    private static final float U = Tokens.Unit.BASE;
     /** 扫描步长（逻辑 px）—— 比一个设备像素还细四倍。 */
     private static final float STEP = 1f / 12f;
     /** 这个宽度以内的不一致算"边缘带"，之外就是真错。 */
@@ -59,7 +68,7 @@ class TrellisHitParityTest {
     @DisplayName("判据 1：逐点扫整个配置列，Trellis 的命中与宿主的控件矩形只在左右边缘带里不一致")
     void trellisHitsMatchHostControlRects() {
         ConfigLayout lo = ConfigLayout.compute(CANVAS_W, CANVAS_H);
-        UiTree ui = TrellisColumn.buildColumn(CONTROLS, ConfigRows.ROWS_TOP_INSET);
+        UiTree ui = TrellisColumn.buildColumn(CONTROLS, ConfigRows.topInset(U), U);
         ui.layout(new Rect(lo.items().x(), lo.items().y(), lo.items().w(), lo.items().h()),
                 1f / GUI_SCALE);
 
@@ -114,9 +123,9 @@ class TrellisHitParityTest {
 
     /** 宿主那一套：控件右对齐到列右缘留 6，宽按比例夹上下限（整数运算）。 */
     private static Rect hostControl(ConfigLayout lo, int line) {
-        float y = Math.round(lo.items().y()) + ConfigRows.ROWS_TOP_INSET
-                + line * (float) ConfigRows.ROW_STEP;
-        return new Rect(ConfigRows.controlX(lo), y, ConfigRows.controlW(lo), ConfigRows.ROW_H);
+        float y = Math.round(lo.items().y()) + ConfigRows.topInset(U)
+                + line * (float) ConfigRows.rowStep(U);
+        return new Rect(ConfigRows.controlX(lo, U), y, ConfigRows.controlW(lo, U), ConfigRows.rowH(U));
     }
 
     private static int hostControlAt(ConfigLayout lo, float x, float y) {
