@@ -68,9 +68,9 @@ final class ConfigRows {
             Row row = list.get(i);
             float y = rowsTop + i * (float) ROW_STEP - Math.round(scrollOffset);
             row.yAt = y;
-            if (!row.isHeader()) {
-                row.widget().at(controlX(lo), y, controlW(lo), ROW_H);
-            }
+            // 【控件的格子不在这里摆了（A-10 第二步）】行内控件的几何由 Trellis 的树算
+            // （{@code TrellisBridge.controlBox}），控件自己不再存 {@code x/y/w/h} ——
+            // 从前这一句 {@code at(...)} 就是"第二份几何"，与树里的盒子差 1.3 逻辑 px（A-4）。
         }
     }
 

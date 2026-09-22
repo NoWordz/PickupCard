@@ -1,7 +1,8 @@
 package com.niuqu.pickupcard.config;
 
-import com.niuqu.pickupcard.render.nvg.ui.NvgUi;
 import com.niuqu.pickupcard.render.nvg.ui.NvgWidget;
+import com.niuqu.pickupcard.render.nvg.ui.PaintCtx;
+import dev.e33.trellis.geom.Rect;
 
 /**
  * 测试用的两种控件替身。
@@ -25,7 +26,7 @@ final class TestWidgets {
         }
 
         @Override
-        protected void paint(NvgUi ui) {
+        protected void paint(PaintCtx ctx) {
         }
     }
 
@@ -48,8 +49,8 @@ final class TestWidgets {
         }
 
         @Override
-        public boolean press(double mouseX, double mouseY, int button) {
-            boolean taken = super.press(mouseX, mouseY, button);
+        public boolean press(Rect box, double mouseX, double mouseY, int button) {
+            boolean taken = super.press(box, mouseX, mouseY, button);
             if (taken) {
                 presses++;
             }
@@ -57,10 +58,10 @@ final class TestWidgets {
         }
 
         @Override
-        public void release(double mouseX, double mouseY, boolean activate) {
+        public void release(Rect box, double mouseX, double mouseY, boolean activate) {
             releases++;
             lastActivate = activate;
-            super.release(mouseX, mouseY, activate);
+            super.release(box, mouseX, mouseY, activate);
         }
 
         @Override
@@ -78,7 +79,7 @@ final class TestWidgets {
         }
 
         @Override
-        protected void paint(NvgUi ui) {
+        protected void paint(PaintCtx ctx) {
         }
     }
 }

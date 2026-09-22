@@ -1,6 +1,7 @@
 package com.niuqu.pickupcard.render.nvg.ui;
 
 import com.niuqu.pickupcard.render.nvg.NvgCanvas;
+import dev.e33.trellis.render.Canvas;
 import dev.e33.trellis.geom.Insets;
 import dev.e33.trellis.geom.Point;
 import dev.e33.trellis.geom.Rect;
@@ -14,6 +15,7 @@ import dev.e33.trellis.text.TextMeasurer;
 import dev.e33.trellis.ui.Component;
 import dev.e33.trellis.ui.UiEvent;
 import dev.e33.trellis.ui.UiTree;
+import java.util.List;
 
 /**
  * <b>Trellis 试点：把 Trellis 接进 PickupCard 已有的 NanoVG 上下文。</b>
@@ -52,9 +54,15 @@ public final class TrellisBridge {
     private static final float ROW_H = 18f;
     private static final float ROW_GAP = 20f - ROW_H;
 
-    /** 接进宿主上下文。帧由宿主开也由宿主关，这里只画。 */
-    private static dev.e33.trellis.render.nanovg.NvgCanvas attach(NvgCanvas host) {
-        return dev.e33.trellis.render.nanovg.NvgCanvas.attach(host.handle());
+    /**
+     * 接进宿主上下文。帧由宿主开也由宿主关，这里只画。
+     *
+     * <p>【必须把宿主的设备倍数交进去】接进来的画布没有 {@code begin}，不交的话它按 1 算 ——
+     * 设备像素对齐会退化成"对齐到整数逻辑坐标"，guiScale 3 下一条边最多挪 1.5 个设备像素
+     * （A-10 第二步量到的）。见 {@code NvgCanvas.attach(long, float)}。
+     */
+    private static dev.e33.trellis.render.nanovg.NvgCanvas attach(NvgCanvas host, float pixelRatio) {
+        return dev.e33.trellis.render.nanovg.NvgCanvas.attach(host.handle(), pixelRatio);
     }
 
     /**
@@ -133,18 +141,113 @@ public final class TrellisBridge {
     }
 
     /**
-     * 让组件树<b>自己画</b>。
+     * 让组件树<b>自己画</b>：底板（悬停底）与控件本体都在这一趟里。
      *
      * <p>【描框为什么删了】描框只能证明"坐标算对了"。真让组件树画，同时证明两件事：
      * 画出来的矩形就是命中读的那个 {@code bounds()}（判据 1），而悬停效果来自基类那一处
-     * （判据 2）。所以这一版起，配置列的**悬停底由 Trellis 画** —— 宿主那边对应的画法已停手，
+     * （判据 2）。所以配置列的<b>悬停底由 Trellis 画</b> —— 宿主那边对应的画法已停手，
      * 两个都画就是"两份几何各画一条带子"，正是判据 1 要根除的东西。
      *
-     * <p>对齐由调用方在 {@link UiTree#layout(Rect, float)} 那一趟做：对在布局层，
-     * 这里画出来的本来就是设备整数，渲染层不必也不需要再挪。
+     * <p>【控件本体也归这一趟（A-10 第二步）】{@code ControlSlot.drawContent} 现在真的画控件：
+     * 几何用 {@code bounds()} 那个对象，形状走 Trellis 原语（每个原语自带状态 —— 判据 3），
+     * 字形交回宿主（{@link GlyphPainter}：MC 的字是位图图集，喂不进 {@code Canvas.drawText}）。
+     * 宿主那趟 {@code row.widget().draw(ui)} 已经删了。
+     *
+     * <p>【"表面"必须灌进去】{@code drawContent} 只收得到一个 {@code Canvas}，而控件还要配色、
+     * 字形与帧号。所以帧信息由这里灌进每个 {@code ControlSlot}（{@link Frame}），
+     * <b>用 try/finally 清掉</b>：不灌的话 {@code ControlSlot} 当场抛 —— 静默的症状是
+     * "控件在、点得到、屏幕上一块空白"。
+     *
+     * <p>【层序：控件本体没挪，悬停底挪进裁剪里了】控件本体画在宿主从前那趟控件循环的位置
+     * （配置项的滚动裁剪里、标签标记之后、滚动条之前）—— 与旧路径一致。**悬停底变了**：
+     * 它从前在 {@code drawChrome} 那一趟画（配置项的裁剪<b>之外</b>），现在跟树一起进了裁剪 ——
+     * 顺带修掉"滚出视口的行，悬停带还糊在标签列/预览面板上"，那一类正是裁剪该管的事。
+     *
+     * <p>表面由调用方给（一帧一个，见 {@link #surface}）：接宿主上下文这件事只做一次。
      */
-    public static void paint(NvgCanvas host, UiTree ui) {
-        ui.draw(attach(host));
+    public static void paint(Frame frame, UiTree ui) {
+        setFrame(ui.root(), frame);
+        try {
+            ui.draw(frame.canvas());
+        } finally {
+            setFrame(ui.root(), null);
+        }
+    }
+
+    /**
+     * 这一帧的"表面"：画布 + 配色 + 字形缝 + 时刻。
+     *
+     * <p>【为什么要有它】{@code Component.drawContent(Canvas)} 的参数里只有画布，
+     * 而画一个滑条还要配色、要让宿主落笔写字、要记"这一帧画过我"。这些都是<b>这一帧</b>
+     * 的东西（配色随主题、{@code NvgUi} 每帧一个），所以由 {@link #paint} 每帧灌一次，
+     * 而不是挂在控件上。
+     */
+    public record Frame(Canvas canvas, NvgPalette palette, GlyphPainter glyphs, long now) {
+
+        /** 给某一格几何建绘制上下文。几何从外面进来 —— 控件不存它。 */
+        public PaintCtx ctxFor(Rect box) {
+            return new PaintCtx(box, canvas, palette, glyphs, now);
+        }
+    }
+
+    /**
+     * 这一帧的"表面"：把宿主的画布接进来（<b>带上 GUI 倍数</b>），再配上配色与字形缝。
+     *
+     * <p>【为什么倍数必须交进去】见 {@link #attach}：不交它按 1 算，设备像素对齐会退化成
+     * "对齐到整数逻辑坐标"（guiScale 3 下一条边最多挪 1.5 个设备像素）。
+     *
+     * <p>【为什么一帧只建一个】接进宿主上下文这件事没有副作用、但没必要做第二遍：
+     * 树内控件与树外控件画的是同一帧、同一个上下文。
+     */
+    public static Frame surface(NvgCanvas host, NvgPalette palette, GlyphPainter glyphs,
+                                long now, float pixelRatio) {
+        return new Frame(attach(host, pixelRatio), palette, glyphs, now);
+    }
+
+    private static void setFrame(Component component, Frame frame) {
+        if (component instanceof ControlSlot slot) {
+            slot.frame = frame;
+        }
+        for (Component child : component.children()) {
+            setFrame(child, frame);
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // 几何：行内控件的盒子只有树这一个出处（A-10 第二步起宿主不再存一份）
+    // -----------------------------------------------------------------------
+
+    /**
+     * 第 {@code rowIndex} 行<b>控件那一格</b>的几何；那一行是小节头（没有控件）时返回 {@code null}。
+     *
+     * <p>【为什么宿主不再自己算】从前控件自己带一份 {@code x/y/w/h}（宿主的整数取整版），
+     * 与树里的盒子差 1.3 逻辑 px（A-4）—— 拖拽、harness 的坐标、日志里的读数全都要用它，
+     * 于是"差一点"会同时出现在三个地方。现在只有 {@code bounds()} 这一个对象。
+     *
+     * <p>返回的是 {@code bounds()} <b>那个对象本身</b>，不是另算一个相等的矩形（判据 1）。
+     */
+    public static Rect controlBox(UiTree ui, int rowIndex) {
+        Component line = ui.root().children().get(rowIndex);
+        return line.children().size() < 2 ? null : line.children().get(1).bounds();
+    }
+
+    /**
+     * 正<b>被按住</b>的那一行控件（没有就是 {@code -1}）。
+     *
+     * <p>【拖拽为什么要问它】"谁正被按着"这件事在树里（按下发给命中的那个组件），
+     * 宿主不该再维护第二份。滑条拖拽只需要两样：哪一行、那一行的盒子 —— 都从这里出去。
+     */
+    public static int pressedControlRow(UiTree ui) {
+        List<Component> lines = ui.root().children();
+        for (int i = 0; i < lines.size(); i++) {
+            Component line = lines.get(i);
+            if (line.children().size() >= 2
+                    && line.children().get(1) instanceof ControlSlot slot
+                    && slot.pressed()) {
+                return i;
+            }
+        }
+        return -1;
     }
 
     // -----------------------------------------------------------------------
@@ -212,6 +315,9 @@ public final class TrellisBridge {
     private static final class ControlSlot extends Component {
         private final NvgWidget widget;
 
+        /** 这一帧的表面（{@link #setFrame} 每帧灌一次；null = 没接上，绘制时当场抛）。 */
+        private Frame frame;
+
         ControlSlot(NvgWidget widget, Style style) {
             this.widget = widget;
             style(style);
@@ -222,18 +328,34 @@ public final class TrellisBridge {
         protected boolean onEvent(UiEvent event) {
             switch (event.type()) {
                 case POINTER_DOWN:
-                    return widget.press(event.x(), event.y(), 0);
+                    // 几何给 {@code bounds()} 那个对象本身 —— 与命中读的是同一个（判据 1）。
+                    return widget.press(bounds(), event.x(), event.y(), 0);
                 case POINTER_UP:
-                    widget.release(event.x(), event.y(), bounds().contains(event.x(), event.y()));
+                    widget.release(bounds(), event.x(), event.y(),
+                            bounds().contains(event.x(), event.y()));
                     return true;
                 default:
                     return false;
             }
         }
 
+        /**
+         * <b>控件本体由这里画（A-10 第二步）。</b>
+         *
+         * <p>几何给 {@code bounds()} 本身、形状走这个画布、字形交回宿主 —— 三件事都在
+         * {@link PaintCtx} 手里，控件自己不再存任何几何。宿主的 {@code row.widget().draw(ui)}
+         * 因此停手：两个都画就是两份几何，正是判据 1 要根除的东西。
+         *
+         * <p>【没接上表面就抛】见 {@link #setFrame}：静默跳过会变成"控件在、点得到、
+         * 屏幕上一块空白"，那种 bug 只有肉眼能发现。
+         */
         @Override
-        protected void drawContent(dev.e33.trellis.render.Canvas canvas) {
-            // 控件仍由宿主画（这一步只交命中）；下一轮把绘制也搬进来。
+        protected void drawContent(Canvas canvas) {
+            if (frame == null) {
+                throw new IllegalStateException("这一趟没有表面：TrellisBridge.paint(...) "
+                        + "没被调用，或者它在 ui.draw(...) 之外被调了。");
+            }
+            widget.draw(frame.ctxFor(bounds()));
         }
     }
 

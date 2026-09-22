@@ -14,6 +14,9 @@ import com.niuqu.pickupcard.render.nvg.ui.NvgButton;
 import com.niuqu.pickupcard.render.nvg.ui.NvgPalette;
 import com.niuqu.pickupcard.render.nvg.ui.NvgUi;
 import com.niuqu.pickupcard.render.nvg.ui.NvgWidget;
+import com.niuqu.pickupcard.render.nvg.ui.McGlyphPainter;
+import com.niuqu.pickupcard.render.nvg.ui.TrellisBridge;
+import dev.e33.trellis.geom.Rect;
 import com.niuqu.pickupcard.style.CardTimeline;
 import com.niuqu.pickupcard.style.StyleModel;
 import net.minecraft.client.Minecraft;
@@ -71,6 +74,10 @@ public final class AnchorEditScreen extends Screen {
     private NvgButton saveButton;
     private NvgButton resetButton;
     private List<NvgWidget> buttons = List.of();
+
+    /** 两颗按钮的格子（见 {@link #boxOf}）；进编辑场时按画布算一次。 */
+    private Rect saveBox = new Rect(0f, 0f, 0f, 0f);
+    private Rect resetBox = new Rect(0f, 0f, 0f, 0f);
     private NvgPalette palette;
     private final NvgCardPainter painter = new NvgCardPainter();
 
@@ -97,11 +104,24 @@ public final class AnchorEditScreen extends Screen {
         int by = this.height - bh - 8;
         saveButton = new NvgButton(I18n.get("pickupcard.anchor.done"), () -> I18n.get("pickupcard.anchor.done"),
                 this::saveAndClose);
-        saveButton.at(this.width / 2f - totalW / 2f, by, bw, bh);
+        saveBox = new Rect(this.width / 2f - totalW / 2f, by, bw, bh);
         resetButton = new NvgButton(I18n.get("pickupcard.anchor.reset"),
                 () -> I18n.get(isAuto() ? "pickupcard.anchor.resetDone" : "pickupcard.anchor.reset"), this::resetToAuto);
-        resetButton.at(this.width / 2f + totalW / 2f - bw, by, bw, bh);
+        resetBox = new Rect(this.width / 2f + totalW / 2f - bw, by, bw, bh);
         buttons = List.of(saveButton, resetButton);
+    }
+
+    /**
+     * 某个按钮的格子：<b>命中、悬停、绘制、拖拽都用它</b> —— A-10 第二步起控件不存几何，
+     * 谁用它谁交一份（这里的两颗按钮是"树外控件"，几何由这个界面自己排）。
+     */
+    private Rect boxOf(NvgWidget widget) {
+        return widget == resetButton ? resetBox : saveBox;
+    }
+
+    /** 宿主的 GUI 倍数：Trellis 接画布要对齐到设备像素，要把它交进去（见 {@code NvgCanvas.attach}）。 */
+    private float guiScale() {
+        return (float) Minecraft.getInstance().getWindow().getGuiScale();
     }
 
     @Override
@@ -235,9 +255,12 @@ public final class AnchorEditScreen extends Screen {
                                 anchorX, anchorY),
                         8f, 17f, palette.textDim, this.width - 16f);
                 drawBrackets(ui, b);
+                TrellisBridge.Frame surface = TrellisBridge.surface(ui.canvas(), palette,
+                        new McGlyphPainter(ui), now, guiScale());
                 for (NvgWidget w : buttons) {
-                    w.mouseMoved(mouseX, mouseY);
-                    w.draw(ui);
+                    Rect box = boxOf(w);
+                    w.hover(box.contains((float) mouseX, (float) mouseY));
+                    w.draw(surface.ctxFor(box));
                 }
                 ui.textRight(I18n.get("pickupcard.anchor.controls"), this.width - 8f, this.height - 12f, palette.textDim);
             }
@@ -303,7 +326,9 @@ public final class AnchorEditScreen extends Screen {
     @Override
     public boolean mouseClicked(double mouseX, double mouseY, int button) {
         for (NvgWidget w : buttons) {
-            if (w.mouseClicked(mouseX, mouseY, button)) {
+            Rect box = boxOf(w);
+            if (box.contains((float) mouseX, (float) mouseY)
+                    && w.press(box, mouseX, mouseY, button)) {
                 return true;
             }
         }
@@ -319,7 +344,7 @@ public final class AnchorEditScreen extends Screen {
     @Override
     public boolean mouseDragged(double mouseX, double mouseY, int button, double dragX, double dragY) {
         for (NvgWidget w : buttons) {
-            w.mouseDragged(mouseX, mouseY);
+            w.drag(boxOf(w), mouseX, mouseY);
         }
         if (dragging) {
             setAnchorFromCard(mouseX - grabDx, mouseY - grabDy);
@@ -330,7 +355,8 @@ public final class AnchorEditScreen extends Screen {
     @Override
     public boolean mouseReleased(double mouseX, double mouseY, int button) {
         for (NvgWidget w : buttons) {
-            w.mouseReleased(mouseX, mouseY);
+            Rect box = boxOf(w);
+            w.release(box, mouseX, mouseY, box.contains((float) mouseX, (float) mouseY));
         }
         dragging = false;
         return true;

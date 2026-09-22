@@ -17,6 +17,8 @@ import java.util.function.Supplier;
  * 配置里若已有手写的值，色块会照实显示它、并在下一次点击后回到色板循环里。
  * 手写值解析失败（写坏了）时显示「无效」：生效色按主题画，但标签明说这项没生效 ——
  * 不再是安静的假象。
+ * <p>
+ * 【几何从 {@code ctx.box()} 来（A-10 第二步）】见 {@link NvgToggle} 的同款说明。
  */
 public final class NvgColorChip extends NvgWidget {
 
@@ -90,20 +92,22 @@ public final class NvgColorChip extends NvgWidget {
     }
 
     @Override
-    protected void paint(NvgUi ui) {
-        NvgPalette p = ui.palette;
+    protected void paint(PaintCtx ctx) {
+        NvgPalette p = ctx.palette();
+        float w = ctx.width();
+        float h = ctx.height();
         String label = value();
         boolean invalid = invalid();
 
         // 色块画生效色：无论配置里写没写，玩家看到的就是卡上现在的颜色
         float swatch = h - 6f;
-        float swatchY = y + 3f;
-        ui.well(x + 2f, swatchY, swatch, swatch, invalid ? p.well : effective.get());
-        float textX = x + 2f + swatch + 5f;
-        ui.text(label, textX, y + (h - ui.font().lineHeight) / 2f,
+        float swatchY = 3f;
+        ctx.well(2f, swatchY, swatch, swatch, invalid ? p.well : effective.get());
+        float textX = 2f + swatch + 5f;
+        ctx.text(label, textX, (h - ctx.lineHeight()) / 2f,
                 invalid ? p.textDim : p.text);
         if (hovered || focused) {
-            ui.strokeRoundRect(x, y, w, h, p.radius, p.outline);
+            ctx.strokeRoundRect(0f, 0f, w, h, p.radius, p.outline);
         }
     }
 }

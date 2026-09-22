@@ -1,5 +1,6 @@
 package com.niuqu.pickupcard.render.nvg.ui;
 
+import dev.e33.trellis.geom.Rect;
 import java.util.function.Consumer;
 import java.util.function.Predicate;
 import java.util.function.Supplier;
@@ -20,6 +21,10 @@ import org.lwjgl.glfw.GLFW;
  *
  * <p>【焦点为什么没有扩散】焦点仍然只在这一个控件类型里：没有 Tab 漫游、没有快捷键、
  * 没有拖选。多一种要打字的控件不等于要长成第二个 UI 框架。
+ *
+ * <p>【键盘还没搬进树（A-10 第二步的范围之外）】{@code press} 由树转发（于是焦点、编辑态
+ * 照样进得来），但 {@code keyPressed/charTyped} 仍是宿主按控件自己的 {@code focused}
+ * 转发 —— ControlSlot 是 focusable 的，接 BLUR/KEY 是"键盘也搬进树"那一步的事。
  */
 public final class NvgTextField extends NvgWidget {
 
@@ -76,8 +81,8 @@ public final class NvgTextField extends NvgWidget {
 
     /** 按一下就进编辑态（草稿从当前值起）。命中已由调用方判过（行内控件是树）。 */
     @Override
-    public boolean press(double mouseX, double mouseY, int button) {
-        boolean taken = super.press(mouseX, mouseY, button);
+    public boolean press(Rect box, double mouseX, double mouseY, int button) {
+        boolean taken = super.press(box, mouseX, mouseY, button);
         if (taken) {
             draft = value.get();
             editing = true;
@@ -151,23 +156,25 @@ public final class NvgTextField extends NvgWidget {
     }
 
     @Override
-    protected void paint(NvgUi ui) {
-        NvgPalette p = ui.palette;
-        ui.well(x, y, w, h, wellColor(p));
+    protected void paint(PaintCtx ctx) {
+        NvgPalette p = ctx.palette();
+        float w = ctx.width();
+        float h = ctx.height();
+        ctx.well(0f, 0f, w, h, wellColor(p));
         String shown = editing ? (draft == null ? "" : draft) : value.get();
         // 【宽度约束必须有】英文占位文案比框宽（"Type a rule and press Enter" 在右对齐的
-        // 45% 等分行里装不下）：无约束的 ui.text 把字画到框外，越过的部分被滚动视口裁掉，
+        // 45% 等分行里装不下）：无约束的一行字会画到框外，越过的部分被滚动视口裁掉，
         // 框右缘只留下被切的半个字母——2026-09-20 截图里那粒“神秘的竖点”就是 and 的 a。
         // 装不下整体缩小，与 NvgButton 的值同一策略。
         if (shown.isEmpty() && !placeholder.isEmpty() && !editing) {
-            ui.textFitted(placeholder, x + 4f, y + (h - ui.font().lineHeight) / 2f, p.textDim, w - 8f);
+            ctx.textFitted(placeholder, 4f, (h - ctx.lineHeight()) / 2f, p.textDim, w - 8f);
         } else {
-            ui.textFitted(shown, x + 4f, y + (h - ui.font().lineHeight) / 2f, p.text, w - 8f);
+            ctx.textFitted(shown, 4f, (h - ctx.lineHeight()) / 2f, p.text, w - 8f);
         }
         if (editing && (System.currentTimeMillis() / 500) % 2 == 0) {
             // 光标：闪，且跟在文字后面 —— 不闪的话玩家分不清"在编辑"还是"只是显示"
-            float caret = x + 5f + ui.textWidth(shown);
-            ui.fillRoundRect(caret, y + 3f, 1f, h - 6f, 0.5f, p.text);
+            float caret = 5f + ctx.textWidth(shown);
+            ctx.fillRoundRect(caret, 3f, 1f, h - 6f, 0.5f, p.text);
         }
     }
 }

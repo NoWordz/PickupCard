@@ -20,6 +20,8 @@ import dev.e33.trellis.text.TextLayout;
 import dev.e33.trellis.text.TextMeasurer;
 import dev.e33.trellis.ui.UiTree;
 import com.niuqu.pickupcard.render.nvg.ui.NvgWidget;
+import com.niuqu.pickupcard.render.nvg.ui.McGlyphPainter;
+import com.niuqu.pickupcard.render.nvg.ui.PaintCtx;
 import com.niuqu.pickupcard.render.nvg.ui.Tween;
 import com.niuqu.pickupcard.style.StyleModel;
 import net.minecraft.client.Minecraft;
@@ -31,6 +33,8 @@ import org.lwjgl.glfw.GLFW;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.IdentityHashMap;
+import java.util.Map;
 import java.util.function.BooleanSupplier;
 import java.util.function.Supplier;
 
@@ -140,9 +144,19 @@ public final class PickupCardConfigScreen extends Screen {
         forcedHover = label;
     }
 
-    /** 一个设备像素（逻辑单位）。网格间距由宿主给 —— 框架不知道设备有多大。 */
+    /** 宿主的 GUI 倍数（逻辑 -> 设备）= Minecraft 的 GUI Scale。 */
+    private float guiScale() {
+        return (float) Minecraft.getInstance().getWindow().getGuiScale();
+    }
+
+    /**
+     * 一个设备像素（逻辑单位）。网格间距由宿主给 —— 框架不知道设备有多大。
+     *
+     * <p>【与 {@link #guiScale()} 必须同源】布局要网格（{@code 1/guiScale}）、接画布要对齐倍数
+     * （{@code guiScale}）—— 两个数分开写的话，"对齐"会错在别人看不见的地方。
+     */
     private float deviceGrid() {
-        return (float) (1.0 / Minecraft.getInstance().getWindow().getGuiScale());
+        return 1f / guiScale();
     }
 
     /**
@@ -173,17 +187,26 @@ public final class PickupCardConfigScreen extends Screen {
      * <b>只在窗口有输入焦点时才发</b>，自动化跑的那扇窗通常没焦点 —— 挪了等于没挪，
      * 截图里那条悬停带根本不出现（2026-09-21 实测）。所以这里给探针一个指定的点。
      *
-     * <p>这样做不影响要验的东西：几何、命中、绘制三件都还是 Trellis 的，
+     * <p>【为什么这样做不影响要验的东西】几何、命中、绘制三件都还是 Trellis 的，
      * 只是"指针在哪"由 harness 说了算 —— 宿主自己的悬停测试（{@code forcedHover}）也是这样。
+     *
+     * <p>【几何也问树（A-10 第二步）】控件不再存 {@code x/y/w/h}，"这一行控件中心"由
+     * {@code TrellisBridge.controlBox} 给 —— 与命中、绘制、拖拽读的是同一个矩形。
      */
     public boolean pointProbeAtForHarness(String label) {
-        for (ConfigRows.Row row : rowsModel.all()) {
+        List<ConfigRows.Row> rows = rowsModel.all();
+        UiTree probe = trellisProbe();
+        for (int i = 0; i < rows.size(); i++) {
+            ConfigRows.Row row = rows.get(i);
             if (row.isHeader() || !row.label().equals(label)) {
                 continue;
             }
-            NvgWidget w = row.widget();
-            probePointerX = w.x() + w.width() / 2f;
-            probePointerY = w.y() + w.height() / 2f;
+            Rect box = TrellisBridge.controlBox(probe, i);
+            if (box == null) {
+                return false;
+            }
+            probePointerX = box.x() + box.width() / 2f;
+            probePointerY = box.y() + box.height() / 2f;
             return true;
         }
         return false;
@@ -227,6 +250,11 @@ public final class PickupCardConfigScreen extends Screen {
         if (trellisProbe == null || trellisProbeRows != rows.size()
                 || trellisProbeControls != present) {
             trellisProbe = TrellisBridge.buildColumn(controls, ConfigRows.ROWS_TOP_INSET);
+            // 【建完必须当场布局】事件（点击/拖拽）落在两次 render 之间，而 {@code bounds()} 要
+            // 布局过才有值 —— 只建不摆的话，"树刚作废、下一帧还没到"时来的那次点击会撞
+            // NullPointerException（真机第 21 轮就是这么崩的：`Component.node()` is null）。
+            // 布局是纯函数、每帧还会再算一次，多算这一遍没有副作用。
+            TrellisBridge.layoutColumn(trellisProbe, layout().items(), scrollOffset(), deviceGrid());
             trellisProbeRows = rows.size();
             trellisProbeControls = present;
             // 树一重建，每一行的标签盒子就换了一批 —— 那一帧把适配结果打进日志
@@ -295,6 +323,11 @@ public final class PickupCardConfigScreen extends Screen {
     private final List<NvgWidget> tabButtons = new ArrayList<>();
     /** 预览底下那排「切样例」按钮（预览收起时它们是零矩形，点不到）。 */
     private final List<NvgWidget> sampleButtons = new ArrayList<>();
+    /**
+     * <b>树外控件的几何</b>（标签列、切样例按钮）：它们不在树的几何里，由排布者自己拿着 ——
+     * 每个控件仍然只有<b>一个</b>出处（控件自己那份 {@code x/y/w/h} 已随 A-10 第二步删掉）。
+     */
+    private final Map<NvgWidget, Rect> chipBoxes = new IdentityHashMap<>();
     private NvgPalette palette = NvgPalette.dark(StyleModel.Accents.defaults());
     /** 控件里点出来的"切换分类/重建"请求：不在事件遍历中途重建列表。 */
     private boolean pendingRebuild;
@@ -386,25 +419,28 @@ public final class PickupCardConfigScreen extends Screen {
             action.run();
         }
 
+        /** 几何从 {@code ctx.box()} 来：树外控件的盒子由排布者交进来（{@code chipBoxes}）。 */
         @Override
-        protected void paint(NvgUi ui) {
-            NvgPalette p = ui.palette;
+        protected void paint(PaintCtx ctx) {
+            NvgPalette p = ctx.palette();
+            float w = ctx.width();
+            float h = ctx.height();
             boolean on = selected.getAsBoolean();
-            ui.well(x, y, w, h, on ? p.wellHover : wellColor(p));
+            ctx.well(0f, 0f, w, h, on ? p.wellHover : wellColor(p));
             if (on) {
                 // 选中那颗描一圈强调色：底色一档差别在深色主题下太细，看不清"我在哪一页"
-                ui.strokeRoundRect(x, y, w, h, p.radius, NvgUi.fade(p.accent, 0.5f));
+                ctx.strokeRoundRect(0f, 0f, w, h, p.radius, NvgUi.fade(p.accent, 0.5f));
             }
-            float ty = y + (h - ui.font().lineHeight) / 2f;
+            float ty = (h - ctx.lineHeight()) / 2f;
             int color = on ? p.text : p.textDim;
             if (leftAligned) {
                 // 【缩字不穿列】页签标签左对齐，英文页名（"Placement & stacking"）比中文
                 // 宽一截，直画会穿出胶囊叠到配置列小节头上（2026-09-19 英文截图抓到）
-                ui.textFitted(text.get(), x + 4f, ty, color, w - 8f);
+                ctx.textFitted(text.get(), 4f, ty, color, w - 8f);
             } else {
                 // 【缩字不换行】整行装不下被挤压时，芯片里的文字跟着缩（英文样例名
                 // "Long name" 在窄窗口必然超宽），不叠到邻居头上
-                ui.textCenteredFitted(text.get(), x + w / 2f, ty, color, w - 6f);
+                ctx.textCenteredFitted(text.get(), w / 2f, ty, color, w - 6f);
             }
         }
     }
@@ -435,6 +471,15 @@ public final class PickupCardConfigScreen extends Screen {
         rowsModel.all().clear();
         tabButtons.clear();
         sampleButtons.clear();
+        // 树外控件的几何表：重建时一并换掉（每一颗芯片的格子都是这一帧重算的）
+        chipBoxes.clear();
+        // 【树也要作废】重建换了一批 widget 实例，而树里的 ControlSlot 认的是实例身份。
+        // 只判"行数/控件数变了没有"的话，**同形重建**（行没变、值变了：恢复默认、删一条规则）
+        // 会留下一棵拿着旧实例的树 —— 于是绘制与按下走旧实例，而键盘、读数、boxOf 走新实例。
+        // 从前这条只影响命中，A-10 第二步起树自己画控件，影响面扩大到"屏幕画的是哪批实例"。
+        trellisProbe = null;
+        trellisProbeRows = -1;
+        trellisProbeControls = -1;
         palette = NvgPalette.of(CardStage.INSTANCE.previewStyle());
         StyleModel style = CardStage.INSTANCE.previewStyle();
         PickupCardSettings eff = PickupCardConfig.snapshot();
@@ -453,7 +498,7 @@ public final class PickupCardConfigScreen extends Screen {
                 pendingRebuild = true;      // 换页：瞬间换内容（无动画），滚动清零
             }, !lo.tabsOnTop()).hint(p.hint());
             ConfigLayout.Rect cellRect = lo.tabRect(i, pages.length);
-            chip.at(cellRect.x(), cellRect.y(), cellRect.w(), cellRect.h());
+            chipBoxes.put(chip, new Rect(cellRect.x(), cellRect.y(), cellRect.w(), cellRect.h()));
             tabButtons.add(chip);
         }
 
@@ -497,7 +542,7 @@ public final class PickupCardConfigScreen extends Screen {
                         .hint(I18n.get("pickupcard.config.button.spawn.hint"));
             }
             // 位置每次重建算的：预览会不会出现、切换行画不画，都取决于画布大小
-            chip.at(chipX, row0.y(), w, row0.h());
+            chipBoxes.put(chip, new Rect(chipX, row0.y(), w, row0.h()));
             chipX += w + chipGap;
             sampleButtons.add(chip);
         }
@@ -621,7 +666,8 @@ public final class PickupCardConfigScreen extends Screen {
         driveAnimations();
         for (NvgWidget w : chips()) {
             // 树外的控件（标签列、切样例按钮）：命中还是自己判 —— 它们不在树的几何里
-            w.mouseMoved(mouseX, mouseY);
+            Rect box = chipBoxes.get(w);
+            w.hover(box != null && box.contains(mouseX, mouseY));
         }
 
         gui.fill(0, 0, this.width, this.height, palette.backdrop);
@@ -629,31 +675,35 @@ public final class PickupCardConfigScreen extends Screen {
         try (NvgUi ui = NvgUi.begin(gui, palette, mouseX, mouseY, now)) {
             if (ui != null) {
                 chromePainted = true;
+                // 【一帧一个"表面"】画布（接进宿主上下文，带 GUI 倍数）、配色、字形缝、时刻 ——
+                // 树内控件与树外控件都拿它画自己（A-10 第二步）。倍数必须传：接进来的画布没有
+                // begin，不传它按 1 算，设备像素对齐会退化成"对齐到整数逻辑坐标"。
+                TrellisBridge.Frame surface = TrellisBridge.surface(ui.canvas(), palette,
+                        new McGlyphPainter(ui), now, guiScale());
                 drawChrome(ui);
                 drawTabAccent(ui);
-                // 【标签列必须自己画一遍】它不参与配置列的裁剪与换页淡入（换页时它不动）。
+                // 【标签列必须自己画一遍】它不参与配置列的裁剪与换页淡入（换页时它不动）；
+                // 几何由排布者给（{@code chipBoxes}）。
                 for (NvgWidget w : tabButtons) {
-                    w.draw(ui);
+                    w.draw(surface.ctxFor(chipBoxes.get(w)));
                 }
                 // 配置项那一列：裁剪到视口里 —— 滚出去的行不许糊在标签列或预览列上。
                 if (itemsScroll != null) {
                     itemsScroll.pushClip(ui);
                 }
-                // 悬停底改由 Trellis 画（见 drawChrome 的探针段）。宿主这边停手 ——
-                // 两边各画一条带子就是两份几何。drawRowHighlight 暂时没有调用方，
-                // 撤回试点时把它这一段接回去即可。
                 drawLabelMarks(ui);
-                for (ConfigRows.Row row : rowsModel.all()) {
-                    if (!row.isHeader()) {
-                        row.widget().draw(ui);
-                    }
-                }
+                // 【控件本体那一趟（A-10 第二步）】悬停底与控件本体都由组件树画：绘制、命中、
+                // 拖拽读的是同一个 bounds()；控件的位置也从它来（A-4 那 1.3px 由此归零）。
+                // 【层序：控件本体与旧路径同位置；悬停底是挪过的】改由树画的悬停底从前在
+                // drawChrome（配置项的裁剪之外），现在跟树一起进了裁剪 —— 顺带修掉"滚出视口的行，
+                // 悬停带还糊在标签列上"。详见 {@code TrellisBridge.paint} 的说明。
+                TrellisBridge.paint(surface, trellisProbe());
                 if (itemsScroll != null) {
                     drawScrollBar(ui);
                     ui.popClip();
                 }
                 for (NvgWidget w : sampleButtons) {
-                    w.draw(ui);
+                    w.draw(surface.ctxFor(chipBoxes.get(w)));
                 }
             }
         }
@@ -819,12 +869,8 @@ public final class PickupCardConfigScreen extends Screen {
     private void drawChrome(NvgUi ui) {
         NvgPalette p = ui.palette;
         ConfigLayout lo = layout();
-        // ---- Trellis 试点（配置列的悬停底改由 Trellis 画）----
-        // 组件树自己画：命中（UiTree.hitTest）和绘制读的是同一个 bounds() 对象 —— 判据 1；
-        // 悬停效果来自基类那一处，没有第二个地方知道 hover 长什么样 —— 判据 2。
-        // 布局/指针那几趟在 render() 开头的 updateTrellisProbe() 里（悬停缓动与说明都先用它），
-        // 这里只剩"画"。
-        TrellisBridge.paint(ui.canvas(), trellisProbe());
+        // 【悬停底与控件本体不在这一趟】它们在组件树那一趟里画（{@code TrellisBridge.paint}，
+        // 见 render 的"控件本体那一趟"）—— 命中、悬停、拖拽与绘制读的是同一个 bounds()（判据 1）。
         PickupCardSettings eff = PickupCardConfig.snapshot();
         // 标题靠左、副标题跟同一个左缘（用户要求标题不居中；对齐 MARGIN 与标签列同一起点）。
         // 状态行钉在标题行右端 —— 总开关是"整体生效没生效"的唯一真源，藏进页里就得翻页才知道。
@@ -899,21 +945,6 @@ public final class PickupCardConfigScreen extends Screen {
         }
     }
 
-    /** 悬停那一行的底：一条横贯整行的浅色带，是"这一行可以被拨"的提示。 */
-    private void drawRowHighlight(NvgUi ui, ConfigRows.Row row) {
-        if (row.isHeader()) {
-            return;
-        }
-        float t = row.hover.at(now);
-        if (t <= 0.01f) {
-            return;
-        }
-        NvgWidget w = row.widget();
-        float x = labelX() - 4f;
-        float right = layout().items().right() - 4f;
-        ui.fillRoundRect(x, w.y() + 1f, Math.max(0f, right - x), w.height() - 2f,
-                ui.palette.radius, NvgUi.fade(0xFFFFFFFF, 0.05f * t));
-    }
 
     /**
      * 小节头那一根强调色小刺 —— <b>形状仍走 NanoVG</b>（文字那一半搬到 {@link #drawLabels} 了：
@@ -1056,7 +1087,9 @@ public final class PickupCardConfigScreen extends Screen {
         }
         if (hint == null) {
             for (NvgWidget chip : chips()) {
-                if (chip instanceof Chip c && c.hint != null && chip.hit(mouseX, mouseY)) {
+                Rect box = chipBoxes.get(chip);
+                if (chip instanceof Chip c && c.hint != null && box != null
+                        && box.contains((float) mouseX, (float) mouseY)) {
                     hint = c.hint;
                     break;
                 }
@@ -1195,8 +1228,11 @@ public final class PickupCardConfigScreen extends Screen {
             return true;        // 树已经把它按下去了，控件也收到 press 了
         }
         for (NvgWidget w : chips()) {
-            // 树外的控件（标签列、切样例按钮）：命中还是自己判 —— 它们不在树的几何里
-            if (w.mouseClicked(mouseX, mouseY, button)) {
+            // 树外的控件（标签列、切样例按钮）：命中还是自己判 —— 它们不在树的几何里，
+            // 几何来自排布者那一份（{@code chipBoxes}），按下/松开/悬停用的是同一个矩形。
+            Rect box = chipBoxes.get(w);
+            if (box != null && box.contains((float) mouseX, (float) mouseY)
+                    && w.press(box, mouseX, mouseY, button)) {
                 return true;
             }
         }
@@ -1213,16 +1249,27 @@ public final class PickupCardConfigScreen extends Screen {
         // 控件也能把手感收回去；落点还在格子里才算一次点击（见 ControlSlot）。
         trellisProbe().pointerUp((float) mouseX, (float) mouseY);
         for (NvgWidget w : chips()) {
-            w.mouseReleased(mouseX, mouseY);        // 树外的控件：命中还是自己判
+            // 树外的控件：命中还是自己判，用的是排布者那一份几何（见 mouseClicked）
+            Rect box = chipBoxes.get(w);
+            if (box != null) {
+                w.release(box, mouseX, mouseY, box.contains((float) mouseX, (float) mouseY));
+            }
         }
         return true;
     }
 
     @Override
     public boolean mouseDragged(double mouseX, double mouseY, int button, double dragX, double dragY) {
-        // 拖拽仍是广播：谁"正被按着"（pressed）谁自己动手，没有命中判断可做。
-        for (NvgWidget w : widgets()) {
-            w.mouseDragged(mouseX, mouseY);
+        // 拖拽只发给"正被按着"的那一个（A-10 第二步）。而"谁被按着"和"它的盒子在哪"都问树 ——
+        // 控件不再存几何，所以盒子必须由这里交进去（与 press 收到的是同一个对象）。
+        UiTree probe = trellisProbe();
+        int row = TrellisBridge.pressedControlRow(probe);
+        if (row >= 0) {
+            Rect box = TrellisBridge.controlBox(probe, row);
+            ConfigRows.Row r = rowsModel.all().get(row);
+            if (box != null && !r.isHeader()) {
+                r.widget().drag(box, mouseX, mouseY);
+            }
         }
         return true;
     }
@@ -1293,20 +1340,44 @@ public final class PickupCardConfigScreen extends Screen {
         if (w == null) {
             return false;
         }
+        Rect box = boxOf(w);
         // 【为什么零尺寸算点不到】预览收起时切样例按钮是零矩形（没画出来）。
-        if (w.width() <= 0f || w.height() <= 0f) {
+        if (box == null || box.width() <= 0f || box.height() <= 0f) {
             return false;
         }
-        double cx = w.x() + w.width() / 2.0;
-        double cy = w.y() + w.height() / 2.0;
+        double cx = box.x() + box.width() / 2.0;
+        double cy = box.y() + box.height() / 2.0;
         boolean down = mouseClicked(cx, cy, 0);
         mouseReleased(cx, cy, 0);
         // 【诊断常驻】"点了没反应"只能靠这行定案：坐标对不对、按下命中没、点完屏幕换没换
         PickupCard.LOGGER.info("[clickOption] 『{}』点({},{}) 按下命中={} 控件 {}x{}@({},{}) 屏幕={}",
                 label, Math.round(cx), Math.round(cy), down,
-                Math.round(w.width()), Math.round(w.height()), Math.round(w.x()), Math.round(w.y()),
-                Minecraft.getInstance().screen == null ? "无" : Minecraft.getInstance().screen.getClass().getSimpleName());
+                Math.round(box.width()), Math.round(box.height()),
+                Math.round(box.x()), Math.round(box.y()),
+                Minecraft.getInstance().screen == null ? "无"
+                        : Minecraft.getInstance().screen.getClass().getSimpleName());
         return true;
+    }
+
+    /**
+     * 某个控件的几何：<b>行内控件问树，树外控件问排布者</b>（{@code chipBoxes}）。
+     *
+     * <p>【为什么这个方法值得单独存在】A-10 第二步把控件自己那份 {@code x/y/w/h} 删了，
+     * 于是"这个控件在哪"只剩两个出处：树的 {@code bounds()}，和排布者给树外控件的那一份。
+     * harness 的 {@code clickOption} / {@code dragOption} / {@code optionDump} 全走它 ——
+     * 三条读数与绘制必然同一个矩形，不存在"日志说在这、画在别处"。
+     */
+    private Rect boxOf(NvgWidget widget) {
+        if (chipBoxes.containsKey(widget)) {
+            return chipBoxes.get(widget);
+        }
+        List<ConfigRows.Row> rows = rowsModel.all();
+        for (int i = 0; i < rows.size(); i++) {
+            if (!rows.get(i).isHeader() && rows.get(i).widget() == widget) {
+                return TrellisBridge.controlBox(trellisProbe(), i);
+            }
+        }
+        return null;
     }
 
     /** 走真实事件路径拖一下滑条（按下 → 拖到 ratio 处 → 松开）—— 验的是拖拽，不是点击。 */
@@ -1315,15 +1386,20 @@ public final class PickupCardConfigScreen extends Screen {
         if (w == null) {
             return false;
         }
-        double y = w.y() + w.height() / 2.0;
-        double startX = w.x() + 2.0;
-        double endX = w.x() + 2.0 + Math.max(0.0, Math.min(1.0, ratio)) * (w.width() - 4.0);
+        Rect box = boxOf(w);
+        if (box == null) {
+            return false;
+        }
+        double y = box.y() + box.height() / 2.0;
+        double startX = box.x() + 2.0;
+        double endX = box.x() + 2.0 + Math.max(0.0, Math.min(1.0, ratio)) * (box.width() - 4.0);
         boolean down = mouseClicked(startX, y, 0);
         mouseDragged(endX, y, 0, endX - startX, 0);
         mouseReleased(endX, y, 0);
         PickupCard.LOGGER.info("[dragOption] 『{}』按({},{})→拖({},{}) 按下命中={} 控件 {}x{}@({},{})",
                 label, Math.round(startX), Math.round(y), Math.round(endX), Math.round(y), down,
-                Math.round(w.width()), Math.round(w.height()), Math.round(w.x()), Math.round(w.y()));
+                Math.round(box.width()), Math.round(box.height()),
+                Math.round(box.x()), Math.round(box.y()));
         return true;
     }
 
@@ -1348,8 +1424,9 @@ public final class PickupCardConfigScreen extends Screen {
     public List<String> optionDump() {
         return rowsModel.all().stream().filter(r -> !r.isHeader()).map(r -> {
             NvgWidget w = r.widget();
-            return r.label() + "=" + Math.round(w.x()) + "," + Math.round(w.y())
-                    + " " + Math.round(w.width()) + "x" + Math.round(w.height())
+            Rect box = boxOf(w);        // 几何只有树（行内）/ 排布者（树外）这一个出处
+            return r.label() + "=" + Math.round(box.x()) + "," + Math.round(box.y())
+                    + " " + Math.round(box.width()) + "x" + Math.round(box.height())
                     + " 值[" + w.value() + "]";
         }).toList();
     }
@@ -1358,20 +1435,11 @@ public final class PickupCardConfigScreen extends Screen {
     // 几何：按画布算，不写死
     // ------------------------------------------------------------------
 
-    /** 控件那一格多宽：配置列宽的一部分，右对齐（一行一项，不再是一行两项）。 */
-    private int controlW() {
-        return ConfigRows.controlW(layout());
-    }
-
     /** 标签左缘：配置列左边留 6px。 */
     private int labelX() {
         return ConfigRows.labelX(layout());
     }
 
-    /** 控件左缘：右对齐到配置列右缘留 6px。 */
-    private int controlX() {
-        return ConfigRows.controlX(layout());
-    }
 
     private int rowsTop() {
         // 预览已经搬到右边那一列了，配置项从这一列的顶上开始。

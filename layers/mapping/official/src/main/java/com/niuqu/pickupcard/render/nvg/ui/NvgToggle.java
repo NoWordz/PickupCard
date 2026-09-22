@@ -11,6 +11,9 @@ import java.util.function.Supplier;
  * <p>【为什么不用按钮显示"开/关"】按钮的语义是"点一下做一件事"，开关的语义是"现在是什么状态"。
  * 两者画得一样的话，玩家得先读字才知道能不能点；圆钮一摆，状态和可点性一眼都在。
  * 这也是这一层存在的意义：原版按钮画不出圆钮（它是九宫格贴图），NanoVG 一行就够。
+ *
+ * <p>【几何从 {@code ctx.box()} 来（A-10 第二步）】整个绘制体只有这一处几何来源 ——
+ * 也就是"把这段绘制代码复制到滑条上不会串位置"的原因。
  */
 public final class NvgToggle extends NvgWidget {
 
@@ -37,29 +40,31 @@ public final class NvgToggle extends NvgWidget {
     }
 
     @Override
-    protected void paint(NvgUi ui) {
-        NvgPalette p = ui.palette;
+    protected void paint(PaintCtx ctx) {
+        NvgPalette p = ctx.palette();
+        float w = ctx.width();
+        float h = ctx.height();
         boolean on = state.get();
         float pillW = Math.min(26f, w * 0.32f);
         float pillH = Math.max(8f, h - 8f);
-        float pillX = x + w - pillW - 2f;
-        float pillY = y + (h - pillH) / 2f;
+        float pillX = w - pillW - 2f;
+        float pillY = (h - pillH) / 2f;
         float r = pillH / 2f;
 
         // 开/关两个字在"轨道以左的自由区"里居中 —— 顶在最左边时，宽控件上像一行字掉队了
-        ui.text(value(), (x + pillX - ui.font().width(value())) / 2f,
-                y + (h - ui.font().lineHeight) / 2f, p.text);
+        ctx.text(value(), (pillX - ctx.textWidth(value())) / 2f,
+                (h - ctx.lineHeight()) / 2f, p.text);
 
         // 轨道
-        ui.fillRoundRect(pillX, pillY, pillW, pillH, r, on ? p.accent : p.well);
+        ctx.fillRoundRect(pillX, pillY, pillW, pillH, r, on ? p.accent : p.well);
         if (!on) {
-            ui.strokeRoundRect(pillX, pillY, pillW, pillH, r, p.outline);
+            ctx.strokeRoundRect(pillX, pillY, pillW, pillH, r, p.outline);
         }
         // 钮：开在右边、关在左边（圆钮位置本身就是状态）
         float knobX = on ? pillX + pillW - r : pillX + r;
-        ui.circle(knobX, pillY + r, r - 1f, on ? 0xFFFFFFFF : 0xFFD5DAE5);
+        ctx.circle(knobX, pillY + r, r - 1f, on ? 0xFFFFFFFF : 0xFFD5DAE5);
         if (hovered || focused) {
-            ui.strokeRoundRect(x, y, w, h, p.radius, p.outline);
+            ctx.strokeRoundRect(0f, 0f, w, h, p.radius, p.outline);
         }
     }
 }
