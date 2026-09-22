@@ -4,6 +4,7 @@
   "pickupcard.xp": "经验",
   "key.pickupcard.harness": "打开拾取卡调试屏",
   "key.pickupcard.config": "打开拾取卡设置",
+  "key.pickupcard.grid": "打开卡片一览网格",
 
   "pickupcard.config.title": "拾起卡片 · 设置",
   "pickupcard.config.subtitle": "所有改动立即生效，不用保存",
@@ -166,5 +167,9 @@
   "pickupcard.anchor.customHint": "当前：自定义 (x=%.2f, y=%.2f 屏)",
   "pickupcard.anchor.controls": "Esc 取消 · Enter 完成",
   "pickupcard.anchor.footprint": "示意占地（按样例宽）",
-  "pickupcard.anchor.clamped": "卡已贴边距：锚线再往右，卡也不会越过屏幕边距"
+  "pickupcard.anchor.clamped": "卡已贴边距：锚线再往右，卡也不会越过屏幕边距",
+
+  "pickupcard.grid.title": "卡片一览 · 网格",
+  "pickupcard.grid.hint": "%s 列 × %s 行 · 每格 %s×%s · 方向键移动焦点",
+  "pickupcard.grid.cell": "卡 %s"
 }

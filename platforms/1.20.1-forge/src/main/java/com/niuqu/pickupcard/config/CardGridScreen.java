@@ -50,6 +50,16 @@ public final class CardGridScreen extends Screen {
     /** 建好的网格树 + 几何（唯一出处）。 */
     private CardGridTree.Grid grid;
 
+    /**
+     * harness 定住的指针位置（{@code false} = 用真实鼠标）。
+     * <p>【为什么由界面代记】MC 的真实鼠标挪不动，而网格的悬停走的是
+     * {@code render(mouseX, mouseY)} 里那个位置 —— 不代记的话"悬停那一格"的截图永远拍不到。
+     * 配置屏同款（{@code pointColumnAtForHarness}）。
+     */
+    private boolean harnessPointerSet;
+    private float harnessPointerX;
+    private float harnessPointerY;
+
     public CardGridScreen(Screen parent) {
         super(net.minecraft.network.chat.Component.translatable("pickupcard.grid.title"));
         this.parent = parent;
@@ -63,6 +73,9 @@ public final class CardGridScreen extends Screen {
         for (int i = 0; i < PLACEHOLDER_ITEMS; i++) {
             items.add(new PlaceholderCell("grid-cell-" + i, I18n.get("pickupcard.grid.cell", i + 1)));
         }
+        // 假指针归零：resize 会走 init() → 树/格子/u/调色板全重建，但那个坐标留在旧画布上。
+        // 不清的话之后真实鼠标会被永久忽略，悬停指在旧位置（只有 dev 会碰到，但清了才自洽）。
+        harnessPointerSet = false;
         grid = CardGridTree.build(items, this.width, this.height, u, palette);
     }
 
@@ -82,16 +95,34 @@ public final class CardGridScreen extends Screen {
         // "悬停硬切、没有缓动"，而且不报错（编辑场那边没调也看不出来，因为它的盒子无动画）。
         grid.tree().tick(now * 1_000_000L);
         CardGridTree.layout(grid, this.width, this.height, 1f / guiScale());
-        grid.tree().pointerMove(mouseX, mouseY);
+        grid.tree().pointerMove(harnessPointerSet ? harnessPointerX : mouseX,
+                harnessPointerSet ? harnessPointerY : mouseY);
         TrellisColumn.syncHover(grid.tree());
+
+        // 背板：与配置屏同一条（gui.fill(..., palette.backdrop)）。不画的话这一屏是透的 ——
+        // 格子只盖住视口那一块，标题带与提示带是裸的，多人游戏里世界照跑、字读不出来。
+        gui.fill(0, 0, this.width, this.height, palette.backdrop);
 
         try (NvgUi ui = NvgUi.begin(gui, palette, mouseX, mouseY, now)) {
             if (ui != null) {
                 TrellisColumn.Frame surface = TrellisColumn.surface(ui.canvas(), palette,
                         new McGlyphPainter(ui), now, guiScale());
-                // ① 树：标题盒 → 滚动容器（内容 + 每一格）→ 提示盒（后画的盖前面的）
-                TrellisColumn.paint(surface, grid.tree());
-                // ② 文字：盒子从树读，笔仍由宿主落（字形缝那条既有口径）
+                // 【这一对 pushClip/popClip 不是可选的】Trellis 的 clipChildren 走的是
+                // Canvas.clip → nvgIntersectScissor，它只管 NanoVG 那批形状；而格子的字是
+                // 「先登记、close() 时统一交给原版批次」的（NvgUi 的延迟字形），登记时记的是
+                // NvgUi 自己的裁剪框 —— 那个框只有 pushClip 会写。不包这一对的话：
+                // 形状被 nvgScissor 裁掉了，**文字照旧画在绝对坐标上**，滚出视口的行会把
+                // "卡 N"糊到标题和提示上（静止看对、滚一下才对不上）。
+                // NvgUi 的类注释原话就是这条：「只设一套的症状是形状被裁了、文字糊在外面」。
+                Rect view = grid.viewport();
+                ui.pushClip(view.x(), view.y(), view.width(), view.height());
+                try {
+                    // ① 树：滚动容器（内容 + 每一格）。后画的盖前面的。
+                    TrellisColumn.paint(surface, grid.tree());
+                } finally {
+                    ui.popClip();
+                }
+                // ② 标题与提示在裁剪框**之外**（它们不属于滚动区，不该跟着滚）
                 Rect title = grid.titleBox().bounds();
                 ui.text(I18n.get("pickupcard.grid.title"), title.x(), title.y(), palette.text);
                 Rect hint = grid.hintBox().bounds();
@@ -213,5 +244,39 @@ public final class CardGridScreen extends Screen {
     /** harness 驱动：按一下方向键（走真事件路径，不是直接 requestFocus）。 */
     public void navForHarness(int keyCode) {
         keyPressed(keyCode, 0, 0);
+    }
+
+    /** harness 驱动：第 index 格的屏幕中心（几何从树读，宿主不另算一份）。 */
+    public float[] cellCenterForHarness(int index) {
+        Rect box = grid.cells().get(index).bounds();
+        return new float[]{box.x() + box.width() / 2f, box.y() + box.height() / 2f};
+    }
+
+    /** harness 驱动：把指针定在某一格的中心上（MC 的真实鼠标挪不动，所以界面代记）。 */
+    public void pointAtCellForHarness(int index) {
+        float[] center = cellCenterForHarness(index);
+        harnessPointerSet = true;
+        harnessPointerX = center[0];
+        harnessPointerY = center[1];
+    }
+
+    /**
+     * harness 驱动：直接定到某个偏移。
+     * <p>【为什么需要它】滚轮的步长是"一格 = 格高 + 缝"（本轮 184），而那恰好**躲开**了
+     * "格子文字会糊到标题/提示上"的那一段偏移（约 89–123）—— 只按整格滚，那个 bug 拍不到。
+     * 这条探针就是去拍它的（评审算出来的，见 {@code docs/plan.md} 的 A-19 遗留）。
+     */
+    public void scrollToForHarness(float offset) {
+        grid.scroller().scrollTo(0f, offset);
+    }
+
+    /**
+     * harness 驱动：滚一格。
+     * <p>指针落在<b>视口正中</b>而不是某一格上 —— 步长会改变焦点之外的一切，而第一格可能
+     * 已经被滚出去了（落在它上面事件就送不到容器）。
+     */
+    public void scrollForHarness(double delta) {
+        Rect view = grid.viewport();
+        mouseScrolled(view.x() + view.width() / 2f, view.y() + view.height() / 2f, delta);
     }
 }

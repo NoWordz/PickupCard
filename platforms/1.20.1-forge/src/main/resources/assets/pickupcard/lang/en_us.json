@@ -4,6 +4,7 @@
   "pickupcard.xp": "Experience",
   "key.pickupcard.harness": "Open PickupCard Harness",
   "key.pickupcard.config": "Open Pickup Card Settings",
+  "key.pickupcard.grid": "Open Card Grid",
 
   "pickupcard.config.title": "Pickup Card · Settings",
   "pickupcard.config.subtitle": "Changes apply instantly — nothing to save",
@@ -166,5 +167,9 @@
   "pickupcard.anchor.customHint": "Currently: custom (x=%.2f, y=%.2f of screen)",
   "pickupcard.anchor.controls": "Esc cancels · Enter applies",
   "pickupcard.anchor.footprint": "Footprint preview (sample width)",
-  "pickupcard.anchor.clamped": "Card is at the margin: the anchor won't push the card past the screen edge"
+  "pickupcard.anchor.clamped": "Card is at the margin: the anchor won't push the card past the screen edge",
+
+  "pickupcard.grid.title": "Card overview · grid",
+  "pickupcard.grid.hint": "%s columns × %s rows · %s×%s per cell · arrow keys move focus",
+  "pickupcard.grid.cell": "Card %s"
 }

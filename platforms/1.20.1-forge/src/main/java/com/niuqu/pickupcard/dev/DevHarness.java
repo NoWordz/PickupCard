@@ -2,6 +2,7 @@ package com.niuqu.pickupcard.dev;
 
 import com.niuqu.pickupcard.PickupCard;
 import com.niuqu.pickupcard.config.AnchorEditScreen;
+import com.niuqu.pickupcard.config.CardGridScreen;
 import com.niuqu.pickupcard.config.PickupCardConfig;
 import com.niuqu.pickupcard.config.PickupCardConfigScreen;
 import com.niuqu.pickupcard.layout.LayoutSettings;
@@ -226,6 +227,13 @@ public final class DevHarness {
         private static final boolean CONFIG_ONLY = "config".equalsIgnoreCase(MODE);
         private static int configTicks;
 
+        /**
+         * {@code -PharnessAuto=grid}：第三个形态（网格，A-19）→ 截图 + 读数 → 退出。
+         * <p>独立一条时间线：{@code tickConfig} 那串偏移是配置流程的，网格不复用也不会互相干扰。
+         */
+        private static final boolean GRID_ONLY = "grid".equalsIgnoreCase(MODE);
+        private static int gridTicks;
+
         /** 把请求的 GUI 缩放应用上去（只做一次），并把画布尺寸打进日志。 */
         private static void applyGuiScale(Minecraft mc) {
             if (scaleApplied || GUI_SCALE.equalsIgnoreCase("off")) {
@@ -234,7 +242,12 @@ public final class DevHarness {
             // 【为什么必须等进世界、且必须是自家的界面】在加载界面上改缩放 + resize 那个界面，
             // 会把加载流程停在半路（实测：卡在加载屏 26 秒、世界根本没加载出来）。
             // 自家界面允许：配置模式的窗口很短（世界里 + 无界面只有 1 tick），那时才轮得到它。
-            boolean ourScreen = mc.screen == null || mc.screen instanceof PickupCardConfigScreen;
+            // 网格那一屏也要放行 —— 不放行的话缩放函数直接 return、scaleApplied 永远 false，
+            // 于是 -PharnessGuiScale 四档全跑在同一个画布上（列数退让的证据根本产不出来，
+            // 而日志里连一行警告都没有）。这一条是 A-19 排方案时当场读源码逮到的。
+            boolean ourScreen = mc.screen == null
+                    || mc.screen instanceof PickupCardConfigScreen
+                    || mc.screen instanceof CardGridScreen;
             if (mc.level == null || mc.getOverlay() != null || !ourScreen) {
                 return;
             }
@@ -267,6 +280,10 @@ public final class DevHarness {
             }
             if (CONFIG_ONLY) {
                 tickConfig(mc);
+                return;
+            }
+            if (GRID_ONLY) {
+                tickGrid(mc);
                 return;
             }
             ticks++;
@@ -688,6 +705,104 @@ public final class DevHarness {
             }
         }
 
+        // ------------------------------------------------------------------
+        // 第三个形态：网格（A-19）
+        // ------------------------------------------------------------------
+
+        /**
+         * 网格形态的无人值守驱动：开屏 → 定妆 → 方向键走 → 走出视口 → 悬停 → 滚一格 → 退出。
+         *
+         * <p>【为什么每一步都留读数】这一轮的主要产出是「哪里真的缺」的证据，不是界面本身。
+         * 三条关键读数：<b>列数</b>（退让）、<b>方向键落点</b>（二维，不是序号 +1）、
+         * <b>焦点出视口时的容器偏移</b>（{@code scrollIntoView} 尚不存在的证据）。
+         */
+        static void tickGrid(Minecraft mc) {
+            if (mc.level == null || mc.getOverlay() != null) {
+                return;
+            }
+            // 与 tickConfig 同一条：quickPlay 期间 MC 自己还会换几次界面（收块屏、地形加载屏），
+            // 开一次会被它盖掉 —— 所以一直开到它真的挂上，挂上之后再动缩放。
+            if (!(mc.screen instanceof CardGridScreen)) {
+                mc.setScreen(new CardGridScreen(null));
+                return;
+            }
+            applyGuiScale(mc);
+            gridTicks++;
+            CardGridScreen screen = (CardGridScreen) mc.screen;
+
+            if (gridTicks == WARMUP_TICKS) {
+                mc.setScreen(new CardGridScreen(null));
+                PickupCard.LOGGER.info("[harness-auto] 网格界面已打开");
+                return;
+            }
+            if (gridTicks == WARMUP_TICKS + 20) {
+                capture(mc, null);
+                PickupCard.LOGGER.info("[harness-auto] {}", screen.gridDump());
+                PickupCard.LOGGER.info("[harness-auto] {}", screen.paintedDump());
+                return;
+            }
+            if (gridTicks == WARMUP_TICKS + 24) {
+                clickCell(screen, 0);
+                PickupCard.LOGGER.info("[harness-auto] {}", screen.focusDump());
+                return;
+            }
+            if (gridTicks == WARMUP_TICKS + 26) {
+                screen.navForHarness(GLFW.GLFW_KEY_RIGHT);
+                screen.navForHarness(GLFW.GLFW_KEY_RIGHT);
+                capture(mc, "nav");
+                PickupCard.LOGGER.info("[harness-auto] {}", screen.focusDump());
+                return;
+            }
+            if (gridTicks == WARMUP_TICKS + 28) {
+                screen.navForHarness(GLFW.GLFW_KEY_DOWN);
+                // 【这一条才证明是二维】只走"序号 + 1"的话这里是 行0列3，二维才是 行1列2
+                PickupCard.LOGGER.info("[harness-auto] {}", screen.focusDump());
+                return;
+            }
+            if (gridTicks == WARMUP_TICKS + 30) {
+                for (int i = 0; i < 4; i++) {
+                    screen.navForHarness(GLFW.GLFW_KEY_DOWN);
+                }
+                capture(mc, "offscreen");
+                PickupCard.LOGGER.info("[harness-auto] {}", screen.scrollProbeDump());
+                return;
+            }
+            if (gridTicks == WARMUP_TICKS + 34) {
+                screen.pointAtCellForHarness(0);
+                capture(mc, "hover");
+                return;
+            }
+            if (gridTicks == WARMUP_TICKS + 36) {
+                screen.scrollForHarness(-1.0d);
+                return;
+            }
+            if (gridTicks == WARMUP_TICKS + 38) {
+                capture(mc, "scrolled");
+                PickupCard.LOGGER.info("[harness-auto] {}", screen.scrollHitDump());
+                return;
+            }
+            if (gridTicks == WARMUP_TICKS + 40) {
+                // 【为什么单独来这一下】整格滚动（184）恰好躲开"格子文字糊到标题上"那一段
+                // （约 89–123），所以上面那几张产物拍不到裁剪漏掉文字的形态。100 落在那段里，
+                // 这一张才是"文字有没有跟着形状一起被裁"的产物证据。
+                screen.scrollToForHarness(100f);
+                return;
+            }
+            if (gridTicks >= WARMUP_TICKS + 42) {
+                capture(mc, "clip-probe");
+                PickupCard.LOGGER.info("[harness-auto] 裁剪探针: 偏移=100（文字该被裁在视口里）");
+                PickupCard.LOGGER.info("[harness-auto] 网格模式收工，退出客户端");
+                mc.stop();
+            }
+        }
+
+        /** 点某一格（走界面自己的鼠标路径，不是直接 {@code requestFocus}）。 */
+        private static void clickCell(CardGridScreen screen, int index) {
+            float[] center = screen.cellCenterForHarness(index);
+            screen.mouseClicked(center[0], center[1], 0);
+            screen.mouseReleased(center[0], center[1], 0);
+        }
+
         /** 预览重播连拍：每 24 tick（1.2s）一张，5 张覆盖一个 4.6s 周期。 */
         private static final int CYCLE_EVERY = 24;
         private static final int CYCLE_FRAMES = 5;
@@ -1068,6 +1183,10 @@ public final class DevHarness {
             String base;
             if (CONFIG_ONLY) {
                 base = "pickupcard-config";
+            } else if (GRID_ONLY) {
+                // 不写这一支的话产物会落到 pickupcard-harness-p0，而 clearOldShots 又会删掉
+                // 所有 pickupcard-* —— 名字对不上分析脚本（且是静默的）。
+                base = "pickupcard-grid";
             } else if (page == SPIKE_PAGE) {
                 base = "pickupcard-harness-spike";
             } else if (page == MEASURE_PAGE) {

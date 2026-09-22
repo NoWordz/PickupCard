@@ -97,12 +97,21 @@ class CardGridTreeTest {
     @Test
     @DisplayName("内容盒横向铺满：宽 = 视口宽 − 2×左右内边距（STRETCH 没丢）")
     void contentFillsTheViewportWidthMinusPadding() {
-        CardGridTree.Grid g = grid(24);
+        // 【为什么取 1281 而不是 1280】1280 那一档每格宽恰好整除（1256 / 4 = 314），
+        // 行宽 = 4×314 + 3×4 = 1268 = 内容宽 —— 于是**去掉内容盒的 STRETCH 也照样绿**
+        // （它的自然宽正好也是 1268），这条就成了恒真断言。1281 是有余数的档，
+        // 才能把"被拉满"和"按内容定宽"分开。这一条是评审指出来的。
+        CardGridTree.Grid g = grid(24, 1281f, CANVAS_H, U);
         float pad = Tokens.Space.STEP_3 * U;
+        float gap = Tokens.Space.STEP_2 * U;
         Rect content = g.scroller().children().get(0).bounds();
-        assertEquals(CANVAS_W - 2f * pad, content.width(), EPS,
+        GridMath.Metrics m = g.metrics();
+
+        assertEquals(1281f - 2f * pad, content.width(), EPS,
                 "内容盒没被 STRETCH 拉满 —— 这个错很阴：格子宽是按内容宽算的，"
                         + "所以画面看起来「差不多对」，只有对账才现形");
+        assertTrue(m.cellWidth() * m.cols() + gap * (m.cols() - 1) < content.width(),
+                "这一档必须留下余数，否则这条测试区分不出 STRETCH（见上面的说明）");
     }
 
     @Test

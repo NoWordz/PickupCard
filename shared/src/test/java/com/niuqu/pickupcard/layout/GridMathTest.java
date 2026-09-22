@@ -166,14 +166,21 @@ class GridMathTest {
         }
 
         @Test
-        @DisplayName("本该整除时 floor 不掉像素")
-        void floorDoesNotLoseAPixelOnExactDivision() {
-            // 视口 400、无内边距、无缝隙、格高 100 → 内容宽 400，恰好 4 列各 100
+        @DisplayName("差不到 1e-4 就该认成整除：floor 的容差真的在起作用")
+        void floorDoesNotLoseAPixelWhenTheDivisionIsJustUnderAnInteger() {
+            // 【为什么不用 400 / 4】那在 IEEE754 里是精确的 100.0，把 GridMath 的
+            // FLOOR_EPSILON 整条删掉它照样绿 —— 是个恒真断言（评审指出的）。
+            // 【为什么也不用 299.99999f】它离 300 只有 1e-5，**小于 float 在 300 附近的
+            // 半个间距（约 1.5e-5）**，于是直接舍入成 300.0f —— 又变成恒真。
+            // （本喵第一版就是这么写错的，靠一次变异测试才发现。）
+            // 要用 299.9999f：1e-4 大于半间距，会被舍到 300 − 3.05e-5 = 299.99997，
+            // 于是 299.99997 / 3 = 99.9999898 —— 不加容差 floor 成 99（整行少 3px），
+            // 而且列数那一趟也会掉到 2。加了容差才是 3 列各 100。
             GridMath.Spec s = new GridMath.Spec(100f, 0f, 0f, 2, 4);
-            GridMath.Metrics m = GridMath.solve(8, 400f, s);
-            assertEquals(4, m.cols());
+            GridMath.Metrics m = GridMath.solve(6, 299.9999f, s);
+            assertEquals(3, m.cols(), "这一档应当解出 3 列（不带容差会掉成 2 列）");
             assertEquals(100f, m.cellWidth(), EPS,
-                    "400 / 4 本该正好 100 —— 浮点误差不该让它掉成 99");
+                    "99.9999898 该被容差认成整除（100），而不是掉成 99");
         }
     }
 

@@ -15,16 +15,24 @@ import dev.e33.trellis.ui.widget.WidgetPalette;
  *
  * <p>【为什么继承 {@link Widget} 而不是 {@code Component}】两条，缺一不可：
  * <ol>
- *   <li>格子里的字必须画在<b>树内</b>、被树的裁剪罩住。{@code Component.clipChildren} 的
- *       {@code save/clip/restore} 只包住 {@code drawChildren}；如果像编辑场那样"盒子从树读、
- *       文字由宿主在 {@code paint} 之后补画"，<b>滚出视口的格子名字会照旧画在视口外</b>，
- *       糊到标题和提示上。这个 bug 只在滚动之后出现，静止截图看不出来。</li>
- *   <li>{@code Component} 拿不到"这一帧的宿主能力"：{@code TrellisColumn.setFrame} 的注入只认
- *       {@code instanceof WidgetSlot}，一个自定义 {@code Component} 想要配色与字形缝，
- *       只能自己再存一份、每帧再灌一次 —— 那就是把 {@code attachFrame} 抄第二遍。</li>
+ *   <li>格子里的字要跟控件一起、在<b>同一个盒子里</b>登记绘制。{@code Component} 拿不到
+ *       "这一帧的宿主能力"：{@code TrellisColumn.setFrame} 的注入只认 {@code instanceof WidgetSlot}，
+ *       一个自定义 {@code Component} 想要配色与字形缝，只能自己再存一份、每帧再灌一次 ——
+ *       那就是把 {@code attachFrame} 抄第二遍。</li>
+ *   <li>它得是一个真正被树托着的控件，才能白拿焦点环、可聚焦、悬停、按下、键转交
+ *       （见 {@code WidgetSlot} 的类注释）。</li>
  * </ol>
- * 于是格子是 {@code Widget}，由 {@link WidgetSlot} 托进树：焦点环、可聚焦、悬停、按下、
- * 键转交全部白拿（见 {@code WidgetSlot} 的类注释）。
+ * 于是格子是 {@code Widget}，由 {@link WidgetSlot} 托进树。
+ *
+ * <p>【⚠️ 但"在树内"≠"会被裁"】这是被评审逮到的一处真错，写在这里免得下一个人再推错：
+ * 格子的字走 {@code PaintCtx → GlyphPainter → NvgUi}，而 {@code NvgUi} 的文字是
+ * <b>先登记、{@code close()} 时统一补画</b>的，登记时记的是 <b>{@code NvgUi} 自己的裁剪框</b>
+ * —— 那个框<b>只有 {@code NvgUi.pushClip} 会写</b>。树的 {@code clipChildren} 走的是
+ * {@code Canvas.clip → nvgIntersectScissor}，<b>只管 NanoVG 那批形状，管不到原版那批延迟文字</b>。
+ * 所以滚动区外面必须有宿主自己包的一对 {@code pushClip/popClip}
+ * （{@code CardGridScreen.render} 里那对），否则形状被裁了、<b>文字照旧画在绝对坐标上</b>，
+ * 滚出视口的"卡 N"会糊到标题和提示上 —— 静止看对、滚一下才对不上。
+ * {@code NvgUi} 的类注释原话就是这条：「只设一套的症状是形状被裁了、文字糊在外面」。
  *
  * <p>【已知观感】{@code WidgetSlot} 没设 {@code surface}，所以基类那层状态叠加层用直角
  * （{@code radius} 默认 0），而这一格自己画的是圆角 —— 悬停时是"圆角填充 + 直角白雾"。

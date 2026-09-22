@@ -21,11 +21,16 @@ public final class PickupCardKeys {
     public static final KeyMapping CONFIG = new KeyMapping(
             "key.pickupcard.config", InputConstants.Type.KEYSYM, GLFW.GLFW_KEY_K, "key.categories.misc");
 
+    /** 打开卡片一览网格（A-19 第三个形态试点）。 */
+    public static final KeyMapping GRID = new KeyMapping(
+            "key.pickupcard.grid", InputConstants.Type.KEYSYM, GLFW.GLFW_KEY_G, "key.categories.misc");
+
     private PickupCardKeys() {
     }
 
     @SubscribeEvent
     static void onRegisterKeys(RegisterKeyMappingsEvent event) {
         event.register(CONFIG);
+        event.register(GRID);
     }
 }

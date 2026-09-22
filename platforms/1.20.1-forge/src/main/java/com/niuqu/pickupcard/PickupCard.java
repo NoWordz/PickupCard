@@ -5,6 +5,7 @@ import com.niuqu.pickupcard.compat.RarityCoreBridge;
 import com.niuqu.pickupcard.pickup.CardContent;
 import com.niuqu.pickupcard.dev.DevHarness;
 import com.niuqu.pickupcard.client.PickupCardKeys;
+import com.niuqu.pickupcard.config.CardGridScreen;
 import com.niuqu.pickupcard.config.PickupCardConfigScreen;
 import com.niuqu.pickupcard.render.CardStage;
 import com.niuqu.pickupcard.pickup.Inbox;
@@ -111,6 +112,13 @@ public final class PickupCard {
                 // 只在没有别的界面时打开：否则会把玩家正在用的界面（比如背包）压掉
                 if (mc.screen == null) {
                     mc.setScreen(new PickupCardConfigScreen(null));
+                }
+            }
+            // 卡片一览网格（A-19 第三个形态试点）。同一道门：没有别的界面时才开。
+            while (PickupCardKeys.GRID.consumeClick()) {
+                Minecraft mc = Minecraft.getInstance();
+                if (mc.screen == null) {
+                    mc.setScreen(new CardGridScreen(null));
                 }
             }
         }
