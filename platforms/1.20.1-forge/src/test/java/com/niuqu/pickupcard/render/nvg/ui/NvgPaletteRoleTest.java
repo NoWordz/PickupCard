@@ -17,6 +17,8 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import dev.e33.trellis.ui.widget.Button;
 import dev.e33.trellis.ui.widget.ColorChip;
+import dev.e33.trellis.ui.widget.WidgetPalette;
+import java.lang.reflect.Method;
 
 /**
  * 「两套值、一套角色」的离线钉子（A-13）。
@@ -164,5 +166,32 @@ class NvgPaletteRoleTest {
             }
         }
         return roles;
+    }
+
+    /**
+     * <b>15 个 getter 必须各自读自己的字段</b>（A-18 评审要求的补测）。
+     *
+     * <p>【为什么这一条必须有】getter 写串（{@code well()} 返回 {@code wellHover}）能编译、
+     * 能过掉上面那些"字段存在 / 尺寸对"的断言、上真机才看出颜色不对 —— 而真机截图不会告诉你
+     * 是哪一个角色错了。同一次评审里，"按字段名顺序抄深色盘"就是这么错位了五个颜色
+     * （框架测试里那份替身），照样全绿。
+     *
+     * <p>【为什么用反射比】手写 15 行 {@code assertEquals(p.well, p.well())} 是同一个错
+     * 再犯一次的机会（两边一起抄错就测不出来）。反射按字段名取值，与 getter 名一一对照 ——
+     * 名字对不上时这条会红，而不是靠人记得。
+     */
+    @Test
+    @DisplayName("WidgetPalette 的 15 个 getter 逐个读的是同名字段（写串了这里就红）")
+    void everyGetterReadsItsOwnField() throws Exception {
+        NvgPalette palette = NvgPalette.dark(StyleModel.Accents.defaults(), Units.u(240f));
+        Method[] getters = WidgetPalette.class.getDeclaredMethods();
+        assertEquals(15, getters.length, "接口上的角色数变了就回来看这条测试");
+        for (Method getter : getters) {
+            Field field = NvgPalette.class.getDeclaredField(getter.getName());
+            field.setAccessible(true);
+            assertEquals(field.get(palette), getter.invoke(palette),
+                    "getter " + getter.getName() + "() 读的不是同名字段 " + field.getName()
+                            + " —— 角色被读串了，界面上会是一个没人预期的颜色");
+        }
     }
 }
