@@ -362,7 +362,7 @@ public final class DevHarness {
                 return;
             }
             if (configTicks == WARMUP_TICKS + 45) {
-                // 【滚动之后必须补一张】滚动偏移要进 Trellis 的布局（见 TrellisBridge.layoutColumn）：
+                // 【滚动之后必须补一张】滚动偏移要进 Trellis 的布局（见 TrellisColumn.layoutColumn）：
                 // 不进去的话标签、悬停底、命中会与宿主那一份整整错开一个偏移量，
                 // 而"整齐地错开 13px"这种错在静止的截图里非常像对的 —— 只有这一帧能钉住它。
                 capture(mc, "p2-scrolled");
@@ -577,9 +577,9 @@ public final class DevHarness {
                     return;
                 }
                 if (look == 2) {
-                    // 真指针停到「Bar width」那一行：Trellis 探针读的是真指针，
+                    // 真指针停到「Bar width」那一行：组件列读的是真指针，
                     // 这一张要证明"命中的那一行"和"画出来的那条悬停带"是同一条（判据 1）。
-                    pointProbeByLabel(mc, I18n.get("pickupcard.config.row.barWidth.name"));
+                    pointColumnByLabel(mc, I18n.get("pickupcard.config.row.barWidth.name"));
                     return;
                 }
                 if (look == 4) {
@@ -591,7 +591,7 @@ public final class DevHarness {
                     PickupCard.LOGGER.info("[harness-auto] 外观页状态: {} | {}",
                             configState(mc), columnDump(mc));
                     if (mc.screen instanceof PickupCardConfigScreen screen) {
-                        PickupCard.LOGGER.info("[harness-auto] 外观页悬停路由: {}", screen.probeDump());
+                        PickupCard.LOGGER.info("[harness-auto] 外观页悬停路由: {}", screen.hoverRouteDump());
                     }
                     return;
                 }
@@ -665,11 +665,11 @@ public final class DevHarness {
             }
         }
 
-        /** 让 Trellis 探针把指针当作落在某一行控件的中心上（探针不吃按标签伪造的悬停）。 */
-        private static void pointProbeByLabel(Minecraft mc, String label) {
+        /** 让组件列把指针当作落在某一行控件的中心上（它不吃按标签伪造的悬停）。 */
+        private static void pointColumnByLabel(Minecraft mc, String label) {
             if (mc.screen instanceof PickupCardConfigScreen screen
-                    && !screen.pointProbeAtForHarness(label)) {
-                PickupCard.LOGGER.warn("[harness-auto] 界面上找不到『{}』这一行，探针指针没地方放", label);
+                    && !screen.pointColumnAtForHarness(label)) {
+                PickupCard.LOGGER.warn("[harness-auto] 界面上找不到『{}』这一行，列指针没地方放", label);
             }
         }
 

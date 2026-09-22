@@ -54,7 +54,7 @@ public final class NvgUi implements AutoCloseable {
      * 底层的 NvgCanvas。
      *
      * <p>【为什么需要它】Trellis 试点要从外面接进<b>同一个</b> NanoVG 上下文
-     * （见 {@code TrellisBridge}）。没有这个入口的话，外面只能自己再 {@code nvgCreate} 一个 ——
+     * （见 {@code TrellisColumn}）。没有这个入口的话，外面只能自己再 {@code nvgCreate} 一个 ——
      * 那就在一个线程上开出了两台互相不知道对方的状态机。
      */
     public NvgCanvas canvas() {

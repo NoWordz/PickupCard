@@ -29,8 +29,8 @@ final class ConfigRows {
      * 第一行相对配置列顶的内缩 —— 贴着列顶会和标题行糊在一起，留 2px 呼吸。
      *
      * <p>【为什么放在这里而不是写在屏幕里】它是"行模型"的几何，而且现在有第二个消费者：
-     * Trellis 试点要拿同一个数当布局树的内边距（{@code TrellisBridge.outlineControls}）。
-     * 放一处、两边取同一个源。反过来做（桥里补个 2）就是又一份口径 —— 2026-09-21 真机
+     * Trellis 组件列要拿同一个数当布局树的内边距（{@code TrellisColumn.buildColumn(..., topInset)}）。
+     * 放一处、两边取同一个源。反过来做（适配器里补个 2）就是又一份口径 —— 2026-09-21 真机
      * 实测过后果：整列 12 行集体高 2 逻辑 px。
      */
     static final int ROWS_TOP_INSET = 2;
@@ -69,7 +69,7 @@ final class ConfigRows {
             float y = rowsTop + i * (float) ROW_STEP - Math.round(scrollOffset);
             row.yAt = y;
             // 【控件的格子不在这里摆了（A-10 第二步）】行内控件的几何由 Trellis 的树算
-            // （{@code TrellisBridge.controlBox}），控件自己不再存 {@code x/y/w/h} ——
+            // （{@code TrellisColumn.controlBox}），控件自己不再存 {@code x/y/w/h} ——
             // 从前这一句 {@code at(...)} 就是"第二份几何"，与树里的盒子差 1.3 逻辑 px（A-4）。
         }
     }

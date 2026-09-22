@@ -15,7 +15,7 @@ import com.niuqu.pickupcard.render.nvg.ui.NvgPalette;
 import com.niuqu.pickupcard.render.nvg.ui.NvgUi;
 import com.niuqu.pickupcard.render.nvg.ui.NvgWidget;
 import com.niuqu.pickupcard.render.nvg.ui.McGlyphPainter;
-import com.niuqu.pickupcard.render.nvg.ui.TrellisBridge;
+import com.niuqu.pickupcard.render.nvg.ui.TrellisColumn;
 import dev.e33.trellis.geom.Rect;
 import com.niuqu.pickupcard.style.CardTimeline;
 import com.niuqu.pickupcard.style.StyleModel;
@@ -255,7 +255,7 @@ public final class AnchorEditScreen extends Screen {
                                 anchorX, anchorY),
                         8f, 17f, palette.textDim, this.width - 16f);
                 drawBrackets(ui, b);
-                TrellisBridge.Frame surface = TrellisBridge.surface(ui.canvas(), palette,
+                TrellisColumn.Frame surface = TrellisColumn.surface(ui.canvas(), palette,
                         new McGlyphPainter(ui), now, guiScale());
                 for (NvgWidget w : buttons) {
                     Rect box = boxOf(w);

@@ -11,7 +11,7 @@ import com.niuqu.pickupcard.render.nvg.ui.ConfigLayout;
 import com.niuqu.pickupcard.render.nvg.ui.NvgScroll;
 import com.niuqu.pickupcard.render.nvg.ui.ScrollMath;
 import com.niuqu.pickupcard.render.nvg.ui.NvgUi;
-import com.niuqu.pickupcard.render.nvg.ui.TrellisBridge;
+import com.niuqu.pickupcard.render.nvg.ui.TrellisColumn;
 import com.niuqu.pickupcard.render.nvg.ui.McFont;
 import dev.e33.trellis.geom.Rect;
 import dev.e33.trellis.geom.Snapping;
@@ -170,43 +170,43 @@ public final class PickupCardConfigScreen extends Screen {
         return itemsScroll == null ? 0f : Math.round(itemsScroll.offset());
     }
 
-    /** 探针这一帧用的指针位置：harness 指定过就用它，否则用真指针。 */
-    private float probePointerX() {
-        return Float.isNaN(probePointerX) ? frameMouseX : probePointerX;
+    /** 组件列这一帧认的指针位置：harness 指定过就用它，否则用真指针。 */
+    private float columnPointerX() {
+        return Float.isNaN(columnPointerX) ? frameMouseX : columnPointerX;
     }
 
     /** 同上。 */
-    private float probePointerY() {
-        return Float.isNaN(probePointerY) ? frameMouseY : probePointerY;
+    private float columnPointerY() {
+        return Float.isNaN(columnPointerY) ? frameMouseY : columnPointerY;
     }
 
     /**
-     * 给 harness 用：让探针把指针当作落在某一行的控件中心上。
+     * 给 harness 用：让这棵树把指针当作落在某一行的控件中心上。
      *
      * <p>【为什么不是挪真指针】试过 {@code GLFW.glfwSetCursorPos}：GLFW 的 cursor 回调
      * <b>只在窗口有输入焦点时才发</b>，自动化跑的那扇窗通常没焦点 —— 挪了等于没挪，
-     * 截图里那条悬停带根本不出现（2026-09-21 实测）。所以这里给探针一个指定的点。
+     * 截图里那条悬停带根本不出现（2026-09-21 实测）。所以这里直接把指针放在那一格的中心。
      *
      * <p>【为什么这样做不影响要验的东西】几何、命中、绘制三件都还是 Trellis 的，
      * 只是"指针在哪"由 harness 说了算 —— 宿主自己的悬停测试（{@code forcedHover}）也是这样。
      *
      * <p>【几何也问树（A-10 第二步）】控件不再存 {@code x/y/w/h}，"这一行控件中心"由
-     * {@code TrellisBridge.controlBox} 给 —— 与命中、绘制、拖拽读的是同一个矩形。
+     * {@code TrellisColumn.controlBox} 给 —— 与命中、绘制、拖拽读的是同一个矩形。
      */
-    public boolean pointProbeAtForHarness(String label) {
+    public boolean pointColumnAtForHarness(String label) {
         List<ConfigRows.Row> rows = rowsModel.all();
-        UiTree probe = trellisProbe();
+        UiTree tree = trellisColumn();
         for (int i = 0; i < rows.size(); i++) {
             ConfigRows.Row row = rows.get(i);
             if (row.isHeader() || !row.label().equals(label)) {
                 continue;
             }
-            Rect box = TrellisBridge.controlBox(probe, i);
+            Rect box = TrellisColumn.controlBox(tree, i);
             if (box == null) {
                 return false;
             }
-            probePointerX = box.x() + box.width() / 2f;
-            probePointerY = box.y() + box.height() / 2f;
+            columnPointerX = box.x() + box.width() / 2f;
+            columnPointerY = box.y() + box.height() / 2f;
             return true;
         }
         return false;
@@ -218,26 +218,26 @@ public final class PickupCardConfigScreen extends Screen {
     }
 
     /**
-     * Trellis 探针：一棵<b>组件</b>树（不是裸布局节点），所以命中和绘制读的是同一个
+     * 配置列的<b>组件</b>树（不是裸布局节点）：命中和绘制读的是同一个
      * {@code bounds()} 对象 —— 判据 1 靠它才能在真机上验。
      *
      * <p>【为什么不每帧重建】{@link UiTree} 带着悬停/按压/焦点状态，重建就把状态丢了；
      * 只有行数变了（换页）才重建。
      */
-    private UiTree trellisProbe;
-    private int trellisProbeRows = -1;
-    private int trellisProbeControls = -1;
-    /** harness 指定的探针指针（NaN = 用真指针）。见 {@link #pointProbeAtForHarness}。 */
-    private float probePointerX = Float.NaN;
-    private float probePointerY = Float.NaN;
-    /** 这一帧 MC 交给 render 的指针位置（逻辑坐标）。探针默认读它。 */
+    private UiTree trellisColumn;
+    private int trellisColumnRows = -1;
+    private int trellisColumnControls = -1;
+    /** harness 指定的列指针（NaN = 用真指针）。见 {@link #pointColumnAtForHarness}。 */
+    private float columnPointerX = Float.NaN;
+    private float columnPointerY = Float.NaN;
+    /** 这一帧 MC 交给 render 的指针位置（逻辑坐标）。组件列默认读它。 */
     private float frameMouseX;
     private float frameMouseY;
     /** Trellis 的文本度量器，主字体是 MC 自己的字体（见 {@code McFont}）。 */
     private TextMeasurer trellisText;
 
-    /** 探针那棵树，按当前行的<b>形态</b>（几行、几个控件行）惰性建/重建。 */
-    private UiTree trellisProbe() {
+    /** 配置列那棵树，按当前行的<b>形态</b>（几行、几个控件行）惰性建/重建。 */
+    private UiTree trellisColumn() {
         List<ConfigRows.Row> rows = rowsModel.all();
         NvgWidget[] controls = new NvgWidget[rows.size()];
         int present = 0;
@@ -247,20 +247,20 @@ public final class PickupCardConfigScreen extends Screen {
                 present++;
             }
         }
-        if (trellisProbe == null || trellisProbeRows != rows.size()
-                || trellisProbeControls != present) {
-            trellisProbe = TrellisBridge.buildColumn(controls, ConfigRows.ROWS_TOP_INSET);
+        if (trellisColumn == null || trellisColumnRows != rows.size()
+                || trellisColumnControls != present) {
+            trellisColumn = TrellisColumn.buildColumn(controls, ConfigRows.ROWS_TOP_INSET);
             // 【建完必须当场布局】事件（点击/拖拽）落在两次 render 之间，而 {@code bounds()} 要
             // 布局过才有值 —— 只建不摆的话，"树刚作废、下一帧还没到"时来的那次点击会撞
             // NullPointerException（真机第 21 轮就是这么崩的：`Component.node()` is null）。
             // 布局是纯函数、每帧还会再算一次，多算这一遍没有副作用。
-            TrellisBridge.layoutColumn(trellisProbe, layout().items(), scrollOffset(), deviceGrid());
-            trellisProbeRows = rows.size();
-            trellisProbeControls = present;
+            TrellisColumn.layoutColumn(trellisColumn, layout().items(), scrollOffset(), deviceGrid());
+            trellisColumnRows = rows.size();
+            trellisColumnControls = present;
             // 树一重建，每一行的标签盒子就换了一批 —— 那一帧把适配结果打进日志
             labelFitLogPending = true;
         }
-        return trellisProbe;
+        return trellisColumn;
     }
 
     /**
@@ -268,14 +268,14 @@ public final class PickupCardConfigScreen extends Screen {
      *
      * <p>【为什么从 drawChrome 里搬出来、单独一趟】悬停缓动（{@link #driveAnimations}）、
      * 底部说明、点击路由都要问"指着哪一行"，而它们有的发生在绘制之前 ——
-     * 树必须先算完。绘制那一趟因此只剩 {@link TrellisBridge#paint}。
+     * 树必须先算完。绘制那一趟因此只剩 {@link TrellisColumn#paint}。
      */
-    private void updateTrellisProbe() {
-        UiTree probe = trellisProbe();
-        probe.tick(now * 1_000_000L);
-        TrellisBridge.layoutColumn(probe, layout().items(), scrollOffset(), deviceGrid());
-        probe.pointerMove(probePointerX(), probePointerY());
-        TrellisBridge.syncHover(probe);     // 悬停只有一份真相：树判，控件收
+    private void updateTrellisColumn() {
+        UiTree tree = trellisColumn();
+        tree.tick(now * 1_000_000L);
+        TrellisColumn.layoutColumn(tree, layout().items(), scrollOffset(), deviceGrid());
+        tree.pointerMove(columnPointerX(), columnPointerY());
+        TrellisColumn.syncHover(tree);     // 悬停只有一份真相：树判，控件收
     }
 
     /**
@@ -293,13 +293,13 @@ public final class PickupCardConfigScreen extends Screen {
      * <p>【为什么必须能读出来】"带子画在哪一行、缓动跟着哪一行、说明说的是哪一行"
      * 是三个不同的消费者，但它们必须指同一行。截图只看得到第一条；后两条要靠这几个数。
      */
-    public String probeDump() {
-        UiTree probe = trellisProbe();
+    public String hoverRouteDump() {
+        UiTree tree = trellisColumn();
         return String.format(java.util.Locale.ROOT,
-                "探针指针=(%.1f,%.1f) 树判控件行=%d 树悬停=%s",
-                probePointerX(), probePointerY(),
-                TrellisBridge.controlRowAt(probe, probePointerX(), probePointerY()),
-                probe.hovered() == null ? "无" : probe.hovered().bounds().toString());
+                "列指针=(%.1f,%.1f) 树判控件行=%d 树悬停=%s",
+                columnPointerX(), columnPointerY(),
+                TrellisColumn.controlRowAt(tree, columnPointerX(), columnPointerY()),
+                tree.hovered() == null ? "无" : tree.hovered().bounds().toString());
     }
 
     /** 配置项那一列的滚动视口；每帧按当前几何重建（画布会变，视口跟着变）。 */
@@ -477,9 +477,9 @@ public final class PickupCardConfigScreen extends Screen {
         // 只判"行数/控件数变了没有"的话，**同形重建**（行没变、值变了：恢复默认、删一条规则）
         // 会留下一棵拿着旧实例的树 —— 于是绘制与按下走旧实例，而键盘、读数、boxOf 走新实例。
         // 从前这条只影响命中，A-10 第二步起树自己画控件，影响面扩大到"屏幕画的是哪批实例"。
-        trellisProbe = null;
-        trellisProbeRows = -1;
-        trellisProbeControls = -1;
+        trellisColumn = null;
+        trellisColumnRows = -1;
+        trellisColumnControls = -1;
         palette = NvgPalette.of(CardStage.INSTANCE.previewStyle());
         StyleModel style = CardStage.INSTANCE.previewStyle();
         PickupCardSettings eff = PickupCardConfig.snapshot();
@@ -662,7 +662,7 @@ public final class PickupCardConfigScreen extends Screen {
         layoutRows();       // 每帧刷一遍：滚一下、换一页、改窗口尺寸，位置都要跟上
         // 【顺序不能换】树要先算完（含滚动偏移与指针），下面三件事才问得到"指着哪一行"：
         // 悬停缓动、树外的控件悬停、以及绘制那趟里树的 paint。
-        updateTrellisProbe();
+        updateTrellisColumn();
         driveAnimations();
         for (NvgWidget w : chips()) {
             // 树外的控件（标签列、切样例按钮）：命中还是自己判 —— 它们不在树的几何里
@@ -678,7 +678,7 @@ public final class PickupCardConfigScreen extends Screen {
                 // 【一帧一个"表面"】画布（接进宿主上下文，带 GUI 倍数）、配色、字形缝、时刻 ——
                 // 树内控件与树外控件都拿它画自己（A-10 第二步）。倍数必须传：接进来的画布没有
                 // begin，不传它按 1 算，设备像素对齐会退化成"对齐到整数逻辑坐标"。
-                TrellisBridge.Frame surface = TrellisBridge.surface(ui.canvas(), palette,
+                TrellisColumn.Frame surface = TrellisColumn.surface(ui.canvas(), palette,
                         new McGlyphPainter(ui), now, guiScale());
                 drawChrome(ui);
                 drawTabAccent(ui);
@@ -696,8 +696,8 @@ public final class PickupCardConfigScreen extends Screen {
                 // 拖拽读的是同一个 bounds()；控件的位置也从它来（A-4 那 1.3px 由此归零）。
                 // 【层序：控件本体与旧路径同位置；悬停底是挪过的】改由树画的悬停底从前在
                 // drawChrome（配置项的裁剪之外），现在跟树一起进了裁剪 —— 顺带修掉"滚出视口的行，
-                // 悬停带还糊在标签列上"。详见 {@code TrellisBridge.paint} 的说明。
-                TrellisBridge.paint(surface, trellisProbe());
+                // 悬停带还糊在标签列上"。详见 {@code TrellisColumn.paint} 的说明。
+                TrellisColumn.paint(surface, trellisColumn());
                 if (itemsScroll != null) {
                     drawScrollBar(ui);
                     ui.popClip();
@@ -848,10 +848,10 @@ public final class PickupCardConfigScreen extends Screen {
         preview.drive(now, sample);
         tabAccentAnim.retarget(page.ordinal(), now, TAB_MS);
         // 悬停哪一行<b>问树</b>：它读的是 Component.bounds()，跟悬停底、命中是同一份几何。
-        // 指针位置用探针那一份（harness 可以让它假装停在某一行上）—— 这样缓动的行与
+        // 指针位置用组件列认的那一份（harness 可以让它假装停在某一行上）—— 这样缓动的行与
         // 画出来的带子必然是同一条，不会出现"带子在这行、字亮的是那行"。
-        int hoveredControl = TrellisBridge.controlRowAt(trellisProbe(),
-                probePointerX(), probePointerY());
+        int hoveredControl = TrellisColumn.controlRowAt(trellisColumn(),
+                columnPointerX(), columnPointerY());
         List<ConfigRows.Row> rows = rowsModel.all();
         for (int i = 0; i < rows.size(); i++) {
             ConfigRows.Row row = rows.get(i);
@@ -869,7 +869,7 @@ public final class PickupCardConfigScreen extends Screen {
     private void drawChrome(NvgUi ui) {
         NvgPalette p = ui.palette;
         ConfigLayout lo = layout();
-        // 【悬停底与控件本体不在这一趟】它们在组件树那一趟里画（{@code TrellisBridge.paint}，
+        // 【悬停底与控件本体不在这一趟】它们在组件树那一趟里画（{@code TrellisColumn.paint}，
         // 见 render 的"控件本体那一趟"）—— 命中、悬停、拖拽与绘制读的是同一个 bounds()（判据 1）。
         PickupCardSettings eff = PickupCardConfig.snapshot();
         // 标题靠左、副标题跟同一个左缘（用户要求标题不居中；对齐 MARGIN 与标签列同一起点）。
@@ -992,7 +992,7 @@ public final class PickupCardConfigScreen extends Screen {
      */
     private void drawLabels(GuiGraphics gui) {
         List<ConfigRows.Row> rows = rowsModel.all();
-        UiTree probe = trellisProbe();
+        UiTree tree = trellisColumn();
         ConfigLayout.Rect items = layout().items();
         StringBuilder log = labelFitLogPending ? new StringBuilder() : null;
         gui.enableScissor(Math.round(items.x()), Math.round(items.y()),
@@ -1000,8 +1000,8 @@ public final class PickupCardConfigScreen extends Screen {
         try {
             for (int i = 0; i < rows.size(); i++) {
                 ConfigRows.Row row = rows.get(i);
-                Rect box = TrellisBridge.labelBox(probe, i);
-                TrellisBridge.LabelFit fit = TrellisBridge.fitLabel(trellisText(), row.label(),
+                Rect box = TrellisColumn.labelBox(tree, i);
+                TrellisColumn.LabelFit fit = TrellisColumn.fitLabel(trellisText(), row.label(),
                         box, McFont.EM, LABEL_MIN_FONT, LABEL_ELLIPSIS);
                 // 悬停时标签由暗到亮：它、那条高亮带、底部那句说明指的是同一行
                 int argb = row.isHeader()
@@ -1022,7 +1022,7 @@ public final class PickupCardConfigScreen extends Screen {
                                 case SHRUNK -> " 缩";
                                 case ELLIPSIZED -> " 截";
                             });
-                    if (fit.mode() == TrellisBridge.LabelFit.Mode.ELLIPSIZED) {
+                    if (fit.mode() == TrellisColumn.LabelFit.Mode.ELLIPSIZED) {
                         // 画出来的串跟着进日志：只看"截了"三个字，看不出截成了什么
                         log.append('→').append(fit.text());
                     }
@@ -1050,7 +1050,7 @@ public final class PickupCardConfigScreen extends Screen {
      * 缩过的那一档本来就放弃了锐度，没缩的那一档必须落在设备整数上 ——
      * 位图字形停在设备半像素上会糊，而 {@code TextAlign} 居中出来的 y 带着 .5。
      */
-    private void drawLabel(GuiGraphics gui, TrellisBridge.LabelFit fit, int argb) {
+    private void drawLabel(GuiGraphics gui, TrellisColumn.LabelFit fit, int argb) {
         float y = fit.scale() == 1f ? Snapping.edge(fit.top(), deviceGrid()) : fit.top();
         var pose = gui.pose();
         pose.pushPose();
@@ -1073,14 +1073,14 @@ public final class PickupCardConfigScreen extends Screen {
         // 夹在配置列里：滚出视口的行，它的矩形还在（只是被裁掉了）——
         // 不做这个判断的话，鼠标划过页眉时会说"这张卡的说明"，而那一行根本看不见。
         // 【哪一行也问树】跟悬停底、点击是同一份几何（A-10）；host 那条 widget().hit() 删了。
-        // 【用探针那一份指针】生产环境它就是真指针；harness 可以让它假装停在某一行上。
+        // 【用组件列认的那一份指针】生产环境它就是真指针；harness 可以让它假装停在某一行上。
         // 说明、带子、标签缓动必须跟着同一个指针，否则截图里会出现"带子在这行、
         // 说明说的是那行"——那种不一致只有数会露出来。
         ConfigLayout.Rect items = layout().items();
-        float pointerX = probePointerX();
-        float pointerY = probePointerY();
+        float pointerX = columnPointerX();
+        float pointerY = columnPointerY();
         if (hint == null && pointerY >= items.y() && pointerY < items.bottom()) {
-            int row = TrellisBridge.controlRowAt(trellisProbe(), pointerX, pointerY);
+            int row = TrellisColumn.controlRowAt(trellisColumn(), pointerX, pointerY);
             if (row >= 0) {
                 hint = rowsModel.all().get(row).hint();
             }
@@ -1200,15 +1200,15 @@ public final class PickupCardConfigScreen extends Screen {
 
     @Override
     public boolean mouseClicked(double mouseX, double mouseY, int button) {
-        UiTree probe = trellisProbe();
+        UiTree tree = trellisColumn();
         // 【行内控件：命中由树说了算】controlRowAt 读的就是 Component.bounds()，
         // 跟悬停底、标签、说明共用一份几何（判据 1）。滚出视口的行不再需要 host 那套
         // "鼠标 y 在不在视口里"的补丁：视口外的盒子与指针不相交，树自己就判不到。
         boolean onControl = button == 0
-                && TrellisBridge.controlRowAt(probe, (float) mouseX, (float) mouseY) >= 0;
+                && TrellisColumn.controlRowAt(tree, (float) mouseX, (float) mouseY) >= 0;
         if (button == 0) {
             // 标签那一半也会收到按下（叠加层让"按下去了"看得见），只是那一格没有行为
-            probe.pointerDown((float) mouseX, (float) mouseY);
+            tree.pointerDown((float) mouseX, (float) mouseY);
         }
         // 【点预览 = 放一张】动画页来一张新的走完整时间线；其他页重播一次入场。
         // 【位置页例外】预览这时是整屏缩影 —— 点它直接开拖拽编辑场：在缩略图上看到
@@ -1239,7 +1239,7 @@ public final class PickupCardConfigScreen extends Screen {
         for (NvgWidget w : widgets()) {
             w.blur();       // 点在空白处：所有控件交还焦点（文本框的光标就该停）
         }
-        probe.requestFocus(null);
+        tree.requestFocus(null);
         return super.mouseClicked(mouseX, mouseY, button);
     }
 
@@ -1247,7 +1247,7 @@ public final class PickupCardConfigScreen extends Screen {
     public boolean mouseReleased(double mouseX, double mouseY, int button) {
         // 行内控件：树把抬起<b>发给按下的那一个</b>（指针捕获）—— 拖到格子外面松手，
         // 控件也能把手感收回去；落点还在格子里才算一次点击（见 ControlSlot）。
-        trellisProbe().pointerUp((float) mouseX, (float) mouseY);
+        trellisColumn().pointerUp((float) mouseX, (float) mouseY);
         for (NvgWidget w : chips()) {
             // 树外的控件：命中还是自己判，用的是排布者那一份几何（见 mouseClicked）
             Rect box = chipBoxes.get(w);
@@ -1262,10 +1262,10 @@ public final class PickupCardConfigScreen extends Screen {
     public boolean mouseDragged(double mouseX, double mouseY, int button, double dragX, double dragY) {
         // 拖拽只发给"正被按着"的那一个（A-10 第二步）。而"谁被按着"和"它的盒子在哪"都问树 ——
         // 控件不再存几何，所以盒子必须由这里交进去（与 press 收到的是同一个对象）。
-        UiTree probe = trellisProbe();
-        int row = TrellisBridge.pressedControlRow(probe);
+        UiTree tree = trellisColumn();
+        int row = TrellisColumn.pressedControlRow(tree);
         if (row >= 0) {
-            Rect box = TrellisBridge.controlBox(probe, row);
+            Rect box = TrellisColumn.controlBox(tree, row);
             ConfigRows.Row r = rowsModel.all().get(row);
             if (box != null && !r.isHeader()) {
                 r.widget().drag(box, mouseX, mouseY);
@@ -1290,7 +1290,7 @@ public final class PickupCardConfigScreen extends Screen {
 
     @Override
     public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
-        trellisProbe().keyDown(keyCode);      // 键盘跟着焦点走，宿主照样先收（返回值不动宿主）
+        trellisColumn().keyDown(keyCode);      // 键盘跟着焦点走，宿主照样先收（返回值不动宿主）
         for (NvgWidget w : widgets()) {
             if (w.keyPressed(keyCode, modifiers)) {
                 return true;
@@ -1301,7 +1301,7 @@ public final class PickupCardConfigScreen extends Screen {
 
     @Override
     public boolean charTyped(char codePoint, int modifiers) {
-        trellisProbe().charTyped(codePoint);
+        trellisColumn().charTyped(codePoint);
         for (NvgWidget w : widgets()) {
             if (w.charTyped(codePoint)) {
                 return true;
@@ -1374,7 +1374,7 @@ public final class PickupCardConfigScreen extends Screen {
         List<ConfigRows.Row> rows = rowsModel.all();
         for (int i = 0; i < rows.size(); i++) {
             if (!rows.get(i).isHeader() && rows.get(i).widget() == widget) {
-                return TrellisBridge.controlBox(trellisProbe(), i);
+                return TrellisColumn.controlBox(trellisColumn(), i);
             }
         }
         return null;

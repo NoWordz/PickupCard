@@ -18,26 +18,41 @@ import dev.e33.trellis.ui.UiTree;
 import java.util.List;
 
 /**
- * <b>Trellis 试点：把 Trellis 接进 PickupCard 已有的 NanoVG 上下文。</b>
+ * <b>配置列的组件树 —— 宿主与框架之间的适配器。</b>
+ * （A-10 第三步"删探针"收编；原名 {@code TrellisBridge}：描框那层取证手段早删了
+ * （A-6b 起树自己在真帧里画），那个名字因此名不副实。）
  *
  * <p>【它现在管什么】配置列那一棵组件树（{@link #buildColumn}）由 Trellis 建、布局、命中、
- * 画悬停底；标签的<b>文本框</b>和<b>适配字号</b>由它给（{@link #labelBox} / {@link #fitLabel}）；
- * "指着哪一行、点到哪一行"也从它回答（{@link #controlRowAt}）。
- * 描框那层取证手段已经删了 —— 组件树自己在真帧里画（A-6b）。
+ * 绘制（悬停底 + 控件本体）；标签的<b>文本框</b>和<b>适配字号</b>由它给（{@link #labelBox} /
+ * {@link #fitLabel}）；"指着哪一行、点到哪一行、谁正被按住"也从它回答
+ * （{@link #controlRowAt} / {@link #pressedControlRow}）。宿主那侧不再自己画控件、不再自己存控件
+ * 几何、不再自己维护悬停；它每帧要做的只剩两条：把这一帧的信息交给它（列矩形与滚动偏移、
+ * 指针位置、帧号），以及给字形落笔。
  *
- * <p>【为什么先做这个而不是整屏】整屏换掉等于一上来就把渲染路径、事件、字体、
+ * <p>【适配器的本职只有两件】把宿主那份几何翻成 Trellis 的 {@code Rect}（{@link #layoutColumn}），
+ * 把宿主的 NanoVG 上下文接成 Trellis 的 {@code Canvas}（{@link #attach} / {@link #surface}）。
+ * 真正接完的时候第一件应该消失（只留一套几何），第二件应该由 L4 提供。
+ *
+ * <p>【为什么只覆盖一列而不是整屏】整屏换掉等于一上来就把渲染路径、事件、字体、
  * 生命周期全换了，出问题分不清是谁的锅。先证明最小的那条链：
  * <b>Trellis 算出的坐标真的出现在 MC 的帧里</b>。这一条通了，剩下的都是加法。
  *
  * <p>【字形为什么还是 MC 的】Trellis 的文字走 NanoVG + TTF（仓库里那份 Inter），
- * 而 Minecraft 的字是<b>位图图集</b>，喂不进去（`Canvas.drawImage` 连源矩形都没有）。
+ * 而 Minecraft 的字是<b>位图图集</b>，喂不进去（{@code Canvas.drawImage} 连源矩形都没有）。
  * 所以分工是 <b>Trellis 管几何、位置与适配，字形由宿主喂</b>：
  * {@link McFont} 把 MC 的度量灌进文本层（A-7），{@link #fitLabel} 把 Trellis 量出的
  * 位置与缩放交回给宿主去 {@code drawString}。
+ *
+ * <p>【{@link Frame} 的注入就是"组件边界"该有的形状 —— 现在是适配器在替框架做这件事】
+ * {@code Component.drawContent(Canvas)} 只收得到一个画布，而画一个控件还要配色、要让宿主
+ * 落笔写字、要知道"这是哪一帧"。框架还没有"组件边界上拿得到宿主能力"的机制，于是这里
+ * 每帧把 {@link Frame} 灌进每一格（{@link #setFrame}）、画完清掉。正确的落点是下一层：
+ * <b>要么 L4 的 {@code Canvas} 带一个"宿主字形"能力，要么 L2 出一个宿主字形接口</b> ——
+ * 这样"组件拿宿主能力"就不必每个宿主自己发明一遍。在那之前，这个类就是那个缺口的补丁。
  */
-public final class TrellisBridge {
+public final class TrellisColumn {
 
-    private TrellisBridge() {
+    private TrellisColumn() {
         throw new AssertionError("no instances");
     }
 
@@ -78,7 +93,7 @@ public final class TrellisBridge {
     private static final float FIT_SLACK = 0.01f;
 
     // -----------------------------------------------------------------------
-    // 探针：一棵组件树，命中和绘制读同一份 bounds()（判据 1 的真机验证）
+    // 组件列：命中和绘制读同一份 bounds() —— 判据 1 的真机验证就落在这一处
     // -----------------------------------------------------------------------
 
     /**
@@ -100,7 +115,7 @@ public final class TrellisBridge {
      *                   给小节头也造一个控件，布局是对的，但那是宿主根本不存在的东西，
      *                   命中会凭空多出一行。
      * @param topInset   宿主第一行相对列顶的内缩（传 {@code ConfigRows.ROWS_TOP_INSET}）。
-     *                   <b>必须由宿主交进来、当成树自己的内边距用，不能在桥里事后补</b>。
+     *                   <b>必须由宿主交进来、当成树自己的内边距用，不能在适配器里事后补</b>。
      */
     public static UiTree buildColumn(NvgWidget[] controls, float topInset) {
         Component root = new Box(columnStyle(topInset), false);
@@ -352,7 +367,7 @@ public final class TrellisBridge {
         @Override
         protected void drawContent(Canvas canvas) {
             if (frame == null) {
-                throw new IllegalStateException("这一趟没有表面：TrellisBridge.paint(...) "
+                throw new IllegalStateException("这一趟没有表面：TrellisColumn.paint(...) "
                         + "没被调用，或者它在 ui.draw(...) 之外被调了。");
             }
             widget.draw(frame.ctxFor(bounds()));
@@ -457,7 +472,7 @@ public final class TrellisBridge {
     }
 
     /**
-     * 探针用的最小盒子：只占位，不画内容 —— 几何与命中由基类负责。
+     * 占位盒子：只占位，不画内容 —— 几何与命中由基类负责。
      *
      * <p>【悬停底是基类画的】这一版起"指到哪一行"的视觉来自 {@link Component} 那处
      * 唯一的实现（判据 2），这里的 {@code drawContent} 因此是空的。

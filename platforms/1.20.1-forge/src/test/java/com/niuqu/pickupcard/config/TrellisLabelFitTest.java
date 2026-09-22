@@ -8,8 +8,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import com.niuqu.pickupcard.render.nvg.ui.ConfigLayout;
 import com.niuqu.pickupcard.render.nvg.ui.McFont;
 import com.niuqu.pickupcard.render.nvg.ui.NvgWidget;
-import com.niuqu.pickupcard.render.nvg.ui.TrellisBridge;
-import com.niuqu.pickupcard.render.nvg.ui.TrellisBridge.LabelFit;
+import com.niuqu.pickupcard.render.nvg.ui.TrellisColumn;
+import com.niuqu.pickupcard.render.nvg.ui.TrellisColumn.LabelFit;
 import dev.e33.trellis.geom.Rect;
 import dev.e33.trellis.text.FontMetrics;
 import dev.e33.trellis.text.FontStack;
@@ -90,7 +90,7 @@ class TrellisLabelFitTest {
         UiTree ui = column(0f);
         for (int i = 0; i < CONTROLS.length; i++) {
             Rect leaf = ui.root().children().get(i).children().get(0).bounds();
-            assertSame(leaf, TrellisBridge.labelBox(ui, i),
+            assertSame(leaf, TrellisColumn.labelBox(ui, i),
                     "第 " + i + " 行的标签盒不是叶子自己的那个对象 —— 那就又成了两份几何");
         }
     }
@@ -100,10 +100,10 @@ class TrellisLabelFitTest {
     void labelBoxSitsBetweenColumnPaddingAndControl() {
         UiTree ui = column(0f);
         ConfigLayout lo = ConfigLayout.compute(CANVAS_W, CANVAS_H);
-        Rect box = TrellisBridge.labelBox(ui, 0);
+        Rect box = TrellisColumn.labelBox(ui, 0);
         Rect control = ui.root().children().get(0).children().get(1).bounds();
 
-        // 6 = TrellisBridge 的 PAD/GAP。差一个设备像素以内是布局对齐的正常结果。
+        // 6 = TrellisColumn 的 PAD/GAP。差一个设备像素以内是布局对齐的正常结果。
         assertEquals(6f, box.x() - ui.root().bounds().x(), 1f / GUI_SCALE + 1e-3f,
                 "标签盒没有从列内容左缘开始");
         assertEquals(6f, control.x() - box.right(), 1f / GUI_SCALE + 1e-3f,
@@ -117,10 +117,10 @@ class TrellisLabelFitTest {
     @DisplayName("小节头那一行的标签盒更宽 —— 它没有控件，可用宽到列右缘")
     void headerRowGetsTheWholeWidth() {
         UiTree ui = column(0f);
-        Rect header = TrellisBridge.labelBox(ui, 1);
+        Rect header = TrellisColumn.labelBox(ui, 1);
         assertEquals(1, ui.root().children().get(1).children().size(),
                 "小节头不该有控件叶子");
-        assertTrue(header.width() > TrellisBridge.labelBox(ui, 0).width() + 50f,
+        assertTrue(header.width() > TrellisColumn.labelBox(ui, 0).width() + 50f,
                 "小节头的标签盒没有宽到列右缘：" + header.width());
     }
 
@@ -128,8 +128,8 @@ class TrellisLabelFitTest {
     @DisplayName("滚动偏移进了树：标签盒的行顶与宿主那一份对得上（不传就是错开 N px）")
     void scrollOffsetMovesTheRows() {
         float scroll = 13f;
-        Rect still = TrellisBridge.labelBox(column(0f), 3);
-        Rect moved = TrellisBridge.labelBox(column(scroll), 3);
+        Rect still = TrellisColumn.labelBox(column(0f), 3);
+        Rect moved = TrellisColumn.labelBox(column(scroll), 3);
 
         assertEquals(scroll, still.y() - moved.y(), 0.5f, "滚动没有把行整体上移同样的距离");
 
@@ -147,8 +147,8 @@ class TrellisLabelFitTest {
     @Test
     @DisplayName("装得下：原字号，量宽就是自然宽")
     void fitsAtFullSize() {
-        Rect box = TrellisBridge.labelBox(column(0f), 0);
-        LabelFit fit = TrellisBridge.fitLabel(METRICS, "abcd", box, McFont.EM, MIN_FONT, ELLIPSIS);
+        Rect box = TrellisColumn.labelBox(column(0f), 0);
+        LabelFit fit = TrellisColumn.fitLabel(METRICS, "abcd", box, McFont.EM, MIN_FONT, ELLIPSIS);
 
         assertEquals(LabelFit.Mode.ORIGINAL, fit.mode(), "36px 的字在 73px 的盒子里不该缩");
         assertEquals(1f, fit.scale(), 1e-4f);
@@ -160,9 +160,9 @@ class TrellisLabelFitTest {
     @Test
     @DisplayName("装不下：缩的是字号，量出来的宽正好落在盒宽上（不是把画出来的拉伸）")
     void shrinksToFitExactly() {
-        Rect box = TrellisBridge.labelBox(column(0f), 0);
+        Rect box = TrellisColumn.labelBox(column(0f), 0);
         // 9 个字符 = 81px > 盒宽（约 73.3），需要缩到 0.905 左右
-        LabelFit fit = TrellisBridge.fitLabel(METRICS, "abcdefghi", box, McFont.EM, MIN_FONT,
+        LabelFit fit = TrellisColumn.fitLabel(METRICS, "abcdefghi", box, McFont.EM, MIN_FONT,
                 ELLIPSIS);
 
         assertEquals(LabelFit.Mode.SHRUNK, fit.mode(), "81px 的字在 73px 的盒子里必须缩");
@@ -175,9 +175,9 @@ class TrellisLabelFitTest {
     @Test
     @DisplayName("到地板还装不下就截断：串带省略号，量宽回到盒内")
     void ellipsizesAfterTheFloor() {
-        Rect box = TrellisBridge.labelBox(column(0f), 0);
+        Rect box = TrellisColumn.labelBox(column(0f), 0);
         // 16 个字符 = 144px，线性缩到装下需要 0.51 < 地板 8/9
-        LabelFit fit = TrellisBridge.fitLabel(METRICS, "abcdefghijklmnop", box, McFont.EM, MIN_FONT,
+        LabelFit fit = TrellisColumn.fitLabel(METRICS, "abcdefghijklmnop", box, McFont.EM, MIN_FONT,
                 ELLIPSIS);
 
         assertEquals(LabelFit.Mode.ELLIPSIZED, fit.mode(), "到地板还装不下就该截断");
@@ -191,9 +191,9 @@ class TrellisLabelFitTest {
     @Test
     @DisplayName("盒子窄到连省略号都放不下：截断那一档也要把越界报出来")
     void reportsOverflowWhenEvenTheEllipsisDoesNotFit() {
-        Rect box = TrellisBridge.labelBox(column(0f), 0);
+        Rect box = TrellisColumn.labelBox(column(0f), 0);
         Rect tiny = new Rect(box.x(), box.y(), 20f, box.height());
-        LabelFit fit = TrellisBridge.fitLabel(METRICS, "abcdefghijklmnop", tiny, McFont.EM,
+        LabelFit fit = TrellisColumn.fitLabel(METRICS, "abcdefghijklmnop", tiny, McFont.EM,
                 MIN_FONT, ELLIPSIS);
 
         assertEquals(LabelFit.Mode.ELLIPSIZED, fit.mode());
@@ -205,11 +205,11 @@ class TrellisLabelFitTest {
     @Test
     @DisplayName("差千分之一 px 不算装不下：不许把整串字平白截掉（浮点余量）")
     void slackKeepsTheTextIntact() {
-        Rect box = TrellisBridge.labelBox(column(0f), 0);
+        Rect box = TrellisColumn.labelBox(column(0f), 0);
         // 16 个字符在 8px 下量到 128px。把盒子做窄 0.001px —— 这不是"装不下"。
         // 第 14 轮真机就是这个坑：`Entrance style` 缩到 0.978 正好贴合，却被打成"截"。
         Rect justNarrow = new Rect(box.x(), box.y(), 128f - 0.001f, box.height());
-        LabelFit intact = TrellisBridge.fitLabel(METRICS, "abcdefghijklmnop", justNarrow,
+        LabelFit intact = TrellisColumn.fitLabel(METRICS, "abcdefghijklmnop", justNarrow,
                 McFont.EM, MIN_FONT, ELLIPSIS);
         assertEquals(LabelFit.Mode.SHRUNK, intact.mode(), "差千分之一像素被当成了装不下");
         assertEquals("abcdefghijklmnop", intact.text(), "整串字被平白截掉了");
@@ -217,7 +217,7 @@ class TrellisLabelFitTest {
 
         // 反过来，差半个 px 就是真的装不下 —— 那一档才该截
         Rect tooNarrow = new Rect(box.x(), box.y(), 127.5f, box.height());
-        LabelFit cut = TrellisBridge.fitLabel(METRICS, "abcdefghijklmnop", tooNarrow,
+        LabelFit cut = TrellisColumn.fitLabel(METRICS, "abcdefghijklmnop", tooNarrow,
                 McFont.EM, MIN_FONT, ELLIPSIS);
         assertEquals(LabelFit.Mode.ELLIPSIZED, cut.mode(), "半个像素的越界没被当成装不下");
         assertTrue(cut.width() <= tooNarrow.width(), "截完还是越界：" + cut.width());
@@ -227,9 +227,9 @@ class TrellisLabelFitTest {
     @Test
     @DisplayName("文字行框在标签盒里垂直居中（基线是 TextAlign 算的，不是 y - h / 2）")
     void lineBoxIsVerticallyCentered() {
-        Rect box = TrellisBridge.labelBox(column(0f), 0);
+        Rect box = TrellisColumn.labelBox(column(0f), 0);
         for (String text : new String[] {"abcd", "abcdefghi", "abcdefghijklmnop"}) {
-            LabelFit fit = TrellisBridge.fitLabel(METRICS, text, box, McFont.EM, MIN_FONT,
+            LabelFit fit = TrellisColumn.fitLabel(METRICS, text, box, McFont.EM, MIN_FONT,
                     ELLIPSIS);
             // 宿主画出来的行框 = [top, top + (ascent + descent) * scale]
             float center = fit.top()
@@ -242,9 +242,9 @@ class TrellisLabelFitTest {
     @Test
     @DisplayName("Trellis 量的宽 == MC 量出来的宽 × 缩放（A-7 那条对账，三档都要成立）")
     void measuredWidthIsTheDrawnWidth() {
-        Rect box = TrellisBridge.labelBox(column(0f), 0);
+        Rect box = TrellisColumn.labelBox(column(0f), 0);
         for (String text : new String[] {"abcd", "abcdefghi", "abcdefghijklmnop"}) {
-            LabelFit fit = TrellisBridge.fitLabel(METRICS, text, box, McFont.EM, MIN_FONT,
+            LabelFit fit = TrellisColumn.fitLabel(METRICS, text, box, McFont.EM, MIN_FONT,
                     ELLIPSIS);
             // 比的是 <b>fit.text()</b>：截断那一档画出来的串和这一行的标签不是同一个
             assertEquals(METRICS.width(fit.text(), McFont.EM) * fit.scale(), fit.width(), 1e-3f,
@@ -256,8 +256,8 @@ class TrellisLabelFitTest {
 
     private static UiTree column(float scrollOffset) {
         ConfigLayout lo = ConfigLayout.compute(CANVAS_W, CANVAS_H);
-        UiTree ui = TrellisBridge.buildColumn(CONTROLS, ConfigRows.ROWS_TOP_INSET);
-        TrellisBridge.layoutColumn(ui, lo.items(), scrollOffset, 1f / GUI_SCALE);
+        UiTree ui = TrellisColumn.buildColumn(CONTROLS, ConfigRows.ROWS_TOP_INSET);
+        TrellisColumn.layoutColumn(ui, lo.items(), scrollOffset, 1f / GUI_SCALE);
         return ui;
     }
 }

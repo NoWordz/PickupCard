@@ -5,7 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.niuqu.pickupcard.render.nvg.ui.ConfigLayout;
 import com.niuqu.pickupcard.render.nvg.ui.NvgWidget;
-import com.niuqu.pickupcard.render.nvg.ui.TrellisBridge;
+import com.niuqu.pickupcard.render.nvg.ui.TrellisColumn;
 import dev.e33.trellis.geom.Rect;
 import dev.e33.trellis.ui.UiTree;
 import java.util.ArrayList;
@@ -59,7 +59,7 @@ class TrellisHitParityTest {
     @DisplayName("判据 1：逐点扫整个配置列，Trellis 的命中与宿主的控件矩形只在左右边缘带里不一致")
     void trellisHitsMatchHostControlRects() {
         ConfigLayout lo = ConfigLayout.compute(CANVAS_W, CANVAS_H);
-        UiTree ui = TrellisBridge.buildColumn(CONTROLS, ConfigRows.ROWS_TOP_INSET);
+        UiTree ui = TrellisColumn.buildColumn(CONTROLS, ConfigRows.ROWS_TOP_INSET);
         ui.layout(new Rect(lo.items().x(), lo.items().y(), lo.items().w(), lo.items().h()),
                 1f / GUI_SCALE);
 
@@ -134,12 +134,12 @@ class TrellisHitParityTest {
     }
 
     /**
-     * Trellis 那一套：直接问生产代码那条 {@link TrellisBridge#controlRowAt} ——
+     * Trellis 那一套：直接问生产代码那条 {@link TrellisColumn#controlRowAt} ——
      * 宿主现在也用它（悬停缓动、底部说明、点击路由），所以对账比的就是真在跑的那一条，
      * 不是测试里另抄一遍。
      */
     private static int trellisControlAt(UiTree ui, float x, float y) {
-        return TrellisBridge.controlRowAt(ui, x, y);
+        return TrellisColumn.controlRowAt(ui, x, y);
     }
 
     /**
