@@ -124,10 +124,10 @@ public final class TrellisColumn {
      *                   命中会凭空多出一行。
      * @param topInset   宿主第一行相对列顶的内缩（传 {@code ConfigRows.topInset(u)}）。
      *                   <b>必须由宿主交进来、当成树自己的内边距用，不能在适配器里事后补</b>。
-     * @param u          这一帧的自适应单位（{@code Units.u(画布高)}）。<b>不是基准常量</b> ——
-     *                   行高/行距/内边距/控件上下限全部按它缩放，u 变了就重建树。
+     * @param palette    这一帧的配色 —— 取它的 {@code focusRing}（见 {@link NvgPalette#focusRing}）。
      */
-    public static UiTree buildColumn(NvgWidget[] controls, float topInset, float u) {
+    public static UiTree buildColumn(NvgWidget[] controls, float topInset, float u,
+                                     NvgPalette palette) {
         float pad = STEP_PAD * u;
         float gap = STEP_PAD * u;
         float labelMin = STEP_LABEL_MIN * u;
@@ -146,7 +146,7 @@ public final class TrellisColumn {
                 line.add(new ControlSlot(control, Style.row()
                         .withWidth(Sizing.fraction(controlMin,
                                 Tokens.Size.CONTROL_WIDTH_FRACTION, controlMax))
-                        .withHeight(Sizing.fixed(rowH))));
+                        .withHeight(Sizing.fixed(rowH)), palette));
             }
             root.add(line);
         }
@@ -378,10 +378,14 @@ public final class TrellisColumn {
         /** 这一帧的表面（{@link #setFrame} 每帧灌一次；null = 没接上，绘制时当场抛）。 */
         private Frame frame;
 
-        ControlSlot(NvgWidget widget, Style style) {
+        ControlSlot(NvgWidget widget, Style style, NvgPalette palette) {
             this.widget = widget;
             style(style);
             focusable(true);
+            // 【焦点环（A-15）】画法与几何归框架（基类 `Component.focusRing`，加一次全体正确）；
+            // 颜色由宿主给 —— 浅色主题下框架那个亮青在近白底上读不出来。
+            // 环的圆角取调色板的 radius，和控件自己画的那条 outline 是同一个形状口径。
+            focusRing(palette.focusRing, palette.radius);
         }
 
         @Override

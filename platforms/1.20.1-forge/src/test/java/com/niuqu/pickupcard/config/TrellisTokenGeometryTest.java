@@ -2,6 +2,7 @@ package com.niuqu.pickupcard.config;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
+import com.niuqu.pickupcard.render.nvg.ui.NvgPalette;
 import com.niuqu.pickupcard.render.nvg.ui.ConfigLayout;
 import com.niuqu.pickupcard.render.nvg.ui.NvgWidget;
 import com.niuqu.pickupcard.render.nvg.ui.TrellisColumn;
@@ -43,6 +44,11 @@ class TrellisTokenGeometryTest {
      * 框架的 {@code UnitsTest} 盯着。
      */
     private static final float U = Tokens.Unit.BASE;
+
+    /** 测试用的调色板（A-15 起 buildColumn 要它给焦点环的颜色）。 */
+    private static final NvgPalette TEST_PALETTE =
+            NvgPalette.dark(com.niuqu.pickupcard.style.StyleModel.Accents.defaults(), U);
+
 
     /**
      * 外观页的行形态：10 个控件行 + 2 个小节头行（下标 1 = Shape、7 = Colors）。
@@ -108,7 +114,7 @@ class TrellisTokenGeometryTest {
         assertEquals(16, ConfigRows.rowStep(u), "行距 = 14 + 2");
         assertEquals(2, ConfigRows.topInset(u), "列顶内缩 = round(1.5) = 2");
 
-        UiTree ui = TrellisColumn.buildColumn(CONTROLS, ConfigRows.topInset(u), u);
+        UiTree ui = TrellisColumn.buildColumn(CONTROLS, ConfigRows.topInset(u), u, TEST_PALETTE);
         ConfigLayout lo = ConfigLayout.compute(CANVAS_W, CANVAS_H);
         ui.layout(new Rect(lo.items().x(), lo.items().y(), lo.items().w(), lo.items().h()),
                 1f / GUI_SCALE);
@@ -124,7 +130,7 @@ class TrellisTokenGeometryTest {
     /** 按真机那一档建一棵树（12 行的外观页形态，滚动为 0），布局到 views 的矩形上。 */
     private static UiTree column() {
         ConfigLayout lo = ConfigLayout.compute(CANVAS_W, CANVAS_H);
-        UiTree ui = TrellisColumn.buildColumn(CONTROLS, ConfigRows.topInset(U), U);
+        UiTree ui = TrellisColumn.buildColumn(CONTROLS, ConfigRows.topInset(U), U, TEST_PALETTE);
         ui.layout(new Rect(lo.items().x(), lo.items().y(), lo.items().w(), lo.items().h()),
                 1f / GUI_SCALE);
         return ui;

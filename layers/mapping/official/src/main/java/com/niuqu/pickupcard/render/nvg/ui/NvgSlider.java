@@ -117,8 +117,11 @@ public final class NvgSlider extends NvgWidget {
         // 钮面两色走调色板（A-13 评审列的"钮面颜色对"）：与 NvgToggle 是同一个角色，
         // 从前两处各写一遍 0xFFFFFFFF / 0xFFD5DAE5 —— 值一个字没改。
         ctx.circle(tx + filled, ty + tr, knobR,
-                (hovered || pressed || focused) ? p.knobActive : p.knobIdle);
-        if (hovered || focused) {
+                // 焦点不在这一档里（A-15）：钮面只反映"鼠标在它上面/正被按住"，
+                // 键盘选中由焦点环表达 —— 两种状态混一个颜色，玩家就分不清是哪种。
+                (hovered || pressed) ? p.knobActive : p.knobIdle);
+        if (hovered) {
+            // 焦点不再画在这条描边上（A-15）：焦点环由框架基类画，见 NvgWidget.wellColor 的注释。
             ctx.strokeRoundRect(0f, 0f, w, h, p.radius, p.outline);
         }
     }

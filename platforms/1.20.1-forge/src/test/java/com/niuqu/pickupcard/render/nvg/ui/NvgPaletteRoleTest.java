@@ -45,6 +45,9 @@ class NvgPaletteRoleTest {
         ROLE_TO_FIELD.put("TEXT_SECONDARY", "textDim");
         // 值是数据驱动的（按稀有度从卡面主题取），所以它只是**角色**上归框架。
         ROLE_TO_FIELD.put("ACCENT", "accent");
+        // A-15 起真的被画了：框架基类画环（画法与几何归框架），值由宿主给
+        // （浅色主题下框架那个亮青在近白底上读不出来）。
+        ROLE_TO_FIELD.put("FOCUS_RING", "focusRing");
     }
 
     /** 故意不用的角色：角色名 → 为什么不用。 */
@@ -55,7 +58,6 @@ class NvgPaletteRoleTest {
         UNUSED_ROLES.put("TEXT_DISABLED", "「灰掉不可点」那一档**已经存在**，只是借的是 TEXT_SECONDARY"
                 + "（NvgButton 的 action==null、NvgColorChip 的无效色块）—— 缺的是专属色，不是缺那一档");
         UNUSED_ROLES.put("DANGER", "危险色还没上：删除按钮现在用的是普通文字色");
-        UNUSED_ROLES.put("FOCUS_RING", "焦点环还没画 —— 与框架侧同一条欠账（A-11 的记录里点名了）");
     }
 
     /**
@@ -116,6 +118,22 @@ class NvgPaletteRoleTest {
         assertEquals(1f, palette.outlineWidth, 0.001f, "Size.HAIRLINE：绝对 1px");
         assertEquals(3f, palette.trackThickness, 0.001f, "细条厚度（滑条轨道 / 滚动条共用）");
         assertEquals(1.5f, palette.trackRadius, 0.001f, "细条圆角 = 厚度的一半");
+    }
+
+    @Test
+    @DisplayName("A-15：焦点环有值了，而且深色用框架的基准值、浅色压暗（同一支青）")
+    void focusRingHasAValuePerTheme() {
+        NvgPalette dark = NvgPalette.dark(StyleModel.Accents.defaults(), Tokens.Unit.BASE);
+        NvgPalette light = NvgPalette.light(StyleModel.Accents.defaults(), Tokens.Unit.BASE);
+
+        assertEquals(Tokens.Color.FOCUS_RING, dark.focusRing,
+                "深色主题直接用框架的基准值（色号归框架那一档）");
+        assertTrue((dark.focusRing >>> 24) != 0, "深色的环得有 alpha，否则基类不画（alpha==0 = 不画）");
+        assertTrue((light.focusRing >>> 24) != 0, "浅色的环也得画得出来");
+
+        // 关键的那条：浅色主题必须换一个值 —— 框架那个亮青在近白底上读不出来。
+        assertTrue(dark.focusRing != light.focusRing,
+                "浅色主题跟深色用了同一个环色 —— 近白底上读不出来的正是这一条要挡的");
     }
 
     @Test

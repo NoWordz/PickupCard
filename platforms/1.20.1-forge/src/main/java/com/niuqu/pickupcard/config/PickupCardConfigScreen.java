@@ -272,7 +272,7 @@ public final class PickupCardConfigScreen extends Screen {
         // 烘进去的 —— u 变了而树不重建，那些 px 就还是旧 u 算的（换 guiScale 后行距不动）。
         if (trellisColumn == null || trellisColumnRows != rows.size()
                 || trellisColumnControls != present || trellisColumnU != u) {
-            trellisColumn = TrellisColumn.buildColumn(controls, ConfigRows.topInset(u), u);
+            trellisColumn = TrellisColumn.buildColumn(controls, ConfigRows.topInset(u), u, palette);
             // 【建完必须当场布局】事件（点击/拖拽）落在两次 render 之间，而 {@code bounds()} 要
             // 布局过才有值 —— 只建不摆的话，"树刚作废、下一帧还没到"时来的那次点击会撞
             // NullPointerException（真机第 21 轮就是这么崩的：`Component.node()` is null）。

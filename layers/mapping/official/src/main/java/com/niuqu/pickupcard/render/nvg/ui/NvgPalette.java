@@ -68,6 +68,18 @@ public final class NvgPalette {
     /** 次要文字（标签、说明）—— 角色：{@code Color.TEXT_SECONDARY}。 */
     public final int textDim;
     /**
+     * 焦点环 —— 角色：{@code Color.FOCUS_RING}。
+     *
+     * <p>【A-15 起它真的被画了】环的<b>画法与几何</b>归框架
+     * （{@code Component.focusRing}：1 逻辑 px、贴盒子内缘、跟着组件自己的圆角）——
+     * 和悬停叠加层同一个模式，"加一次、所有可聚焦组件都有"。宿主只给<b>值</b>。
+     *
+     * <p>【值为什么不直接用框架那个】框架的 {@code FOCUS_RING} 是给深色底配的亮青；
+     * 宿主的浅色主题（{@link #of} 真会走到 {@link #light}）底是近白，同一个值读不出来。
+     * 所以深色用框架的基准值、浅色用同一支青压暗（色相一致、对比够）。
+     */
+    public final int focusRing;
+    /**
      * 圆钮的"亮面"（滑条被指/按住/聚焦时、开关处于开时）。
      *
      * <p>【为什么它进了调色板】它原来在 {@code NvgSlider} 与 {@code NvgToggle} 里
@@ -116,13 +128,16 @@ public final class NvgPalette {
     /** 深色界面。默认就是它 —— 游戏里九成时间在暗环境，浅色面板会晃眼。 */
     public static NvgPalette dark(StyleModel.Accents a, float u) {
         return new NvgPalette(0xF0101218, 0xC0202836, 0x80202836, 0xB0364152, 0xC04A5871,
-                a.xp(), 0x40FFFFFF, 0xFFEBEFF6, 0xFF9AA4AD, 0xFFFFFFFF, 0xFFD5DAE5, u);
+                a.xp(), 0x40FFFFFF, 0xFFEBEFF6, 0xFF9AA4AD, 0xFFFFFFFF, 0xFFD5DAE5,
+                Tokens.Color.FOCUS_RING, u);
     }
 
     /** 浅色：跟着主题走（主题是浅色时用这套）。 */
     public static NvgPalette light(StyleModel.Accents a, float u) {
+        // 焦点环压暗：同一个青（色相不变）、亮度降到近白底上读得出来。
         return new NvgPalette(0xF0E9ECF3, 0xC0FFFFFF, 0x60D5DAE5, 0xA0C3CAD8, 0xC0A9B2C4,
-                a.xp(), 0x40000000, 0xFF1B1F27, 0xFF5A6272, 0xFFFFFFFF, 0xFFD5DAE5, u);
+                a.xp(), 0x40000000, 0xFF1B1F27, 0xFF5A6272, 0xFFFFFFFF, 0xFFD5DAE5,
+                0xCC0E7C8C, u);
     }
 
     /**
@@ -144,7 +159,7 @@ public final class NvgPalette {
 
     private NvgPalette(int backdrop, int panel, int well, int wellHover, int wellPressed,
                        int accent, int outline, int text, int textDim,
-                       int knobActive, int knobIdle, float u) {
+                       int knobActive, int knobIdle, int focusRing, float u) {
         this.backdrop = backdrop;
         this.panel = panel;
         this.well = well;
@@ -156,6 +171,7 @@ public final class NvgPalette {
         this.textDim = textDim;
         this.knobActive = knobActive;
         this.knobIdle = knobIdle;
+        this.focusRing = focusRing;
         // 尺寸：token × u。u 由调用方按画布高算好传进来（见 radius 的 javadoc）。
         this.radius = Tokens.Radius.MD * u;
         this.knobRadius = Tokens.Size.KNOB_RADIUS * u;

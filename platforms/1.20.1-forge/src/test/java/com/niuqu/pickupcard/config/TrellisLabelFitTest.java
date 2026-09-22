@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import com.niuqu.pickupcard.render.nvg.ui.NvgPalette;
 import com.niuqu.pickupcard.render.nvg.ui.ConfigLayout;
 import com.niuqu.pickupcard.render.nvg.ui.McFont;
 import com.niuqu.pickupcard.render.nvg.ui.NvgWidget;
@@ -51,6 +52,11 @@ class TrellisLabelFitTest {
      * 框架的 {@code UnitsTest} 盯着。
      */
     private static final float U = Tokens.Unit.BASE;
+
+    /** 测试用的调色板（A-15 起 buildColumn 要它给焦点环的颜色）。 */
+    private static final NvgPalette TEST_PALETTE =
+            NvgPalette.dark(com.niuqu.pickupcard.style.StyleModel.Accents.defaults(), U);
+
     /** 标签缩字地板，与屏幕里那个常量同一个值（这里是"接口的一侧"，不是抄数）。 */
     private static final float MIN_FONT = 8f;
     /** 截断时接在末尾的串，与屏幕里那个常量同一个值。 */
@@ -265,7 +271,7 @@ class TrellisLabelFitTest {
 
     private static UiTree column(float scrollOffset) {
         ConfigLayout lo = ConfigLayout.compute(CANVAS_W, CANVAS_H);
-        UiTree ui = TrellisColumn.buildColumn(CONTROLS, ConfigRows.topInset(U), U);
+        UiTree ui = TrellisColumn.buildColumn(CONTROLS, ConfigRows.topInset(U), U, TEST_PALETTE);
         TrellisColumn.layoutColumn(ui, lo.items(), scrollOffset, 1f / GUI_SCALE);
         return ui;
     }

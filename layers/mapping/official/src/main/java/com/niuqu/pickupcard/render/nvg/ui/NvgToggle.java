@@ -65,7 +65,8 @@ public final class NvgToggle extends NvgWidget {
         // 从前两处各写一遍 0xFFFFFFFF / 0xFFD5DAE5 —— 值一个字没改。
         float knobX = on ? pillX + pillW - r : pillX + r;
         ctx.circle(knobX, pillY + r, r - 1f, on ? p.knobActive : p.knobIdle);
-        if (hovered || focused) {
+        if (hovered) {
+            // 焦点不再画在这条描边上（A-15）：焦点环由框架基类画，见 NvgWidget.wellColor 的注释。
             ctx.strokeRoundRect(0f, 0f, w, h, p.radius, p.outline);
         }
     }

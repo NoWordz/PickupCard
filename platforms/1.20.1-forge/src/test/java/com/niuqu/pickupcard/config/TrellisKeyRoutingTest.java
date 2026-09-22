@@ -6,6 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import com.niuqu.pickupcard.render.nvg.ui.NvgPalette;
 import com.niuqu.pickupcard.render.nvg.ui.ConfigLayout;
 import com.niuqu.pickupcard.render.nvg.ui.NvgWidget;
 import com.niuqu.pickupcard.render.nvg.ui.PaintCtx;
@@ -45,6 +46,11 @@ class TrellisKeyRoutingTest {
      * 框架的 {@code UnitsTest} 盯着。
      */
     private static final float U = Tokens.Unit.BASE;
+
+    /** 测试用的调色板（A-15 起 buildColumn 要它给焦点环的颜色）。 */
+    private static final NvgPalette TEST_PALETTE =
+            NvgPalette.dark(com.niuqu.pickupcard.style.StyleModel.Accents.defaults(), U);
+
 
     /** 随便两个键码：这几条验的是路由，不是某个具体键的语义。 */
     private static final int KEY_A = 65;
@@ -204,7 +210,7 @@ class TrellisKeyRoutingTest {
     private UiTree column() {
         ConfigLayout lo = ConfigLayout.compute(CANVAS_W, CANVAS_H);
         NvgWidget[] controls = {first, null, third};
-        UiTree ui = TrellisColumn.buildColumn(controls, ConfigRows.topInset(U), U);
+        UiTree ui = TrellisColumn.buildColumn(controls, ConfigRows.topInset(U), U, TEST_PALETTE);
         TrellisColumn.layoutColumn(ui, lo.items(), 0f, 1f / GUI_SCALE);
         return ui;
     }

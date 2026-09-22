@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import com.niuqu.pickupcard.render.nvg.ui.NvgPalette;
 import com.niuqu.pickupcard.render.nvg.ui.ConfigLayout;
 import com.niuqu.pickupcard.render.nvg.ui.NvgWidget;
 import com.niuqu.pickupcard.render.nvg.ui.TrellisColumn;
@@ -38,6 +39,11 @@ class TrellisControlInputTest {
      * 框架的 {@code UnitsTest} 盯着。
      */
     private static final float U = Tokens.Unit.BASE;
+
+    /** 测试用的调色板（A-15 起 buildColumn 要它给焦点环的颜色）。 */
+    private static final NvgPalette TEST_PALETTE =
+            NvgPalette.dark(com.niuqu.pickupcard.style.StyleModel.Accents.defaults(), U);
+
 
     /** 三行：控件 / 小节头 / 控件 —— 小节头那一行没有任何控件可以收到事件。 */
     private final TestWidgets.Recorder first = new TestWidgets.Recorder();
@@ -151,7 +157,7 @@ class TrellisControlInputTest {
     private UiTree column() {
         ConfigLayout lo = ConfigLayout.compute(CANVAS_W, CANVAS_H);
         NvgWidget[] controls = {first, null, third};
-        UiTree ui = TrellisColumn.buildColumn(controls, ConfigRows.topInset(U), U);
+        UiTree ui = TrellisColumn.buildColumn(controls, ConfigRows.topInset(U), U, TEST_PALETTE);
         TrellisColumn.layoutColumn(ui, lo.items(), 0f, 1f / GUI_SCALE);
         return ui;
     }

@@ -106,7 +106,8 @@ public final class NvgColorChip extends NvgWidget {
         float textX = 2f + swatch + 5f;
         ctx.text(label, textX, (h - ctx.lineHeight()) / 2f,
                 invalid ? p.textDim : p.text);
-        if (hovered || focused) {
+        if (hovered) {
+            // 焦点不再画在这条描边上（A-15）：焦点环由框架基类画，见 NvgWidget.wellColor 的注释。
             ctx.strokeRoundRect(0f, 0f, w, h, p.radius, p.outline);
         }
     }

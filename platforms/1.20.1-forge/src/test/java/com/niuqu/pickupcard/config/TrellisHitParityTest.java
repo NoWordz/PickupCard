@@ -3,6 +3,7 @@ package com.niuqu.pickupcard.config;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import com.niuqu.pickupcard.render.nvg.ui.NvgPalette;
 import com.niuqu.pickupcard.render.nvg.ui.ConfigLayout;
 import com.niuqu.pickupcard.render.nvg.ui.NvgWidget;
 import com.niuqu.pickupcard.render.nvg.ui.TrellisColumn;
@@ -60,6 +61,11 @@ class TrellisHitParityTest {
      * 框架的 {@code UnitsTest} 盯着。
      */
     private static final float U = Tokens.Unit.BASE;
+
+    /** 测试用的调色板（A-15 起 buildColumn 要它给焦点环的颜色）。 */
+    private static final NvgPalette TEST_PALETTE =
+            NvgPalette.dark(com.niuqu.pickupcard.style.StyleModel.Accents.defaults(), U);
+
     /** 扫描步长（逻辑 px）—— 比一个设备像素还细四倍。 */
     private static final float STEP = 1f / 12f;
     /** 这个宽度以内的不一致算"边缘带"，之外就是真错。 */
@@ -90,7 +96,7 @@ class TrellisHitParityTest {
     /** 逐点扫一遍：Trellis 命中 vs 宿主控件矩形，只许在左右边缘带里不一致。 */
     private static void scan(float u) {
         ConfigLayout lo = ConfigLayout.compute(CANVAS_W, CANVAS_H);
-        UiTree ui = TrellisColumn.buildColumn(CONTROLS, ConfigRows.topInset(u), u);
+        UiTree ui = TrellisColumn.buildColumn(CONTROLS, ConfigRows.topInset(u), u, TEST_PALETTE);
         ui.layout(new Rect(lo.items().x(), lo.items().y(), lo.items().w(), lo.items().h()),
                 1f / GUI_SCALE);
 

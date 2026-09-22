@@ -54,7 +54,9 @@ public abstract class NvgWidget {
 
     /** 控件底的配色：按下 > 悬停 > 常态。 */
     protected final int wellColor(NvgPalette palette) {
-        return pressed ? palette.wellPressed : (hovered || focused) ? palette.wellHover : palette.well;
+        // 【为什么只有 hovered（A-15）】焦点从 A-15 起有自己的视觉（框架基类画的焦点环），
+        // 不再借悬停这一层 —— 借的话同一个控件会同时出现"悬停底色"和"焦点环"两种提示。
+        return pressed ? palette.wellPressed : hovered ? palette.wellHover : palette.well;
     }
 
     /**
