@@ -13,17 +13,25 @@ import com.niuqu.pickupcard.render.nvg.NvgCardPainter;
 import com.niuqu.pickupcard.render.nvg.ui.NvgButton;
 import com.niuqu.pickupcard.render.nvg.ui.NvgPalette;
 import com.niuqu.pickupcard.render.nvg.ui.NvgUi;
-import com.niuqu.pickupcard.render.nvg.ui.NvgWidget;
+import com.niuqu.pickupcard.render.nvg.ui.WidgetSlot;
 import com.niuqu.pickupcard.render.nvg.ui.McGlyphPainter;
 import com.niuqu.pickupcard.render.nvg.ui.TrellisColumn;
 import dev.e33.trellis.geom.Rect;
+import dev.e33.trellis.geom.Insets;
+import dev.e33.trellis.layout.Align;
+import dev.e33.trellis.layout.Justify;
+import dev.e33.trellis.layout.Sizing;
+import dev.e33.trellis.layout.Style;
+import dev.e33.trellis.render.Canvas;
+import dev.e33.trellis.ui.Component;
+import dev.e33.trellis.ui.UiEvent;
+import dev.e33.trellis.ui.UiTree;
 import com.niuqu.pickupcard.style.CardTimeline;
 import com.niuqu.pickupcard.style.StyleModel;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.resources.language.I18n;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.screens.Screen;
-import net.minecraft.network.chat.Component;
 import org.lwjgl.glfw.GLFW;
 
 import java.util.ArrayList;
@@ -73,16 +81,24 @@ public final class AnchorEditScreen extends Screen {
     private long now;
     private NvgButton saveButton;
     private NvgButton resetButton;
-    private List<NvgWidget> buttons = List.of();
 
-    /** 两颗按钮的格子（见 {@link #boxOf}）；进编辑场时按画布算一次。 */
-    private Rect saveBox = new Rect(0f, 0f, 0f, 0f);
-    private Rect resetBox = new Rect(0f, 0f, 0f, 0f);
     private NvgPalette palette;
     private final NvgCardPainter painter = new NvgCardPainter();
 
+    /** 编辑场的树（A-17）：蒙层 / 两行字 / 底部按钮行 —— 几何与命中都从这里出去。 */
+    private UiTree tree;
+    /** 蒙层那一格：全屏、可拖（在这块屏上按哪儿都算抓那摞卡）。 */
+    private DragSurface backdrop;
+    /** 两行字的盒子（文字仍由宿主画，盒子从树读 —— 字形缝那条既有口径）。 */
+    private Component titleBox;
+    private Component hintBox;
+
+    /** 进编辑场时那两颗按钮的样子（树里的槽托着它们，几何归树）。 */
+    private WidgetSlot saveSlot;
+    private WidgetSlot resetSlot;
+
     public AnchorEditScreen(Screen parent) {
-        super(Component.translatable("pickupcard.anchor.title"));
+        super(net.minecraft.network.chat.Component.translatable("pickupcard.anchor.title"));
         this.parent = parent;
         LayoutSettings current = PickupCardConfig.layoutSnapshot();
         this.origX = current.anchorX();
@@ -98,26 +114,105 @@ public final class AnchorEditScreen extends Screen {
         CardStage.INSTANCE.setSuspended(true);
         palette = NvgPalette.of(CardStage.INSTANCE.previewStyle(),
                 dev.e33.trellis.tokens.Units.u(this.height));
-        int bw = 120;
-        int bh = 18;
-        int gap = 8;
-        int totalW = bw * 2 + gap;
-        int by = this.height - bh - 8;
         saveButton = new NvgButton(I18n.get("pickupcard.anchor.done"), () -> I18n.get("pickupcard.anchor.done"),
                 this::saveAndClose);
-        saveBox = new Rect(this.width / 2f - totalW / 2f, by, bw, bh);
         resetButton = new NvgButton(I18n.get("pickupcard.anchor.reset"),
                 () -> I18n.get(isAuto() ? "pickupcard.anchor.resetDone" : "pickupcard.anchor.reset"), this::resetToAuto);
-        resetBox = new Rect(this.width / 2f + totalW / 2f - bw, by, bw, bh);
-        buttons = List.of(saveButton, resetButton);
+        buildTree();
     }
 
     /**
-     * 某个按钮的格子：<b>命中、悬停、绘制、拖拽都用它</b> —— A-10 第二步起控件不存几何，
-     * 谁用它谁交一份（这里的两颗按钮是"树外控件"，几何由这个界面自己排）。
+     * 建编辑场的树（A-17）。
+     *
+     * <p>【树里有什么】蒙层（全屏 + 可拖，抓哪儿都算抓那摞卡）、两行字的盒子、底部两颗按钮。
+     * <b>括号与卡堆不在树里</b>：卡堆要画 MC 物品与位图（框架画布没这两样）、括号要摆在业务
+     * 算出来的任意坐标（L1 没有绝对定位）—— 两条缺口都记在 {@code docs/plan.md} 的 A-17。
+     * 它们仍由宿主画，但"画在树的哪一层"由 {@link #render} 的顺序定死。
+     *
+     * <p>【为什么蒙层排在第一个】树序 = 绘制顺序（后画的盖前面的）：蒙层先画，所以它盖住游戏
+     * 画面、但不盖后面的兄弟。命中是反的（从最后一个子节点往前找），所以点按钮时按钮收、
+     * 点空白处才落到蒙层上变成一次拖拽 —— 一条布局规矩同时管住了这两件事。
+     *
+     * <p>【几何与改动前逐位相同】标题 (8,6)、提示 (8,17)、按钮行 120+8+120 居中、
+     * 底边留 8 —— 这一版只是把这几笔从 {@code init()} 里的手算搬进树的 padding/gap/grow，
+     * 没有一个数字被顺手改过（改观感要单独一轮，不能混在重构里）。
      */
-    private Rect boxOf(NvgWidget widget) {
-        return widget == resetButton ? resetBox : saveBox;
+    private void buildTree() {
+        int bw = 120;
+        int bh = 18;
+        int gap = 8;
+        backdrop = new DragSurface(Style.column()
+                .withPadding(Insets.of(6f, 8f, 8f, 8f))
+                .withGap(2f)
+                .withAlign(Align.STRETCH));
+        titleBox = backdrop.add(new Box(Style.column().withHeight(Sizing.fixed(9f))));
+        hintBox = backdrop.add(new Box(Style.column().withHeight(Sizing.fixed(9f))));
+        // 撑开中间那段：于是按钮行被顶到底边（等价于从前那个 by = height - bh - 8）
+        backdrop.add(new Box(Style.column().withGrow(1f)));
+        Component buttonRow = backdrop.add(new Box(Style.row()
+                .withJustify(Justify.CENTER).withGap(gap).withHeight(Sizing.fixed(bh))));
+        saveSlot = buttonRow.add(new WidgetSlot(saveButton,
+                Style.row().withWidth(Sizing.fixed(bw)).withHeight(Sizing.fixed(bh)), palette));
+        resetSlot = buttonRow.add(new WidgetSlot(resetButton,
+                Style.row().withWidth(Sizing.fixed(bw)).withHeight(Sizing.fixed(bh)), palette));
+        tree = new UiTree(backdrop);
+    }
+
+    /** 只占位、自己不画东西的盒子（文字由宿主画在它的 {@code bounds()} 上）。 */
+    private static final class Box extends Component {
+        Box(Style style) {
+            style(style);
+        }
+
+        @Override
+        protected void drawContent(Canvas canvas) {
+        }
+    }
+
+    /**
+     * 蒙层那一格：<b>画半透明底 + 接住拖拽</b>。
+     *
+     * <p>【为什么拖拽挂在它身上】这一屏的"点哪都行"是编辑场的手感（用户 2026-09-19 拍板）：
+     * 全屏的一格接住按下，偏移记的是"手与最新那张卡的相对位置"，所以卡不会跳到指针底下。
+     * 放在树上之后，这段状态由 {@link UiEvent.Type#DRAG} 驱动，不再由宿主自己记鼠标 ——
+     * 拖到屏幕外面松手也照样收得到结束（树的指针捕获）。
+     */
+    private final class DragSurface extends Component {
+
+        DragSurface(Style style) {
+            style(style);
+            draggable(true);
+        }
+
+        @Override
+        protected void drawContent(Canvas canvas) {
+            // 薄暮色：括号和字读得出，遮挡关系还看得清（值与改动前那笔 gui.fill 相同）
+            // 薄暮色：括号和字读得出，遮挡关系还看得清（值与改动前那笔 gui.fill 相同）
+            canvas.fillRect(bounds(), 0x59000000);
+        }
+
+        @Override
+        protected boolean onEvent(UiEvent event) {
+            switch (event.type()) {
+                case POINTER_DOWN:
+                    CardSlot newest = sampleSlots().get(0);
+                    grabDx = event.x() - newest.x();
+                    grabDy = event.y() - newest.y();
+                    grabW = newest.width();
+                    dragging = true;
+                    return true;
+                case DRAG:
+                    if (dragging) {
+                        setAnchorFromCard(event.x() - grabDx, event.y() - grabDy);
+                    }
+                    return true;
+                case POINTER_UP:
+                    dragging = false;
+                    return true;
+                default:
+                    return false;
+            }
+        }
     }
 
     /** 宿主的 GUI 倍数：Trellis 接画布要对齐到设备像素，要把它交进去（见 {@code NvgCanvas.attach}）。 */
@@ -244,25 +339,34 @@ public final class AnchorEditScreen extends Screen {
     @Override
     public void render(GuiGraphics gui, int mouseX, int mouseY, float partialTick) {
         now = System.currentTimeMillis();
-        // 世界之上盖一层薄暮色：括号和字读得出，遮挡关系还看得清
-        gui.fill(0, 0, this.width, this.height, 0x59000000);
+        // 【树先算完再画】几何、悬停、拖拽目标全在树上；指针每帧推给它一次（MC 每帧都调 render），
+        // 拖拽因此是"每帧按当前位置更新"，而不是靠 mouseDragged 那一串事件。
+        tree.layout(new Rect(0f, 0f, this.width, this.height), 1f / guiScale());
+        tree.pointerMove(mouseX, mouseY);
+        TrellisColumn.syncHover(tree);
 
         Bracket b = bracket();
         try (NvgUi ui = NvgUi.begin(gui, palette, mouseX, mouseY, now)) {
             if (ui != null) {
-                ui.text(this.title.getString(), 8f, 6f, 0xFFFFFFFF);
-                ui.textFitted(isAuto() ? I18n.get("pickupcard.anchor.autoHint")
-                                : String.format(java.util.Locale.ROOT, I18n.get("pickupcard.anchor.customHint"),
-                                anchorX, anchorY),
-                        8f, 17f, palette.textDim, this.width - 16f);
-                drawBrackets(ui, b);
                 TrellisColumn.Frame surface = TrellisColumn.surface(ui.canvas(), palette,
                         new McGlyphPainter(ui), now, guiScale());
-                for (NvgWidget w : buttons) {
-                    Rect box = boxOf(w);
-                    w.hover(box.contains((float) mouseX, (float) mouseY));
-                    w.draw(surface.ctxFor(box));
-                }
+                // ① 树：蒙层 → 两行字的盒子 → 按钮行（后画的盖前面的）
+                TrellisColumn.paint(surface, tree);
+                // ② 宿主 decor：括号与锚线（任意坐标、业务算的 → 见 buildTree 的说明）
+                drawBrackets(ui, b);
+                // ③ 文字：盒子从树读，笔仍由宿主落（字形缝）
+                Rect title = titleBox.bounds();
+                ui.text(this.title.getString(), title.x(), title.y(), 0xFFFFFFFF);
+                Rect hint = hintBox.bounds();
+                // 【参数必须交给 I18n.get，不要自己套一层 String.format】1.20.1 的
+                // `I18n.get(key)` 就算一个参数都不给也会执行一遍 `String.format` ——
+                // 值里带 `%.2f` 时当场抛，它 catch 之后返回的是 **"Format error: 原文"**
+                // （源码：`net.minecraft.client.resources.language.I18n.get`）。
+                // 把参数交进去，格式这一步才在它手里做对。这一条是 A-17 顺手修的既有 bug
+                // （A-17 之前这行就是这样，截图里那行字一直是 "Format error: …"）。
+                ui.textFitted(isAuto() ? I18n.get("pickupcard.anchor.autoHint")
+                                : I18n.get("pickupcard.anchor.customHint", anchorX, anchorY),
+                        hint.x(), hint.y(), palette.textDim, hint.width());
                 ui.textRight(I18n.get("pickupcard.anchor.controls"), this.width - 8f, this.height - 12f, palette.textDim);
             }
         }
@@ -324,52 +428,60 @@ public final class AnchorEditScreen extends Screen {
     // 输入：拖（点哪都行，偏移保住"不跳"）、完成/取消
     // ------------------------------------------------------------------
 
+    /**
+     * 按下：<b>先问树</b>（按钮那一格会收下，空白处落到蒙层上变成拖拽），没人吃才还给 MC。
+     *
+     * <p>【为什么"先问树"而不是"自己判命中"】命中只有一份真相：树按 {@code bounds()} 取，
+     * 而绘制读的是同一个矩形（判据 1）。宿主再自己 {@code box.contains(...)} 一次就是第二份。
+     */
     @Override
     public boolean mouseClicked(double mouseX, double mouseY, int button) {
-        for (NvgWidget w : buttons) {
-            Rect box = boxOf(w);
-            if (box.contains((float) mouseX, (float) mouseY)
-                    && w.press(box, mouseX, mouseY, button)) {
-                return true;
-            }
+        if (tree.pointerDown((float) mouseX, (float) mouseY)) {
+            return true;
         }
-        // 点空白处即开始拖：偏移记的是"手与卡的相对位置"，卡不会跳到指针底下
-        dragging = true;
-        CardSlot newest = sampleSlots().get(0);
-        grabDx = mouseX - newest.x();
-        grabDy = mouseY - newest.y();
-        grabW = newest.width();
-        return true;
+        return super.mouseClicked(mouseX, mouseY, button);
     }
 
+    /**
+     * 拖动：<b>把指针位置推给树</b>，让树的拖拽（捕获在蒙层那一格上）自己算新锚点。
+     *
+     * <p>【为什么这里也推一次，render 里还推】真玩家那条路每帧都有 render，推一次就够；
+     * 但 harness 的 {@code dragForHarness} 是"按下→拖→松开"一口气调完的（中间没有帧），
+     * 只靠 render 的话那一次拖动根本不发生。推的是同一个位置，重复推没有副作用。
+     */
     @Override
     public boolean mouseDragged(double mouseX, double mouseY, int button, double dragX, double dragY) {
-        for (NvgWidget w : buttons) {
-            w.drag(boxOf(w), mouseX, mouseY);
-        }
-        if (dragging) {
-            setAnchorFromCard(mouseX - grabDx, mouseY - grabDy);
-        }
+        tree.pointerMove((float) mouseX, (float) mouseY);
         return true;
     }
 
     @Override
     public boolean mouseReleased(double mouseX, double mouseY, int button) {
-        for (NvgWidget w : buttons) {
-            Rect box = boxOf(w);
-            w.release(box, mouseX, mouseY, box.contains((float) mouseX, (float) mouseY));
-        }
-        dragging = false;
+        tree.pointerUp((float) mouseX, (float) mouseY);
         return true;
     }
 
+    /**
+     * 键盘：<b>键先问树</b>（焦点在按钮上时 Enter / Space = 按它一下），Esc 与"没焦点时的回车"归宿主。
+     *
+     * <p>【为什么 Esc 不进树】关界面是 {@code Screen} 级的事（原版也在这里拦），
+     * 与"焦点在哪个控件上"无关 —— 放进树等于让焦点决定能不能退出。
+     *
+     * <p>【为什么回车要留一手】编辑场的老手感是"回车=存盘"。焦点在按钮上时由按钮接过去
+     * （标准做法，也是能看见的那件事）；焦点不在任何按钮上时（刚进来还没点过）走原来那条路。
+     * 所以"点了「回到默认」再回车"会变成再按一次那颗钮，而不是存盘 —— 这是键盘路由的代价，
+     * 记在这里，免得下一个人以为是 bug。
+     */
     @Override
     public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
         if (keyCode == GLFW.GLFW_KEY_ESCAPE) {
             cancel();
             return true;
         }
-        if (keyCode == GLFW.GLFW_KEY_ENTER) {
+        if (tree != null && tree.keyDown(keyCode, modifiers)) {
+            return true;
+        }
+        if (keyCode == GLFW.GLFW_KEY_ENTER || keyCode == GLFW.GLFW_KEY_KP_ENTER) {
             saveAndClose();
             return true;
         }
@@ -422,6 +534,31 @@ public final class AnchorEditScreen extends Screen {
     // ------------------------------------------------------------------
     // 给 dev harness 的只读/驱动入口
     // ------------------------------------------------------------------
+
+    /**
+     * 给 harness 用：<b>树这一侧的几何读数</b>（A-17）。
+     *
+     * <p>【为什么另起一行，不并进 {@link #stateDump()}】{@code stateDump} 是 A-16 之前就在的
+     * 读数，第 38 轮有它逐字的一份 —— 迁树之后要比的是"老读数一个字没变 + 树确实在管事"。
+     * 把新字段并进去，那份逐字比对就没法做了。
+     *
+     * <p>标题 / 提示 / 两颗按钮的盒子<b>全部从树读</b>：迁树之前它们是 {@code init()} 里手算的
+     * 两个 {@code Rect}，读数里没有它们的身影（所以那时也证明不了"画的和命中的是同一份"）。
+     */
+    public String treeDump() {
+        if (tree == null) {
+            return "(树还没建)";
+        }
+        Rect t = titleBox.bounds();
+        Rect h = hintBox.bounds();
+        Rect s = saveSlot.bounds();
+        Rect r = resetSlot.bounds();
+        return String.format(java.util.Locale.ROOT,
+                "树=建好 拖拽中=%s 标题=(%.0f,%.0f) 提示=(%.0f,%.0f) "
+                        + "完成钮=(%.0f,%.0f,%.0fx%.0f) 重置钮=(%.0f,%.0f,%.0fx%.0f)",
+                dragging, t.x(), t.y(), h.x(), h.y(),
+                s.x(), s.y(), s.width(), s.height(), r.x(), r.y(), r.width(), r.height());
+    }
 
     public String stateDump() {
         Bracket b = bracket();

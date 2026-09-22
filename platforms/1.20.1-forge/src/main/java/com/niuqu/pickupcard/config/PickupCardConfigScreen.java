@@ -426,7 +426,7 @@ public final class PickupCardConfigScreen extends Screen {
      * <p>【读数里的"重复增量"是什么】树在把一次按下标成重复的<b>同一个分支</b>里加那个计数器，
      * 所以它就是"这一下被判成重复了没有"，而且是从框架自己嘴里说出来的 —— 宿主没有第二份账。
      *
-     * <p>【"被吃=false"是对的】方向键在这一页没有任何控件接（`ControlSlot` 的 KEY_DOWN 走
+     * <p>【"被吃=false"是对的】方向键在这一页没有任何控件接（`WidgetSlot` 的 KEY_DOWN 走
      * `NvgWidget.keyPressed`，默认返回 false），所以事件会照常落回 MC 的默认路径。探针要验的
      * 是记账，不是"谁吃掉了键"。
      */
@@ -635,7 +635,7 @@ public final class PickupCardConfigScreen extends Screen {
         sampleButtons.clear();
         // 树外控件的几何表：重建时一并换掉（每一颗芯片的格子都是这一帧重算的）
         chipBoxes.clear();
-        // 【树也要作废】重建换了一批 widget 实例，而树里的 ControlSlot 认的是实例身份。
+        // 【树也要作废】重建换了一批 widget 实例，而树里的 WidgetSlot 认的是实例身份。
         // 只判"行数/控件数变了没有"的话，**同形重建**（行没变、值变了：恢复默认、删一条规则）
         // 会留下一棵拿着旧实例的树 —— 于是绘制与按下走旧实例，而键盘、读数、boxOf 走新实例。
         // 从前这条只影响命中，A-10 第二步起树自己画控件，影响面扩大到"屏幕画的是哪批实例"。
@@ -1020,7 +1020,7 @@ public final class PickupCardConfigScreen extends Screen {
         // （MC 不替屏幕补发 keyReleased）。这行让"还按着"的账在界面消失前结平，并给每一个
         // 还按着的键补一次 KEY_UP。
         // 【别把补发说成"控件已经收尾了"】KEY_UP 今天在整个宿主里<b>没有消费者</b>
-        // （`TrellisColumn.ControlSlot` 有意不接、`NvgWidget` 也没有 keyReleased）——
+        // （`WidgetSlot` 有意不接、`NvgWidget` 也没有 keyReleased）——
         // 补发的实际效果只有"清账"这一件事，控件什么都不知道。等真有按住态控件时再回来改这句话。
         // 【为什么要判 null】trellisColumn() 是惰性的：一帧都没渲染就被换屏时，这里会凭空建
         // 一整列再扔掉（且建树若抛异常就抛在 Minecraft.setScreen 里）。没有树 = 没有账。
@@ -1457,7 +1457,7 @@ public final class PickupCardConfigScreen extends Screen {
     @Override
     public boolean mouseReleased(double mouseX, double mouseY, int button) {
         // 行内控件：树把抬起<b>发给按下的那一个</b>（指针捕获）—— 拖到格子外面松手，
-        // 控件也能把手感收回去；落点还在格子里才算一次点击（见 ControlSlot）。
+        // 控件也能把手感收回去；落点还在格子里才算一次点击（见 WidgetSlot）。
         trellisColumn().pointerUp((float) mouseX, (float) mouseY);
         for (NvgWidget w : chips()) {
             // 树外的控件：命中还是自己判，用的是排布者那一份几何（见 mouseClicked）

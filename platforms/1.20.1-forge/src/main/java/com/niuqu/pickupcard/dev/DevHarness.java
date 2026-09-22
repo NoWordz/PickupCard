@@ -380,9 +380,13 @@ public final class DevHarness {
                     return;
                 }
                 PickupCard.LOGGER.info("[harness-auto] 进编辑场: {}", editor.stateDump());
+                // 【A-17：树那一侧的几何】这一行是新读数（老读数一个字没动，第 38 轮那份还能逐字比）：
+                // 标题 / 提示 / 两颗按钮的盒子全部从树读 —— 迁树之前它们是 init() 里手算的两个 Rect。
+                PickupCard.LOGGER.info("[harness-auto] 进编辑场（树）: {}", editor.treeDump());
                 // 真实事件路径拖到 (70%,60%)，dump 出来"变没变"一眼可读
                 editor.dragForHarness(0.70, 0.60);
                 PickupCard.LOGGER.info("[harness-auto] 拖到 (70%,60%) 后: {}", editor.stateDump());
+                PickupCard.LOGGER.info("[harness-auto] 拖到 (70%,60%) 后（树）: {}", editor.treeDump());
                 // 2026-09-19 方案一（所见即所得）：拍下括号/锚线/贴边提示 —— 堆被夹住时
                 // 锚线还在动，这张图就是"诚实"二字的证据
                 capture(mc, "editor-dragged");

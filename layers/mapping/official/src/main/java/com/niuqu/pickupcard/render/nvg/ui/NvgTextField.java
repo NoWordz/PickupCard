@@ -23,7 +23,7 @@ import org.lwjgl.glfw.GLFW;
  * 没有拖选。多一种要打字的控件不等于要长成第二个 UI 框架。
  *
  * <p>【键盘归树了（A-11 起）】键由树按<b>焦点</b>转发到控件
- * （{@code UiTree.keyDown → ControlSlot → NvgTextField.keyPressed}），宿主的兜底遍历已删 ——
+ * （{@code UiTree.keyDown → WidgetSlot → NvgTextField.keyPressed}），宿主的兜底遍历已删 ——
  * 于是"谁能收到键"和"谁拿着焦点"必然是同一件事，不再有"两个布尔值偶尔不一致"的窗口。
  */
 public final class NvgTextField extends NvgWidget {

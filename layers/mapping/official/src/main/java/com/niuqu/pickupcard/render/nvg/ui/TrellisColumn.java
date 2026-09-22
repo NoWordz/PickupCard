@@ -131,7 +131,7 @@ public final class TrellisColumn {
      * <p>树由<b>调用方持有</b>：{@link UiTree} 带着悬停/按下状态，不能每帧重建。
      *
      * <p>【控件为什么要交给树】A-10 起"指着哪一行、点到了哪一行"由树说了算
-     * （见 {@link #controlRowAt}）：控件那一格是 {@link ControlSlot}，它拿着的
+     * （见 {@link #controlRowAt}）：控件那一格是 {@link WidgetSlot}，它拿着的
      * {@link NvgWidget} 只负责<b>行为</b>（按下/松开/悬停），几何一条都不留。
      *
      * @param controls   每行的控件；<b>{@code null} = 小节头</b>（只有标签、没有控件）。
@@ -159,7 +159,7 @@ public final class TrellisColumn {
             line.add(new Box(Style.row().withGrow(1f).withWidth(Sizing.atLeast(labelMin))
                     .withHeight(Sizing.fixed(rowH)), true));
             if (control != null) {
-                line.add(new ControlSlot(control, Style.row()
+                line.add(new WidgetSlot(control, Style.row()
                         .withWidth(Sizing.fraction(controlMin,
                                 Tokens.Size.CONTROL_WIDTH_FRACTION, controlMax))
                         .withHeight(Sizing.fixed(rowH)), palette));
@@ -219,14 +219,14 @@ public final class TrellisColumn {
      * （判据 2）。所以配置列的<b>悬停底由 Trellis 画</b> —— 宿主那边对应的画法已停手，
      * 两个都画就是"两份几何各画一条带子"，正是判据 1 要根除的东西。
      *
-     * <p>【控件本体也归这一趟（A-10 第二步）】{@code ControlSlot.drawContent} 现在真的画控件：
+     * <p>【控件本体也归这一趟（A-10 第二步）】{@code WidgetSlot.drawContent} 现在真的画控件：
      * 几何用 {@code bounds()} 那个对象，形状走 Trellis 原语（每个原语自带状态 —— 判据 3），
      * 字形交回宿主（{@link GlyphPainter}：MC 的字是位图图集，喂不进 {@code Canvas.drawText}）。
      * 宿主那趟 {@code row.widget().draw(ui)} 已经删了。
      *
      * <p>【"表面"必须灌进去】{@code drawContent} 只收得到一个 {@code Canvas}，而控件还要配色、
-     * 字形与帧号。所以帧信息由这里灌进每个 {@code ControlSlot}（{@link Frame}），
-     * <b>用 try/finally 清掉</b>：不灌的话 {@code ControlSlot} 当场抛 —— 静默的症状是
+     * 字形与帧号。所以帧信息由这里灌进每个 {@code WidgetSlot}（{@link Frame}），
+     * <b>用 try/finally 清掉</b>：不灌的话 {@code WidgetSlot} 当场抛 —— 静默的症状是
      * "控件在、点得到、屏幕上一块空白"。
      *
      * <p>【层序：控件本体没挪，悬停底挪进裁剪里了】控件本体画在宿主从前那趟控件循环的位置
@@ -276,8 +276,8 @@ public final class TrellisColumn {
     }
 
     private static void setFrame(Component component, Frame frame) {
-        if (component instanceof ControlSlot slot) {
-            slot.frame = frame;
+        if (component instanceof WidgetSlot slot) {
+            slot.attachFrame(frame);
         }
         for (Component child : component.children()) {
             setFrame(child, frame);
@@ -330,7 +330,7 @@ public final class TrellisColumn {
         for (int i = 0; i < lines.size(); i++) {
             Component line = lines.get(i);
             if (line.children().size() >= 2
-                    && line.children().get(1) instanceof ControlSlot slot
+                    && line.children().get(1) instanceof WidgetSlot slot
                     && slot.pressed()) {
                 return i;
             }
@@ -343,7 +343,7 @@ public final class TrellisColumn {
      *
      * <p>【为什么它可以只问树】焦点只有一份真相（{@link UiTree#focused()}），控件那一份是
      * 被同步过去的 —— 所以"哪一行拿着键盘"不需要再看任何控件自己的布尔值。
-     * 与 {@link #pressedControlRow} 同一个形状：读树、翻出它落在第几个 ControlSlot 上。
+     * 与 {@link #pressedControlRow} 同一个形状：读树、翻出它落在第几个 {@code WidgetSlot} 上。
      *
      * <p>调用方：harness 的键盘路由读数（"焦点行"这个数只能从这里出来）。
      */
@@ -403,94 +403,11 @@ public final class TrellisColumn {
     }
 
     private static void pushHover(Component component) {
-        if (component instanceof ControlSlot slot) {
-            slot.widget.hover(component.hovered());
+        if (component instanceof WidgetSlot slot) {
+            slot.widget().hover(component.hovered());
         }
         for (Component child : component.children()) {
             pushHover(child);
-        }
-    }
-
-    /**
-     * 一行里<b>控件那一格</b>：几何归树（{@code bounds()} 就是这一格），行为仍归宿主控件。
-     *
-     * <p>【焦点与键盘都在这条路上（A-10 第三、四步）】{@code focusable(true)} 开着，于是按下会走
-     * {@code UiTree.pointerDown → requestFocus}；焦点一变，这一格就收到 BLUR / FOCUS 并转给控件，
-     * 而树把键<b>只发给焦点组件</b>（{@code UiTree.keyDown → 这一格 → 控件}）—— 见 {@link #onEvent}。
-     * 于是"控件拿着焦点"和"键到控件"来自同一个决定，控件不再自己挣焦点。
-     *
-     * <p>【"算不算一次点击"为什么在这里判】{@code UiTree.pointerUp} 保证抬起发给
-     * <b>按下的那一个</b>（指针捕获），但 {@code CLICK} 是在 {@code POINTER_UP}
-     * <b>之后</b>才发的 —— 在这里等 CLICK 的话，拖到格子外面松手就永远收不到"结束"，
-     * {@code pressed} 会留在控件上（症状：松了手还亮着）。所以用 {@link Component#bounds()}
-     * 判落点在不在格子里：那是<b>同一份几何</b>（命中测试读的也是它），不是第二份。
-     */
-    private static final class ControlSlot extends Component {
-        private final NvgWidget widget;
-
-        /** 这一帧的表面（{@link #setFrame} 每帧灌一次；null = 没接上，绘制时当场抛）。 */
-        private Frame frame;
-
-        ControlSlot(NvgWidget widget, Style style, NvgPalette palette) {
-            this.widget = widget;
-            style(style);
-            focusable(true);
-            // 【焦点环（A-15）】画法与几何归框架（基类 `Component.focusRing`，加一次全体正确）；
-            // 颜色由宿主给 —— 浅色主题下框架那个亮青在近白底上读不出来。
-            // 环的圆角取调色板的 radius，和控件自己画的那条 outline 是同一个形状口径。
-            focusRing(palette.focusRing, palette.radius);
-        }
-
-        @Override
-        protected boolean onEvent(UiEvent event) {
-            switch (event.type()) {
-                case POINTER_DOWN:
-                    // 几何给 {@code bounds()} 那个对象本身 —— 与命中读的是同一个（判据 1）。
-                    return widget.press(bounds(), event.x(), event.y(), 0);
-                case POINTER_UP:
-                    widget.release(bounds(), event.x(), event.y(),
-                            bounds().contains(event.x(), event.y()));
-                    return true;
-                // 【键盘（A-11）】键只到这里来（树把键发给<b>焦点组件</b>），
-                // 再由这一格转给控件。于是"控件收到键"与"控件拿着焦点"是同一件事的两个面，
-                // 返回值也原样交回去：控件拒收（返回 false）时树照实说"没人吃掉"。
-                case KEY_DOWN:
-                    return widget.keyPressed(event.keyCode(), event.modifiers());
-                case CHAR:
-                    return widget.charTyped(event.character());
-                // 【焦点事件是通知，一定吃掉】BLUR / FOCUS 本身就是"你交还了 / 你拿到了"，
-                // 放它继续冒泡没有别的意思。顺序由树保证：先旧的 BLUR、后新的 FOCUS。
-                case BLUR:
-                    widget.focusChanged(false);
-                    return true;
-                case FOCUS:
-                    widget.focusChanged(true);
-                    return true;
-                // 【KEY_UP 故意不接】现在没有任何控件需要它；这里返回 true 会把这个键
-                // 从 MC 的默认路径上抢走（谁来收、收得对不对都看不出来）。
-                // 等真有"按住/抬起"的手感可做时再回来加，别提前占位。
-                default:
-                    return false;
-            }
-        }
-
-        /**
-         * <b>控件本体由这里画（A-10 第二步）。</b>
-         *
-         * <p>几何给 {@code bounds()} 本身、形状走这个画布、字形交回宿主 —— 三件事都在
-         * {@link PaintCtx} 手里，控件自己不再存任何几何。宿主的 {@code row.widget().draw(ui)}
-         * 因此停手：两个都画就是两份几何，正是判据 1 要根除的东西。
-         *
-         * <p>【没接上表面就抛】见 {@link #setFrame}：静默跳过会变成"控件在、点得到、
-         * 屏幕上一块空白"，那种 bug 只有肉眼能发现。
-         */
-        @Override
-        protected void drawContent(Canvas canvas) {
-            if (frame == null) {
-                throw new IllegalStateException("这一趟没有表面：TrellisColumn.paint(...) "
-                        + "没被调用，或者它在 ui.draw(...) 之外被调了。");
-            }
-            widget.draw(frame.ctxFor(bounds()));
         }
     }
 

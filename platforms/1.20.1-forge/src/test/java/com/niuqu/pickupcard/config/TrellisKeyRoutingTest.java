@@ -170,7 +170,7 @@ class TrellisKeyRoutingTest {
         ui.pointerDown(centerX(ui, 0), centerY(ui, 0));
 
         assertFalse(ui.keyUp(KEY_A, 0),
-                "现在没有任何控件需要抬起键；ControlSlot 接它就会把它从 MC 的默认路径上抢走");
+                "现在没有任何控件需要抬起键；WidgetSlot 接它就会把它从 MC 的默认路径上抢走");
         assertEquals(0, first.keys, "抬起不该被当成按下再发一次");
     }
 

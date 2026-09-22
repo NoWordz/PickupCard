@@ -1,6 +1,7 @@
 package com.niuqu.pickupcard.render.nvg.ui;
 
 import java.util.function.Supplier;
+import org.lwjgl.glfw.GLFW;
 
 /**
  * 一个按钮：<b>显示当前值，点一下做一件事</b>。
@@ -36,6 +37,27 @@ public final class NvgButton extends NvgWidget {
         if (action != null) {
             action.run();
         }
+    }
+
+    /**
+     * <b>键盘也能按它</b>（A-17）：焦点在这一格上时按 Enter / Space 等于点一下。
+     *
+     * <p>【为什么现在才有】A-11/A-15b 之后"焦点"和"键走到谁"才归树管，键盘激活一个按钮
+     * 才有意义 —— 在那之前焦点是控件自己挣的，Enter 该发给谁没有答案。
+     *
+     * <p>【只读钮（{@code action == null}）也吃掉这两个键】放它漏下去的话，同一个回车会先被
+     * 这个看得见却没反应的钮"没做"，再去做别的事（比如存盘）—— 那比什么都不发生更难解释。
+     */
+    @Override
+    public boolean keyPressed(int keyCode, int modifiers) {
+        if (keyCode != GLFW.GLFW_KEY_ENTER && keyCode != GLFW.GLFW_KEY_KP_ENTER
+                && keyCode != GLFW.GLFW_KEY_SPACE) {
+            return false;
+        }
+        if (action != null) {
+            onActivate();
+        }
+        return true;
     }
 
     @Override
