@@ -309,6 +309,10 @@ public final class PickupCardConfigScreen extends Screen {
         TrellisColumn.layoutColumn(tree, layout().items(), deviceGrid());
         tree.pointerMove(columnPointerX(), columnPointerY());
         TrellisColumn.syncHover(tree);     // 悬停只有一份真相：树判，控件收
+        // 【行模型排在最后：偏移这一帧已经定下来了】它算出来的 y 只喂"小节头那根刺"和
+        // 文本样本（控件与标签的几何都从树读）—— 但那些也得跟树对齐，
+        // 而偏移是在上面那几行里才落定的。
+        layoutRows();
     }
 
     /**
@@ -765,9 +769,11 @@ public final class PickupCardConfigScreen extends Screen {
             pendingRebuild = false;
             rebuild();
         }
-        layoutRows();       // 每帧刷一遍：滚一下、换一页、改窗口尺寸，位置都要跟上
         // 【顺序不能换】树要先算完（含滚动偏移与指针），下面三件事才问得到"指着哪一行"：
         // 悬停缓动、树外的控件悬停、以及绘制那趟里树的 paint。
+        // 【行模型那一趟现在在 updateTrellisColumn 末尾】它必须排在"偏移定下来"之后 ——
+        // 同页重建那一帧，偏移是在 updateTrellisColumn 里才写回去的；先算行模型的话，
+        // 小节头那根刺和文本样本会按旧偏移差一格格子（评审指出的 S3-9）。
         updateTrellisColumn();
         driveAnimations();
         for (NvgWidget w : chips()) {
