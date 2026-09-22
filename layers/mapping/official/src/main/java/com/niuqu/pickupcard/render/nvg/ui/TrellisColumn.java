@@ -79,9 +79,17 @@ public final class TrellisColumn {
     private static final float STEP_ROW_H = Tokens.Size.ROW_H;
 
     /**
-     * 滚轮一格滚几行 —— <b>3 是宿主现役的手感</b>（{@code NvgScroll.ROWS_PER_NOTCH}），
-     * 换框架不该换手感，所以照搬这个数。乘出来的步长可以按行给，行高则随 u 变，
-     * 手感跨缩放档才一致（见 {@code ScrollMath.wheel} 的注释）。
+     * 滚轮一格滚几行。
+     *
+     * <p>【这个数改了手感，评审抓出来的】旧宿主那一行是
+     * {@code itemsScroll.wheel(delta, contentHeight, ConfigRows.rowStep(u) * 3f)}，
+     * 而 {@code ScrollMath.wheel} 内部<b>又乘了一次</b> {@code NvgScroll.ROWS_PER_NOTCH} ——
+     * 所以**实际一格是 9 行**，尽管那行注释写的是"一格滚三行"（代码与注释不符）。
+     * A-16 按注释的原意取 3 行。**要么改回 9 行，要么就用 3 行 —— 正本里标了待拍板**
+     * （{@code docs/plan.md} 的 A-16 一节）。
+     *
+     * <p>步长按"行"而不是像素给：行高随 u 变，写死像素会让同一格滚轮在大画布上滚得少、
+     * 小画布上滚得多。
      */
     private static final float ROWS_PER_NOTCH = 3f;
 

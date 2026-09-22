@@ -750,8 +750,12 @@ public final class PickupCardConfigScreen extends Screen {
 
     /** 逐行摆：**一行一项**（标签左、控件右），行距全界面恒 20px，放不下就滚。 */
     private void layoutRows() {
-        // 【滚动偏移只有一处来源：滚动容器（A-16）】行模型与树读的是同一个数 ——
-        // 小节头那一行的 y 和树里那一行的 y 因此不可能各算各的。
+        // 【偏移只有一处来源：滚动容器（A-16）】行模型与树读的是同一个 float。
+        // ⚠️ 但"读同一个数"**不等于**"同一份几何"：树里那些行还经过设备像素网格对齐
+        // （{@code UiTree.layout} 的 grid），行模型这份是没对齐的整数算术 —— 两者最多差
+        // 半个设备像素，所以"小节头那根刺"与树里的标签盒可能差一丁点。
+        // 要彻底收掉，那一笔也该从树读（{@code TrellisColumn.labelBox}）。
+        // 这是**既有**分歧，A-16 没让它变好也没让它变坏（评审指出）。
         rowsModel.layout(layout(), scrollOffset(), rowsTop(), unit());
     }
 
