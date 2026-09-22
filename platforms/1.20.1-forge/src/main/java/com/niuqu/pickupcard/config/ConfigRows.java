@@ -75,11 +75,6 @@ final class ConfigRows {
         return list;
     }
 
-    /** 这一帧配置项内容有多高（滚动的依据）。 */
-    float contentHeight(float u) {
-        return list.size() * (float) rowStep(u);
-    }
-
     /**
      * 逐行摆：**一行一项**（标签左、控件右），行距恒 {@link #rowStep(float)} px，放不下就滚。
      *

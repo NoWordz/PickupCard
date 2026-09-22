@@ -104,7 +104,7 @@ class TrellisLabelFitTest {
     void labelBoxIsTheLeafsOwnRect() {
         UiTree ui = column(0f);
         for (int i = 0; i < CONTROLS.length; i++) {
-            Rect leaf = ui.root().children().get(i).children().get(0).bounds();
+            Rect leaf = row(ui, i).children().get(0).bounds();
             assertSame(leaf, TrellisColumn.labelBox(ui, i),
                     "第 " + i + " 行的标签盒不是叶子自己的那个对象 —— 那就又成了两份几何");
         }
@@ -116,7 +116,7 @@ class TrellisLabelFitTest {
         UiTree ui = column(0f);
         ConfigLayout lo = ConfigLayout.compute(CANVAS_W, CANVAS_H);
         Rect box = TrellisColumn.labelBox(ui, 0);
-        Rect control = ui.root().children().get(0).children().get(1).bounds();
+        Rect control = row(ui, 0).children().get(1).bounds();
 
         // 6 = TrellisColumn 的 PAD/GAP。差一个设备像素以内是布局对齐的正常结果。
         assertEquals(6f, box.x() - ui.root().bounds().x(), 1f / GUI_SCALE + 1e-3f,
@@ -133,7 +133,7 @@ class TrellisLabelFitTest {
     void headerRowGetsTheWholeWidth() {
         UiTree ui = column(0f);
         Rect header = TrellisColumn.labelBox(ui, 1);
-        assertEquals(1, ui.root().children().get(1).children().size(),
+        assertEquals(1, row(ui, 1).children().size(),
                 "小节头不该有控件叶子");
         assertTrue(header.width() > TrellisColumn.labelBox(ui, 0).width() + 50f,
                 "小节头的标签盒没有宽到列右缘：" + header.width());
@@ -269,10 +269,27 @@ class TrellisLabelFitTest {
 
     // -----------------------------------------------------------------------
 
+    /**
+     * 第 {@code i} 行那一格。
+     *
+     * <p>【为什么测试也要知道树有几层】这一片里有两件事绕不开树的结构："标签盒就是树里那个
+     * 对象本身"（判据 1 的文字版）和"小节头没有控件叶子"。A-16 起树的根是滚动容器，
+     * 行在它的内容子节点下面 —— 取行只在这一个地方写，别处再写一遍就会踩到容器那一层
+     * （症状是 {@code IndexOutOfBounds} 或者更坏的"行号整体错位一格"）。
+     */
+    private static dev.e33.trellis.ui.Component row(UiTree ui, int i) {
+        return ui.root().children().get(0).children().get(i);
+    }
+
     private static UiTree column(float scrollOffset) {
         ConfigLayout lo = ConfigLayout.compute(CANVAS_W, CANVAS_H);
         UiTree ui = TrellisColumn.buildColumn(CONTROLS, ConfigRows.topInset(U), U, TEST_PALETTE);
-        TrellisColumn.layoutColumn(ui, lo.items(), scrollOffset, 1f / GUI_SCALE);
+        // 【A-16 起偏移住在滚动容器里，而且要先布局一趟才设得进去】夹取靠"内容多高"这个
+        // 布局量出来的数，没布局过它就是 0，设什么都会被夹成 0。宿主那边同一条顺序
+        // （{@code updateTrellisColumn}：先建树布局，再把接回来的偏移写进容器）。
+        TrellisColumn.layoutColumn(ui, lo.items(), 1f / GUI_SCALE);
+        TrellisColumn.scrollList(ui).scrollTo(0f, scrollOffset);
+        TrellisColumn.layoutColumn(ui, lo.items(), 1f / GUI_SCALE);
         return ui;
     }
 }

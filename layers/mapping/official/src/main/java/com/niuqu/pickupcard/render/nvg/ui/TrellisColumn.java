@@ -14,6 +14,7 @@ import dev.e33.trellis.text.TextLayout;
 import dev.e33.trellis.text.TextMeasurer;
 import dev.e33.trellis.tokens.Tokens;
 import dev.e33.trellis.ui.Component;
+import dev.e33.trellis.ui.ScrollContainer;
 import dev.e33.trellis.ui.UiEvent;
 import dev.e33.trellis.ui.UiTree;
 import java.util.List;
@@ -76,6 +77,13 @@ public final class TrellisColumn {
     private static final float STEP_CONTROL_MIN = Tokens.Size.CONTROL_MIN_W;
     private static final float STEP_CONTROL_MAX = Tokens.Size.CONTROL_MAX_W;
     private static final float STEP_ROW_H = Tokens.Size.ROW_H;
+
+    /**
+     * 滚轮一格滚几行 —— <b>3 是宿主现役的手感</b>（{@code NvgScroll.ROWS_PER_NOTCH}），
+     * 换框架不该换手感，所以照搬这个数。乘出来的步长可以按行给，行高则随 u 变，
+     * 手感跨缩放档才一致（见 {@code ScrollMath.wheel} 的注释）。
+     */
+    private static final float ROWS_PER_NOTCH = 3f;
 
     /**
      * 接进宿主上下文。帧由宿主开也由宿主关，这里只画。
@@ -150,8 +158,21 @@ public final class TrellisColumn {
             }
             root.add(line);
         }
+        // 【内边距落在内容上，不落在容器上】滚的是"一整块内容"：topInset 是内容自己的上内缩，
+        // 滚起来它跟着走（宿主那份 ConfigRows.layout 也是这么算的）。挪到容器上的话，
+        // 滚到下面就变成"顶边永远空着 topInset"。
+        // 【A-16：滚动的几何归框架了】容器自己的矩形 = 视口（宿主给的 items），内容才是这些行。
+        // 从前是宿主把整棵树按偏移上移，于是命中读的矩形和可见带在滚动时错开 —— 两头都坏，
+        // 实测数据见 docs/plan.md A-16 那张表。
+        // 【STRETCH 不能省】内容必须在交叉轴上被拉满：容器默认的 START 会让内容按自己的
+        // 自然宽摆，于是行收窄到标签那点宽 —— 实测标签盒从 95 掉到 41、控件左缘整体左移 32px。
+        // 旧的那棵树是"根被视口矩形撑满"，所以看着也一样满；换一层之后这份拉伸得明写出来。
+        ScrollContainer list = new ScrollContainer(
+                Style.column().withGrow(1f).withAlign(Align.STRETCH),
+                (rowH + rowGap) * ROWS_PER_NOTCH);
+        list.add(root);
         // u 挂到树上：{@code layoutColumn} 之后控件自己就能问"这一帧的 u 是多少"。
-        return new UiTree(root, u);
+        return new UiTree(list, u);
     }
 
     /**
@@ -161,19 +182,25 @@ public final class TrellisColumn {
      * 也是 Trellis 要收掉的东西。翻译只许发生在这一个地方（适配器的本职）；
      * 真正接的时候这段话应该消失（只留一套几何）。
      *
-     * <p>【{@code scrollOffset} 为什么要从视口上去掉】宿主的滚动 = <b>内容整体上移 N px</b>
-     * （{@code ConfigRows.layout} 里的 {@code - Math.round(scrollOffset)}）。
-     * Trellis 现在<b>还没有</b>"滚动容器"这个组件，所以适配器只能把<b>视口</b>上移同样多 ——
-     * 行于是落到宿主那一份位置上（根仍然"正好等于给定矩形"，只是这个矩形是内容矩形，不是裁剪框）。
-     * 真正的解法是 L4 的滚动容器 + 自带裁剪，那是后面的事；在那之前，
-     * <b>不传这个数就是两份几何在滚动时错开 N px</b>（悬停底、命中、标签全错）。
+     * <p>【A-16 起：视口就是视口】从前这里必须把 {@code scrollOffset} 从视口上减掉
+     * （框架还没有滚动容器，只能拿"内容矩形"当根）—— 于是命中读的那份矩形在滚动时
+     * 和可见带错开。现在偏移由 {@link ScrollContainer} 自己持有，宿主交进来的矩形
+     * 就是它本来的意思：<b>裁剪框</b>。顺带少了一份几何。
      *
-     * @param scrollOffset 宿主当前的滚动偏移（逻辑 px，宿主自己会 {@code Math.round} 它）
      * @param grid 网格间距（{@code 1 / guiScale} = 一个设备像素）
      */
-    public static void layoutColumn(UiTree ui, ConfigLayout.Rect items, float scrollOffset,
-                                    float grid) {
-        ui.layout(new Rect(items.x(), items.y() - scrollOffset, items.w(), items.h()), grid);
+    public static void layoutColumn(UiTree ui, ConfigLayout.Rect items, float grid) {
+        ui.layout(new Rect(items.x(), items.y(), items.w(), items.h()), grid);
+    }
+
+    /**
+     * 这一列的滚动容器（{@link #buildColumn} 建的那棵树，<b>根就是它</b>）。
+     *
+     * <p>偏移、内容高、最多能滚多远都从它读：宿主画滚动条、harness 读数、
+     * 标签那一趟要的偏移，全部只认这一处 —— 不再另存一份"滚到哪了"。
+     */
+    public static ScrollContainer scrollList(UiTree ui) {
+        return (ScrollContainer) ui.root();
     }
 
     /**
@@ -254,6 +281,23 @@ public final class TrellisColumn {
     // -----------------------------------------------------------------------
 
     /**
+     * 装行的那个组件：<b>滚动容器的唯一子节点</b>。
+     *
+     * <p>【为什么要有这两个助手】A-16 起树的根是滚动容器，行在它下面又深了一层 ——
+     * "根的孩子就是行"这句话不再成立。取行只许走这里：别处再写一遍
+     * {@code root().children()} 会拿到容器那一层，症状是 {@code IndexOutOfBounds} 或者
+     * 更坏的"行号整体错位一格"。
+     */
+    private static Component rowHolder(UiTree ui) {
+        return ui.root().children().get(0);
+    }
+
+    /** 行那一层（小节头也是行，位置与 {@code controls} 下标一一对应）。 */
+    private static List<Component> rowsOf(UiTree ui) {
+        return rowHolder(ui).children();
+    }
+
+    /**
      * 第 {@code rowIndex} 行<b>控件那一格</b>的几何；那一行是小节头（没有控件）时返回 {@code null}。
      *
      * <p>【为什么宿主不再自己算】从前控件自己带一份 {@code x/y/w/h}（宿主的整数取整版），
@@ -263,7 +307,7 @@ public final class TrellisColumn {
      * <p>返回的是 {@code bounds()} <b>那个对象本身</b>，不是另算一个相等的矩形（判据 1）。
      */
     public static Rect controlBox(UiTree ui, int rowIndex) {
-        Component line = ui.root().children().get(rowIndex);
+        Component line = rowsOf(ui).get(rowIndex);
         return line.children().size() < 2 ? null : line.children().get(1).bounds();
     }
 
@@ -274,7 +318,7 @@ public final class TrellisColumn {
      * 宿主不该再维护第二份。滑条拖拽只需要两样：哪一行、那一行的盒子 —— 都从这里出去。
      */
     public static int pressedControlRow(UiTree ui) {
-        List<Component> lines = ui.root().children();
+        List<Component> lines = rowsOf(ui);
         for (int i = 0; i < lines.size(); i++) {
             Component line = lines.get(i);
             if (line.children().size() >= 2
@@ -300,7 +344,7 @@ public final class TrellisColumn {
         if (focused == null) {
             return -1;
         }
-        List<Component> lines = ui.root().children();
+        List<Component> lines = rowsOf(ui);
         for (int i = 0; i < lines.size(); i++) {
             List<Component> cells = lines.get(i).children();
             if (cells.size() >= 2 && cells.get(1) == focused) {
@@ -329,14 +373,15 @@ public final class TrellisColumn {
         if (hit == null) {
             return -1;
         }
+        Component holder = rowHolder(ui);
         Component line = hit;
-        while (line.parent() != null && line.parent() != ui.root()) {
+        while (line.parent() != null && line.parent() != holder) {
             line = line.parent();
         }
-        if (line.parent() != ui.root() || line.children().size() < 2) {
+        if (line.parent() != holder || line.children().size() < 2) {
             return -1;      // 小节头那一行没有控件
         }
-        return line.children().get(1).isAncestorOf(hit) ? ui.root().children().indexOf(line) : -1;
+        return line.children().get(1).isAncestorOf(hit) ? holder.children().indexOf(line) : -1;
     }
 
     /**
@@ -457,7 +502,7 @@ public final class TrellisColumn {
      * 判据 1 写在矩形上，文字的锚点也该是同一份几何。
      */
     public static Rect labelBox(UiTree ui, int rowIndex) {
-        Component line = ui.root().children().get(rowIndex);
+        Component line = rowsOf(ui).get(rowIndex);
         return line.children().get(0).bounds();
     }
 

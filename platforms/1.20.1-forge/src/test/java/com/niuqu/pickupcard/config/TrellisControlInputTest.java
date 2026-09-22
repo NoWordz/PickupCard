@@ -151,14 +151,15 @@ class TrellisControlInputTest {
     // -----------------------------------------------------------------------
 
     private static Rect control(UiTree ui, int row) {
-        return ui.root().children().get(row).children().get(1).bounds();
+        // 走适配器的公开读数，而不是自己数树有几层（A-16 起根是滚动容器，多了一层）
+        return TrellisColumn.controlBox(ui, row);
     }
 
     private UiTree column() {
         ConfigLayout lo = ConfigLayout.compute(CANVAS_W, CANVAS_H);
         NvgWidget[] controls = {first, null, third};
         UiTree ui = TrellisColumn.buildColumn(controls, ConfigRows.topInset(U), U, TEST_PALETTE);
-        TrellisColumn.layoutColumn(ui, lo.items(), 0f, 1f / GUI_SCALE);
+        TrellisColumn.layoutColumn(ui, lo.items(), 1f / GUI_SCALE);
         return ui;
     }
 }

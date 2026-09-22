@@ -8,8 +8,6 @@ import com.niuqu.pickupcard.render.CardStage;
 import com.niuqu.pickupcard.render.nvg.ui.NvgButton;
 import com.niuqu.pickupcard.render.nvg.ui.NvgPalette;
 import com.niuqu.pickupcard.render.nvg.ui.ConfigLayout;
-import com.niuqu.pickupcard.render.nvg.ui.NvgScroll;
-import com.niuqu.pickupcard.render.nvg.ui.ScrollMath;
 import com.niuqu.pickupcard.render.nvg.ui.NvgUi;
 import com.niuqu.pickupcard.render.nvg.ui.TrellisColumn;
 import com.niuqu.pickupcard.render.nvg.ui.McFont;
@@ -19,6 +17,7 @@ import dev.e33.trellis.text.FontStack;
 import dev.e33.trellis.text.TextLayout;
 import dev.e33.trellis.text.TextMeasurer;
 import dev.e33.trellis.tokens.Units;
+import dev.e33.trellis.ui.ScrollContainer;
 import dev.e33.trellis.ui.UiTree;
 import com.niuqu.pickupcard.render.nvg.ui.NvgWidget;
 import com.niuqu.pickupcard.render.nvg.ui.McGlyphPainter;
@@ -87,7 +86,7 @@ public final class PickupCardConfigScreen extends Screen {
                 lo.previewVisible() ? (lo.switcherVisible() ? " 切样例行" : " 无切样例行") : "",
                 rowsModel.all().size(),
                 Math.max(1, (int) (lo.items().h() / ConfigRows.rowStep(unit()))),
-                itemsScroll == null ? 0f : itemsScroll.offset());
+                scrollOffsetForHarness());
     }
 
     /** 给 harness 用：让配置项那一列滚一格（走的是和真人滚轮同一条路）。 */
@@ -95,9 +94,9 @@ public final class PickupCardConfigScreen extends Screen {
         return mouseScrolled(this.width / 2.0, this.height / 2.0, delta);
     }
 
-    /** 给 harness 用：当前滚动偏移。 */
+    /** 给 harness 用：当前滚动偏移 —— 唯一来源是滚动容器（A-16）。 */
     public float scrollOffsetForHarness() {
-        return itemsScroll == null ? 0f : itemsScroll.offset();
+        return scrollOffset();
     }
 
     /** 给 harness 用：现在是哪一页、预览是哪个样例（换页/换样例的验证要能读出来）。 */
@@ -176,14 +175,15 @@ public final class PickupCardConfigScreen extends Screen {
     }
 
     /**
-     * 这一帧配置列的滚动偏移。
+     * 这一帧配置列的滚动偏移 —— <b>唯一来源是滚动容器</b>（A-16 起）。
      *
-     * <p>【为什么取整再给出去】宿主自己那份（{@code ConfigRows.layout}）就是
-     * {@code - Math.round(scrollOffset)}；给树的必须是同一个数，否则两边差半个像素，
-     * 而"半个像素的差"在命中上会变成"点到了隔壁那一行"。
+     * <p>【为什么不在这里取整了】从前必须 {@code Math.round}，因为"树那一侧"和"行模型那一侧"
+     * 是两份算术，差半个像素就会点到隔壁那一行。现在两边读的是同一个容器的同一个 float，
+     * 而设备像素对齐由框架在布局那一趟统一做（{@code UiTree.layout(viewport, grid)}）——
+     * 这里再取一次整，反而会让"画出来的"和"命中读的"差半个设备像素（判据 1）。
      */
     private float scrollOffset() {
-        return itemsScroll == null ? 0f : Math.round(itemsScroll.offset());
+        return trellisColumn == null ? 0f : TrellisColumn.scrollList(trellisColumn).offsetY();
     }
 
     /** 组件列这一帧认的指针位置：harness 指定过就用它，否则用真指针。 */
@@ -277,7 +277,7 @@ public final class PickupCardConfigScreen extends Screen {
             // 布局过才有值 —— 只建不摆的话，"树刚作废、下一帧还没到"时来的那次点击会撞
             // NullPointerException（真机第 21 轮就是这么崩的：`Component.node()` is null）。
             // 布局是纯函数、每帧还会再算一次，多算这一遍没有副作用。
-            TrellisColumn.layoutColumn(trellisColumn, layout().items(), scrollOffset(), deviceGrid());
+            TrellisColumn.layoutColumn(trellisColumn, layout().items(), deviceGrid());
             trellisColumnRows = rows.size();
             trellisColumnControls = present;
             trellisColumnU = u;
@@ -296,8 +296,17 @@ public final class PickupCardConfigScreen extends Screen {
      */
     private void updateTrellisColumn() {
         UiTree tree = trellisColumn();
+        // 【同页重建之后把滚动位置接回来】重建时 {@code rebuild()} 把旧容器那份偏移记在
+        // {@code carryScrollOffset} 里，在这里写回新容器。为什么不在建树那一刻写：
+        // 夹取要靠"内容多高、视口多高"两个数，那一刻容器还没量过（都是 0），
+        // 写进去只会被夹成 0。而这一趟布局刚量完，接回来的偏移才是合法的 ——
+        // 而且是在这一帧的 layout 之前写，所以不会有"先跳回顶上再跳回去"的闪。
+        if (carryScrollOffset > 0f) {
+            TrellisColumn.scrollList(tree).scrollTo(0f, carryScrollOffset);
+            carryScrollOffset = 0f;
+        }
         tree.tick(now * 1_000_000L);
-        TrellisColumn.layoutColumn(tree, layout().items(), scrollOffset(), deviceGrid());
+        TrellisColumn.layoutColumn(tree, layout().items(), deviceGrid());
         tree.pointerMove(columnPointerX(), columnPointerY());
         TrellisColumn.syncHover(tree);     // 悬停只有一份真相：树判，控件收
     }
@@ -348,15 +357,15 @@ public final class PickupCardConfigScreen extends Screen {
                 editing ? String.valueOf(((NvgTextField) w).draft()) : "-");
     }
 
-    /** 配置项那一列的滚动视口；每帧按当前几何重建（画布会变，视口跟着变）。 */
-    private NvgScroll itemsScroll;
-    /** 换页清零、同页重建（删一条规则）保留 —— 列表忽然跳回顶上是纯惊吓。 */
-    private float savedScrollOffset;
-
-    /** 这一帧配置项内容有多高（滚动的依据）。 */
-    private float itemsContentHeight() {
-        return rowsModel.contentHeight(unit());
-    }
+    /**
+     * 同页重建时要接回来的滚动偏移：{@link #rebuild()} 记、{@link #updateTrellisColumn()} 写回。
+     *
+     * <p>【为什么需要它】偏移现在住在滚动容器里（A-16），而重建会换一棵树、也就是换一个容器。
+     * 不接的话，"删一条规则"这类同页重建会让列表跳回顶上 —— 那件事从前写在
+     * {@code savedScrollOffset} 里，但那个字段<b>只读不写</b>（永远是 0），从来没接上。
+     * 换页清零仍然成立：换页走的那条路 {@code preserveScroll} 是 false。
+     */
+    private float carryScrollOffset;
 
     /** 当前页。 */
     private ConfigPageSpec.Page page = ConfigPageSpec.Page.GENERAL;
@@ -515,6 +524,10 @@ public final class PickupCardConfigScreen extends Screen {
     private void rebuild() {
         boolean keep = preserveScroll;
         preserveScroll = false;
+        // 【先把旧的滚动位置记下来】下面会把树作废（trellisColumn = null），
+        // 之后就没人知道滚到哪了。接回去的时机与理由见 carryScrollOffset 的注释。
+        carryScrollOffset = keep && trellisColumn != null
+                ? TrellisColumn.scrollList(trellisColumn).offsetY() : 0f;
         rowsModel.all().clear();
         tabButtons.clear();
         sampleButtons.clear();
@@ -594,8 +607,6 @@ public final class PickupCardConfigScreen extends Screen {
             sampleButtons.add(chip);
         }
 
-        itemsScroll = new NvgScroll(lo.items().x(), lo.items().y(), lo.items().w(), lo.items().h());
-        itemsScroll.scrollTo(keep ? savedScrollOffset : 0f);
 
         // 预览按页分工（2026-09-19 grill 定案）：动画页舞台、位置页整屏缩影、其余页静止特写
         preview.setMode(previewMode(), sample);
@@ -684,12 +695,9 @@ public final class PickupCardConfigScreen extends Screen {
 
     /** 逐行摆：**一行一项**（标签左、控件右），行距全界面恒 20px，放不下就滚。 */
     private void layoutRows() {
-        if (itemsScroll == null) {
-            return;
-        }
-        itemsScroll.reflow(itemsContentHeight());
-        // 逐行摆：行模型（ConfigRows）只认几何，屏幕把滚动偏移与列顶交给它
-        rowsModel.layout(layout(), itemsScroll.offset(), rowsTop(), unit());
+        // 【滚动偏移只有一处来源：滚动容器（A-16）】行模型与树读的是同一个数 ——
+        // 小节头那一行的 y 和树里那一行的 y 因此不可能各算各的。
+        rowsModel.layout(layout(), scrollOffset(), rowsTop(), unit());
     }
 
     // ------------------------------------------------------------------
@@ -734,10 +742,11 @@ public final class PickupCardConfigScreen extends Screen {
                 for (NvgWidget w : tabButtons) {
                     w.draw(surface.ctxFor(chipBoxes.get(w)));
                 }
-                // 配置项那一列：裁剪到视口里 —— 滚出去的行不许糊在标签列或预览列上。
-                if (itemsScroll != null) {
-                    itemsScroll.pushClip(ui);
-                }
+                // 配置项那一列：裁剪到视口里 —— 滚出去的标签标记与滚动条不许糊在别的列上。
+                // 【树内那一趟自己裁了（A-16）】ScrollContainer 的 clipChildren 把内容裁在容器盒子里；
+                // 这一层留着是给**树外那两笔**（标签标记、滚动条）用的，它们不归容器管。
+                ConfigLayout.Rect items = layout().items();
+                ui.pushClip(items.x(), items.y(), items.w(), items.h());
                 drawLabelMarks(ui);
                 // 【控件本体那一趟（A-10 第二步）】悬停底与控件本体都由组件树画：绘制、命中、
                 // 拖拽读的是同一个 bounds()；控件的位置也从它来（A-4 那 1.3px 由此归零）。
@@ -745,10 +754,8 @@ public final class PickupCardConfigScreen extends Screen {
                 // drawChrome（配置项的裁剪之外），现在跟树一起进了裁剪 —— 顺带修掉"滚出视口的行，
                 // 悬停带还糊在标签列上"。详见 {@code TrellisColumn.paint} 的说明。
                 TrellisColumn.paint(surface, trellisColumn());
-                if (itemsScroll != null) {
-                    drawScrollBar(ui);
-                    ui.popClip();
-                }
+                drawScrollBar(ui);
+                ui.popClip();
                 for (NvgWidget w : sampleButtons) {
                     w.draw(surface.ctxFor(chipBoxes.get(w)));
                 }
@@ -1184,15 +1191,18 @@ public final class PickupCardConfigScreen extends Screen {
 
     /** 需要滚动时才画的那条滚动条（细，不抢视线；位置一眼看出"还能往下"）。 */
     private void drawScrollBar(NvgUi ui) {
-        float content = itemsContentHeight();
-        if (!itemsScroll.scrollable(content)) {
-            return;
+        // 【三个数都从滚动容器读（A-16）】内容多高、视口多高、滚到哪 —— 全是布局算出来的那一份，
+        // 不再有"行模型算一个内容高、别处算另一个"的余地。
+        ScrollContainer list = TrellisColumn.scrollList(trellisColumn());
+        float max = list.maxOffsetY();
+        if (!(max > 0f)) {
+            return;     // 内容没比视口高：不画滚动条，也不出现"能滚一点点"的鬼现象
         }
         ConfigLayout lo = layout();
         float trackH = lo.items().h() - 8f;
+        float content = list.contentHeight();
         float barH = Math.max(12f, trackH * (lo.items().h() / content));
-        float t = ScrollMath.maxOffset(content, lo.items().h()) <= 0f ? 0f
-                : itemsScroll.offset() / ScrollMath.maxOffset(content, lo.items().h());
+        float t = list.offsetY() / max;
         float x = lo.items().right() - 3f;
         float y = lo.items().y() + 4f + t * (trackH - barH);
         // 细条厚度/圆角从调色板来（与滑条轨道是同一个角色，A-13 评审列的"细条 3u + 1.5u"）。
@@ -1327,12 +1337,19 @@ public final class PickupCardConfigScreen extends Screen {
 
     @Override
     public boolean mouseScrolled(double mouseX, double mouseY, double delta) {
-        if (itemsScroll == null) {
+        UiTree tree = trellisColumn();
+        // 【谁该滚，由容器自己声明（A-16）】事件从"指针底下那个组件"往上冒泡，滚动容器收掉它。
+        // "一格滚三行"这个手感在适配器给容器的 notchStep 里（{@code TrellisColumn.ROWS_PER_NOTCH}），
+        // 这里不再换算。
+        //
+        // 【位置为什么用列中心、不是真指针】宿主从前的行为是"滚轮在屏幕任何地方都滚这一列"，
+        // A-16 不改这个手感。要改成"指哪滚哪"，把下面两个数换成 mouseX / mouseY 就行 ——
+        // 框架那条路（{@code UiTree.scrollAt} + 冒泡）本来就支持。
+        ConfigLayout.Rect items = layout().items();
+        if (!tree.scrollAt(items.x() + items.w() / 2f, items.y() + items.h() / 2f, delta)) {
             return super.mouseScrolled(mouseX, mouseY, delta);
         }
-        // 一格滚三行（按行不按像素：跨缩放档手感一致，见 ScrollMath）
-        itemsScroll.wheel(delta, itemsContentHeight(), ConfigRows.rowStep(unit()) * 3f);
-        layoutRows();
+        layoutRows();       // 偏移变了，行模型那份 y 要跟上
         return true;
     }
 
