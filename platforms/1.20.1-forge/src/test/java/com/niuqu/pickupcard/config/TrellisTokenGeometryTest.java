@@ -4,7 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 
 import com.niuqu.pickupcard.render.nvg.ui.NvgPalette;
 import com.niuqu.pickupcard.render.nvg.ui.ConfigLayout;
-import com.niuqu.pickupcard.render.nvg.ui.NvgWidget;
+import dev.e33.trellis.ui.widget.Widget;
 import com.niuqu.pickupcard.render.nvg.ui.TrellisColumn;
 import dev.e33.trellis.tokens.Tokens;
 import dev.e33.trellis.geom.Rect;
@@ -56,7 +56,7 @@ class TrellisTokenGeometryTest {
      * <p>控件用 {@link TestWidgets.Inert} 替身 —— 这条测的是几何，真控件会去碰 Forge 配置，
      * 而这条必须在不启动游戏时也能跑。
      */
-    private static final NvgWidget[] CONTROLS = {
+    private static final Widget[] CONTROLS = {
         new TestWidgets.Inert(), null, new TestWidgets.Inert(), new TestWidgets.Inert(),
         new TestWidgets.Inert(), new TestWidgets.Inert(), new TestWidgets.Inert(), null,
         new TestWidgets.Inert(), new TestWidgets.Inert(), new TestWidgets.Inert(),

@@ -5,7 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.niuqu.pickupcard.render.nvg.ui.ConfigLayout;
 import com.niuqu.pickupcard.render.nvg.ui.NvgPalette;
-import com.niuqu.pickupcard.render.nvg.ui.NvgWidget;
+import dev.e33.trellis.ui.widget.Widget;
 import com.niuqu.pickupcard.render.nvg.ui.TrellisColumn;
 import com.niuqu.pickupcard.style.StyleModel;
 import dev.e33.trellis.geom.Rect;
@@ -29,7 +29,7 @@ import org.junit.jupiter.api.Test;
 class TrellisScrollHitTest {
 
     /** 外观页那一档的行形态（10 个控件行 + 2 个小节头），与真机那份同源。 */
-    private static final NvgWidget[] CONTROLS = {
+    private static final Widget[] CONTROLS = {
         new TestWidgets.Inert(), null, new TestWidgets.Inert(), new TestWidgets.Inert(),
         new TestWidgets.Inert(), new TestWidgets.Inert(), new TestWidgets.Inert(), null,
         new TestWidgets.Inert(), new TestWidgets.Inert(), new TestWidgets.Inert(),

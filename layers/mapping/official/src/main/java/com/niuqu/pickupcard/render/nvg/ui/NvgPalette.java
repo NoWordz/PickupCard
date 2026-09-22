@@ -1,6 +1,7 @@
 package com.niuqu.pickupcard.render.nvg.ui;
 
 import com.niuqu.pickupcard.style.StyleModel;
+import dev.e33.trellis.ui.widget.WidgetPalette;
 import dev.e33.trellis.tokens.Tokens;
 
 /**
@@ -26,7 +27,7 @@ import dev.e33.trellis.tokens.Tokens;
  * {@code NvgPaletteRoleTest} 逐条钉着：**框架新增一个颜色角色时那条测试会红**，
  * 逼人在这里当场做一次决定，而不是让它悄悄漂着。
  */
-public final class NvgPalette {
+public final class NvgPalette implements WidgetPalette {
 
     /** 界面底色（不透明，压在游戏画面上）。 */
     /**
@@ -82,7 +83,7 @@ public final class NvgPalette {
     /**
      * 圆钮的"亮面"（滑条被指/按住/聚焦时、开关处于开时）。
      *
-     * <p>【为什么它进了调色板】它原来在 {@code NvgSlider} 与 {@code NvgToggle} 里
+     * <p>【为什么它进了调色板】它原来在 {@code Slider} 与 {@code Toggle} 里
      * <b>各写了一遍</b> {@code 0xFFFFFFFF}（A-13 评审列的"钮面颜色对"）——
      * 既不在 {@code NvgPalette} 也不在 {@code Tokens}，于是"角色跟着框架走"这条规矩
      * 管不到它，改一处就漏一处。**值一个字没改**（原来就是纯白）。
@@ -114,7 +115,7 @@ public final class NvgPalette {
      * <p>【为什么是绝对 px、不乘 u】和 {@code Size.HAIRLINE} 同一个理由：一条细线看起来
      * 该多细是"看得清"的事，屏幕大一号它不该跟着变粗（那就不像细条、像边框了）。
      *
-     * <p>【为什么进调色板】A-13 评审列的"细条 3u + 圆角 1.5u"：{@code NvgSlider} 的轨道与
+     * <p>【为什么进调色板】A-13 评审列的"细条 3u + 圆角 1.5u"：{@code Slider} 的轨道与
      * 屏幕里的滚动条**各写了一遍** {@code 3f / 1.5f}。它们是同一个角色（"一条细的圆头条"），
      * 收在这里一处。**值一个字没改**。
      */
@@ -175,5 +176,89 @@ public final class NvgPalette {
         // 尺寸：token × u。u 由调用方按画布高算好传进来（见 radius 的 javadoc）。
         this.radius = Tokens.Radius.MD * u;
         this.knobRadius = Tokens.Size.KNOB_RADIUS * u;
+    }
+
+    // ------------------------------------------------------------------
+    // WidgetPalette：控件只认这 15 个角色（A-18）
+    // ------------------------------------------------------------------
+
+    /**
+     * 【为什么这里只是"把字段读出来"】角色名与字段名一一对应是有意的：<b>值仍然是这一份</b>，
+     * 框架拿到的只是一个受约束的视图（它只认这 15 个名字，别的配色它碰不到）。
+     * 接口把"控件需要什么"写成了可编译的清单 —— 少一个角色，编译就红，而不是运行期读到 0。
+     */
+    @Override
+    public int well() {
+        return well;
+    }
+
+    @Override
+    public int wellHover() {
+        return wellHover;
+    }
+
+    @Override
+    public int wellPressed() {
+        return wellPressed;
+    }
+
+    @Override
+    public int panel() {
+        return panel;
+    }
+
+    @Override
+    public int accent() {
+        return accent;
+    }
+
+    @Override
+    public int outline() {
+        return outline;
+    }
+
+    @Override
+    public int text() {
+        return text;
+    }
+
+    @Override
+    public int textDim() {
+        return textDim;
+    }
+
+    @Override
+    public int knobActive() {
+        return knobActive;
+    }
+
+    @Override
+    public int knobIdle() {
+        return knobIdle;
+    }
+
+    @Override
+    public float radius() {
+        return radius;
+    }
+
+    @Override
+    public float outlineWidth() {
+        return outlineWidth;
+    }
+
+    @Override
+    public float knobRadius() {
+        return knobRadius;
+    }
+
+    @Override
+    public float trackThickness() {
+        return trackThickness;
+    }
+
+    @Override
+    public float trackRadius() {
+        return trackRadius;
     }
 }

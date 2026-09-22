@@ -18,6 +18,9 @@ import dev.e33.trellis.ui.ScrollContainer;
 import dev.e33.trellis.ui.UiEvent;
 import dev.e33.trellis.ui.UiTree;
 import java.util.List;
+import dev.e33.trellis.ui.widget.GlyphPainter;
+import dev.e33.trellis.ui.widget.PaintCtx;
+import dev.e33.trellis.ui.widget.Widget;
 
 /**
  * <b>配置列的组件树 —— 宿主与框架之间的适配器。</b>
@@ -132,7 +135,7 @@ public final class TrellisColumn {
      *
      * <p>【控件为什么要交给树】A-10 起"指着哪一行、点到了哪一行"由树说了算
      * （见 {@link #controlRowAt}）：控件那一格是 {@link WidgetSlot}，它拿着的
-     * {@link NvgWidget} 只负责<b>行为</b>（按下/松开/悬停），几何一条都不留。
+     * {@link Widget} 只负责<b>行为</b>（按下/松开/悬停），几何一条都不留。
      *
      * @param controls   每行的控件；<b>{@code null} = 小节头</b>（只有标签、没有控件）。
      *                   宿主的小节头也是"占一行、没有控件"，这里必须照建 ——
@@ -142,7 +145,7 @@ public final class TrellisColumn {
      *                   <b>必须由宿主交进来、当成树自己的内边距用，不能在适配器里事后补</b>。
      * @param palette    这一帧的配色 —— 取它的 {@code focusRing}（见 {@link NvgPalette#focusRing}）。
      */
-    public static UiTree buildColumn(NvgWidget[] controls, float topInset, float u,
+    public static UiTree buildColumn(Widget[] controls, float topInset, float u,
                                      NvgPalette palette) {
         float pad = STEP_PAD * u;
         float gap = STEP_PAD * u;
@@ -154,7 +157,7 @@ public final class TrellisColumn {
         float rowGap = Math.round(Tokens.Space.STEP_1 * u);
 
         Component root = new Box(columnStyle(topInset, pad, rowGap), false);
-        for (NvgWidget control : controls) {
+        for (Widget control : controls) {
             Component line = new Box(Style.row().withGap(gap).withHeight(Sizing.fixed(rowH)), false);
             line.add(new Box(Style.row().withGrow(1f).withWidth(Sizing.atLeast(labelMin))
                     .withHeight(Sizing.fixed(rowH)), true));
@@ -393,7 +396,7 @@ public final class TrellisColumn {
     }
 
     /**
-     * 把<b>树里的悬停状态</b>推给控件（{@link NvgWidget#hover(boolean)}）。
+     * 把<b>树里的悬停状态</b>推给控件（{@link Widget#hover(boolean)}）。
      *
      * <p>悬停从此只有一份真相：树按 {@code pointerMove} 判，控件只是接收者。
      * 宿主那边每帧那一趟 {@code widget.mouseMoved(...)} 因此不再需要（树外的控件除外）。

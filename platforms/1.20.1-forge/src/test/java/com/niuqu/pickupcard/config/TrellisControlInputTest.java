@@ -6,7 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.niuqu.pickupcard.render.nvg.ui.NvgPalette;
 import com.niuqu.pickupcard.render.nvg.ui.ConfigLayout;
-import com.niuqu.pickupcard.render.nvg.ui.NvgWidget;
+import dev.e33.trellis.ui.widget.Widget;
 import com.niuqu.pickupcard.render.nvg.ui.TrellisColumn;
 import dev.e33.trellis.tokens.Tokens;
 import dev.e33.trellis.geom.Rect;
@@ -157,7 +157,7 @@ class TrellisControlInputTest {
 
     private UiTree column() {
         ConfigLayout lo = ConfigLayout.compute(CANVAS_W, CANVAS_H);
-        NvgWidget[] controls = {first, null, third};
+        Widget[] controls = {first, null, third};
         UiTree ui = TrellisColumn.buildColumn(controls, ConfigRows.topInset(U), U, TEST_PALETTE);
         TrellisColumn.layoutColumn(ui, lo.items(), 1f / GUI_SCALE);
         return ui;

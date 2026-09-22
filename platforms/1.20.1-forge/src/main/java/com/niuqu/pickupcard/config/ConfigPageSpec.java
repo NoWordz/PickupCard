@@ -4,11 +4,11 @@ import com.niuqu.pickupcard.layout.LayoutSettings;
 import com.niuqu.pickupcard.notice.MergeMode;
 import com.niuqu.pickupcard.notice.PickupCardSettings;
 import com.niuqu.pickupcard.render.CardStage;
-import com.niuqu.pickupcard.render.nvg.ui.NvgButton;
-import com.niuqu.pickupcard.render.nvg.ui.NvgColorChip;
-import com.niuqu.pickupcard.render.nvg.ui.NvgSlider;
-import com.niuqu.pickupcard.render.nvg.ui.NvgToggle;
-import com.niuqu.pickupcard.render.nvg.ui.NvgWidget;
+import dev.e33.trellis.ui.widget.Button;
+import dev.e33.trellis.ui.widget.ColorChip;
+import dev.e33.trellis.ui.widget.Slider;
+import dev.e33.trellis.ui.widget.Toggle;
+import dev.e33.trellis.ui.widget.Widget;
 import com.niuqu.pickupcard.style.StyleModel;
 import com.niuqu.pickupcard.style.StyleOverrides;
 import com.niuqu.pickupcard.text.CountFormat;
@@ -75,7 +75,7 @@ public final class ConfigPageSpec {
      * Minecraft 还没启动 —— 控件只有在游戏里重建界面时才真正构造。
      */
     public record Row(Page page, String label, String hint,
-                      Supplier<NvgWidget> widget, Runnable restore) {
+                      Supplier<Widget> widget, Runnable restore) {
 
         public boolean isHeader() {
             return widget == null;
@@ -208,7 +208,7 @@ public final class ConfigPageSpec {
         rows.add(new Row(Page.LAYOUT, tr("pickupcard.config.section.position"), null, null, null));
         rows.add(new Row(Page.LAYOUT, tr("pickupcard.config.row.position.name"),
                 tr("pickupcard.config.row.position.hint"),
-                () -> new NvgButton("", bridge::anchorValueText, bridge::openEditor), null));
+                () -> new Button("", bridge::anchorValueText, bridge::openEditor), null));
         rows.add(new Row(Page.LAYOUT, tr("pickupcard.config.row.align.name"),
                 tr("pickupcard.config.row.align.hint"),
                 () -> cycle(v.align, LayoutSettings.Side.values(), ConfigPageSpec::sideName),
@@ -303,24 +303,24 @@ public final class ConfigPageSpec {
         CardStage.INSTANCE.refreshStyle();
     }
 
-    private static NvgToggle bool(ForgeConfigSpec.BooleanValue config, boolean shown) {
-        return new NvgToggle("", config::get, on -> {
+    private static Toggle bool(ForgeConfigSpec.BooleanValue config, boolean shown) {
+        return new Toggle("", config::get, on -> {
             config.set(on);
             changed();
-        });
+        }, () -> I18n.get("pickupcard.config.toggle.on"), () -> I18n.get("pickupcard.config.toggle.off"));
     }
 
     /** 外观开关：配置里是 -1/0/1，界面只显示"开/关"，点了就写死 1/0。 */
-    private static NvgToggle styleSwitch(ForgeConfigSpec.IntValue config, boolean shown) {
-        return new NvgToggle("", () -> config.get() < 0 ? shown : config.get() == 1, on -> {
+    private static Toggle styleSwitch(ForgeConfigSpec.IntValue config, boolean shown) {
+        return new Toggle("", () -> config.get() < 0 ? shown : config.get() == 1, on -> {
             config.set(on ? 1 : 0);
             changed();
-        });
+        }, () -> I18n.get("pickupcard.config.toggle.on"), () -> I18n.get("pickupcard.config.toggle.off"));
     }
 
-    private static NvgSlider number(ForgeConfigSpec.IntValue config, int shown, int min, int max, int step,
+    private static Slider number(ForgeConfigSpec.IntValue config, int shown, int min, int max, int step,
                                     String suffix) {
-        return new NvgSlider("", min, max, step,
+        return new Slider("", min, max, step,
                 () -> (double) currentInt(config, shown), value -> {
             config.set((int) Math.round(value));
             changed();
@@ -328,13 +328,13 @@ public final class ConfigPageSpec {
                 value -> Integer.toString((int) Math.round(value)) + suffix);
     }
 
-    private static NvgSlider styleNumber(ForgeConfigSpec.IntValue config, int shown, int min, int max,
+    private static Slider styleNumber(ForgeConfigSpec.IntValue config, int shown, int min, int max,
                                          int step, String suffix) {
         return number(config, shown, min, max, step, suffix);
     }
 
-    private static NvgSlider decimal(ForgeConfigSpec.DoubleValue config, double shown, double min, double max) {
-        return new NvgSlider("", min, max, 1,
+    private static Slider decimal(ForgeConfigSpec.DoubleValue config, double shown, double min, double max) {
+        return new Slider("", min, max, 1,
                 () -> currentDouble(config, shown),
                 value -> {
                     config.set((double) Math.round(value));
@@ -343,8 +343,8 @@ public final class ConfigPageSpec {
                 value -> Math.round(value) + "px");
     }
 
-    private static NvgSlider time(ForgeConfigSpec.LongValue config, long shown, long min, long max, long step) {
-        return new NvgSlider("", min, max, step,
+    private static Slider time(ForgeConfigSpec.LongValue config, long shown, long min, long max, long step) {
+        return new Slider("", min, max, step,
                 () -> (double) currentLong(config, shown), value -> {
             config.set(Math.round(value));
             changed();
@@ -352,7 +352,7 @@ public final class ConfigPageSpec {
                 value -> Math.round(value) + "ms");
     }
 
-    private static NvgSlider styleTime(ForgeConfigSpec.LongValue config, long shown, long min, long max, long step) {
+    private static Slider styleTime(ForgeConfigSpec.LongValue config, long shown, long min, long max, long step) {
         return time(config, shown, min, max, step);
     }
 
@@ -361,8 +361,8 @@ public final class ConfigPageSpec {
      * <p>滑条上 0 是"自动"，1..49 是空档 —— 不夹的话界面会显示 "10%" 而生效的是 50%
      * （sanitized 会夹），那就是"设了等于没设"。
      */
-    private static NvgSlider percent(ForgeConfigSpec.IntValue config, int shown) {
-        return new NvgSlider("", LayoutSettings.AUTO_SCALE, LayoutSettings.MAX_SCALE_PERCENT, 5,
+    private static Slider percent(ForgeConfigSpec.IntValue config, int shown) {
+        return new Slider("", LayoutSettings.AUTO_SCALE, LayoutSettings.MAX_SCALE_PERCENT, 5,
                 () -> (double) config.get(),
                 value -> {
                     int pct = (int) Math.round(value);
@@ -373,9 +373,9 @@ public final class ConfigPageSpec {
                 value -> value <= LayoutSettings.AUTO_SCALE ? tr("pickupcard.config.value.auto") : Math.round(value) + "%");
     }
 
-    private static <E extends Enum<E>> NvgButton cycle(ForgeConfigSpec.EnumValue<E> config, E[] values,
+    private static <E extends Enum<E>> Button cycle(ForgeConfigSpec.EnumValue<E> config, E[] values,
                                                        Function<E, String> name) {
-        return new NvgButton("", () -> name.apply(config.get()), () -> {
+        return new Button("", () -> name.apply(config.get()), () -> {
             E current = config.get();
             int i = 0;
             for (int k = 0; k < values.length; k++) {
@@ -389,11 +389,12 @@ public final class ConfigPageSpec {
     }
 
     /** 颜色 = 色块循环；精确色值的出路在 TOML，行说明里有写。 */
-    private static NvgColorChip color(ForgeConfigSpec.ConfigValue<String> config, int effectiveArgb) {
-        return new NvgColorChip("", () -> effectiveArgb(config, effectiveArgb), config::get, text -> {
+    private static ColorChip color(ForgeConfigSpec.ConfigValue<String> config, int effectiveArgb) {
+        return new ColorChip("", () -> effectiveArgb(config, effectiveArgb), config::get, text -> {
             config.set(text);
             changed();
-        });
+        }, () -> I18n.get("pickupcard.config.value.color.theme"),
+                () -> I18n.get("pickupcard.config.value.color.invalid"));
     }
 
     /** 色块画的生效色：配置里解析得动就用解析值（含手写 hex），否则回主题生效值。 */

@@ -6,7 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.niuqu.pickupcard.render.nvg.ui.ConfigLayout;
 import com.niuqu.pickupcard.render.nvg.ui.NvgPalette;
-import com.niuqu.pickupcard.render.nvg.ui.NvgWidget;
+import dev.e33.trellis.ui.widget.Widget;
 import com.niuqu.pickupcard.render.nvg.ui.TrellisColumn;
 import com.niuqu.pickupcard.style.StyleModel;
 import dev.e33.trellis.geom.Rect;
@@ -90,7 +90,7 @@ class TrellisKeyRepeatTest {
 
     private UiTree column() {
         ConfigLayout lo = ConfigLayout.compute(CANVAS_W, CANVAS_H);
-        NvgWidget[] controls = {new TestWidgets.Inert(), new TestWidgets.Inert()};
+        Widget[] controls = {new TestWidgets.Inert(), new TestWidgets.Inert()};
         UiTree ui = TrellisColumn.buildColumn(controls, ConfigRows.topInset(U), U, TEST_PALETTE);
         TrellisColumn.layoutColumn(ui, lo.items(), 1f / GUI_SCALE);
         return ui;

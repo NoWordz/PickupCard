@@ -1,7 +1,7 @@
 package com.niuqu.pickupcard.config;
 
-import com.niuqu.pickupcard.render.nvg.ui.NvgWidget;
-import com.niuqu.pickupcard.render.nvg.ui.PaintCtx;
+import dev.e33.trellis.ui.widget.Widget;
+import dev.e33.trellis.ui.widget.PaintCtx;
 import dev.e33.trellis.geom.Rect;
 
 /**
@@ -20,7 +20,7 @@ final class TestWidgets {
     }
 
     /** 只占一格：不画、不反应。 */
-    static final class Inert extends NvgWidget {
+    static final class Inert extends Widget {
         Inert() {
             super("inert");
         }
@@ -31,7 +31,7 @@ final class TestWidgets {
     }
 
     /** 记下收到的输入（按下 / 松开 / 激活 / 悬停）。 */
-    static final class Recorder extends NvgWidget {
+    static final class Recorder extends Widget {
         int presses;
         int releases;
         int activates;

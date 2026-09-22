@@ -1,9 +1,9 @@
 package com.niuqu.pickupcard.config;
 
 import com.niuqu.pickupcard.filter.RuleListEdit;
-import com.niuqu.pickupcard.render.nvg.ui.NvgButton;
-import com.niuqu.pickupcard.render.nvg.ui.NvgTextField;
-import com.niuqu.pickupcard.render.nvg.ui.NvgWidget;
+import dev.e33.trellis.ui.widget.Button;
+import dev.e33.trellis.ui.widget.TextField;
+import dev.e33.trellis.ui.widget.Widget;
 import net.minecraft.client.resources.language.I18n;
 import net.minecraftforge.common.ForgeConfigSpec;
 
@@ -28,7 +28,7 @@ public final class FilterPageBuilder {
     /** 界面要替本类做的三件事：摆一行、说一句话、请求重建。 */
     public interface Host {
 
-        void cell(String label, NvgWidget widget, String hint);
+        void cell(String label, Widget widget, String hint);
 
         /** 加规则被拒时说的一句话，短时间内在底部那行顶掉悬停说明。 */
         void rejectNote(String message);
@@ -68,23 +68,23 @@ public final class FilterPageBuilder {
                                    String what, String inputHint, Host host) {
         List<String> rules = rules(config);
         // 表头这一行：标签是名单名，右边那颗只读钮报"现在几条"——只读控件的底更暗、不画描边，
-        // 一眼能看出它点不动（见 NvgButton 的 action == null）
+        // 一眼能看出它点不动（见 Button 的 action == null）
         // 【单复数分键】英文 "1 rule" / "2 rules" 是两个词形；MC 1.20.1 的语言系统没有复数
         // 支持，一个 "%s rules" 键在一张名单只剩一条时就是语法错误（用户截图里的 "1 rules"）。
         // 中文两个键同形，key 集仍两端一致（LangKeyConsistencyTest 钉着）。
-        host.cell(title, new NvgButton("", () -> I18n.get(rules.size() == 1
+        host.cell(title, new Button("", () -> I18n.get(rules.size() == 1
                 ? "pickupcard.config.filter.count.one" : "pickupcard.config.filter.count",
                 rules.size()), null), what);
         for (int i = 0; i < rules.size(); i++) {
             String rule = rules.get(i);
             int index = i;
-            host.cell(rule, new NvgButton("", () -> I18n.get("pickupcard.config.filter.delete"), () -> writeRules(config,
+            host.cell(rule, new Button("", () -> I18n.get("pickupcard.config.filter.delete"), () -> writeRules(config,
                     RuleListEdit.remove(rules(config), index), host)),
                     // 【为什么把规则原文放在最前】标签那一格只有几十像素宽，长规则在屏上就是
                     // "minecraft:cobb" —— 底部这行是唯一能看全的地方
                     I18n.get("pickupcard.config.filter.removeHint", rule, title));
         }
-        host.cell(I18n.get("pickupcard.config.filter.addRow"), NvgTextField
+        host.cell(I18n.get("pickupcard.config.filter.addRow"), TextField
                 .rule("", () -> "", RuleListEdit.MAX_RULE_LENGTH, text -> addRule(config, title, text, host))
                 .placeholder(I18n.get("pickupcard.config.filter.placeholder")), inputHint);
     }

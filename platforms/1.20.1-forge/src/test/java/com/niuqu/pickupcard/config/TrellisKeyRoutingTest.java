@@ -8,8 +8,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.niuqu.pickupcard.render.nvg.ui.NvgPalette;
 import com.niuqu.pickupcard.render.nvg.ui.ConfigLayout;
-import com.niuqu.pickupcard.render.nvg.ui.NvgWidget;
-import com.niuqu.pickupcard.render.nvg.ui.PaintCtx;
+import dev.e33.trellis.ui.widget.Widget;
+import dev.e33.trellis.ui.widget.PaintCtx;
 import com.niuqu.pickupcard.render.nvg.ui.TrellisColumn;
 import dev.e33.trellis.tokens.Tokens;
 import dev.e33.trellis.geom.Rect;
@@ -24,7 +24,7 @@ import org.junit.jupiter.api.Test;
  *
  * <p>【这一条在钉什么】键盘不再由宿主每帧遍历所有控件兜底转发：键只发给
  * <b>树里那个焦点组件</b>（{@code UiTree.keyDown}），控件收到的焦点由树同步
- * （{@link NvgWidget#focusChanged(boolean)}）。于是"谁能收到键"与"谁拿着焦点"是同一次决定 ——
+ * （{@link Widget#focusChanged(boolean)}）。于是"谁能收到键"与"谁拿着焦点"是同一次决定 ——
  * 从前控件自己那份 {@code focused} 与树里那份可以不一样，而"不一样"的表现是
  * "光标亮在这一行、字打到那一行去"这种只有肉眼能发现的错。
  *
@@ -236,14 +236,14 @@ class TrellisKeyRoutingTest {
 
     private UiTree column() {
         ConfigLayout lo = ConfigLayout.compute(CANVAS_W, CANVAS_H);
-        NvgWidget[] controls = {first, null, third};
+        Widget[] controls = {first, null, third};
         UiTree ui = TrellisColumn.buildColumn(controls, ConfigRows.topInset(U), U, TEST_PALETTE);
         TrellisColumn.layoutColumn(ui, lo.items(), 1f / GUI_SCALE);
         return ui;
     }
 
     /** 记下收到的键、字符与焦点通知（不画、不碰配置）。 */
-    private static final class KeyRecorder extends NvgWidget {
+    private static final class KeyRecorder extends Widget {
 
         private final List<String> focusLog;
         /** 收到的键/字符要不要算"吃掉"（文本框不在编辑态时返回 false）。 */

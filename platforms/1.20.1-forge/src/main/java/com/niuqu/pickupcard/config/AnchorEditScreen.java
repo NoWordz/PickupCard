@@ -10,7 +10,7 @@ import com.niuqu.pickupcard.render.CardSlot;
 import com.niuqu.pickupcard.render.CardStage;
 import com.niuqu.pickupcard.render.CardView;
 import com.niuqu.pickupcard.render.nvg.NvgCardPainter;
-import com.niuqu.pickupcard.render.nvg.ui.NvgButton;
+import dev.e33.trellis.ui.widget.Button;
 import com.niuqu.pickupcard.render.nvg.ui.NvgPalette;
 import com.niuqu.pickupcard.render.nvg.ui.NvgUi;
 import com.niuqu.pickupcard.render.nvg.ui.WidgetSlot;
@@ -79,8 +79,8 @@ public final class AnchorEditScreen extends Screen {
     private float grabW;
 
     private long now;
-    private NvgButton saveButton;
-    private NvgButton resetButton;
+    private Button saveButton;
+    private Button resetButton;
 
     private NvgPalette palette;
     private final NvgCardPainter painter = new NvgCardPainter();
@@ -117,9 +117,9 @@ public final class AnchorEditScreen extends Screen {
         CardStage.INSTANCE.setSuspended(true);
         palette = NvgPalette.of(CardStage.INSTANCE.previewStyle(),
                 dev.e33.trellis.tokens.Units.u(this.height));
-        saveButton = new NvgButton(I18n.get("pickupcard.anchor.done"), () -> I18n.get("pickupcard.anchor.done"),
+        saveButton = new Button(I18n.get("pickupcard.anchor.done"), () -> I18n.get("pickupcard.anchor.done"),
                 this::saveAndClose);
-        resetButton = new NvgButton(I18n.get("pickupcard.anchor.reset"),
+        resetButton = new Button(I18n.get("pickupcard.anchor.reset"),
                 () -> I18n.get(isAuto() ? "pickupcard.anchor.resetDone" : "pickupcard.anchor.reset"), this::resetToAuto);
         buildTree();
     }

@@ -5,7 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.niuqu.pickupcard.render.nvg.ui.NvgPalette;
 import com.niuqu.pickupcard.render.nvg.ui.ConfigLayout;
-import com.niuqu.pickupcard.render.nvg.ui.NvgWidget;
+import dev.e33.trellis.ui.widget.Widget;
 import com.niuqu.pickupcard.render.nvg.ui.TrellisColumn;
 import dev.e33.trellis.tokens.Tokens;
 import dev.e33.trellis.tokens.Units;
@@ -38,7 +38,7 @@ class TrellisHitParityTest {
      * <p>控件用 {@link TestWidgets.Inert} 替身：这一条测的是<b>几何</b>，
      * 真控件会去碰 Forge 配置，而这条必须在没启动游戏时也能跑。
      */
-    private static final NvgWidget[] CONTROLS = {
+    private static final Widget[] CONTROLS = {
         new TestWidgets.Inert(), null, new TestWidgets.Inert(), new TestWidgets.Inert(),
         new TestWidgets.Inert(), new TestWidgets.Inert(), new TestWidgets.Inert(), null,
         new TestWidgets.Inert(), new TestWidgets.Inert(), new TestWidgets.Inert(),

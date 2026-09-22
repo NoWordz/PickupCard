@@ -5,6 +5,7 @@ import dev.e33.trellis.layout.Style;
 import dev.e33.trellis.render.Canvas;
 import dev.e33.trellis.ui.Component;
 import dev.e33.trellis.ui.UiEvent;
+import dev.e33.trellis.ui.widget.Widget;
 
 /**
  * 一格里那颗宿主控件：<b>几何归树（{@code bounds()} 就是这一格），行为仍归宿主控件</b>。
@@ -26,12 +27,12 @@ import dev.e33.trellis.ui.UiEvent;
  */
 public final class WidgetSlot extends Component {
 
-    private final NvgWidget widget;
+    private final Widget widget;
 
     /** 这一帧的表面（{@link #attachFrame} 每帧灌一次；null = 没接上，绘制时当场抛）。 */
     private TrellisColumn.Frame frame;
 
-    public WidgetSlot(NvgWidget widget, Style style, NvgPalette palette) {
+    public WidgetSlot(Widget widget, Style style, NvgPalette palette) {
         this.widget = widget;
         style(style);
         focusable(true);
@@ -42,7 +43,7 @@ public final class WidgetSlot extends Component {
     }
 
     /** 这一格托着的控件。 */
-    public NvgWidget widget() {
+    public Widget widget() {
         return widget;
     }
 

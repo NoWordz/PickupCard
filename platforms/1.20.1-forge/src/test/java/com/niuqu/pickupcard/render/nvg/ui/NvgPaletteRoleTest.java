@@ -15,6 +15,8 @@ import java.util.Set;
 import java.util.TreeSet;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import dev.e33.trellis.ui.widget.Button;
+import dev.e33.trellis.ui.widget.ColorChip;
 
 /**
  * 「两套值、一套角色」的离线钉子（A-13）。
@@ -56,7 +58,7 @@ class NvgPaletteRoleTest {
     static {
         UNUSED_ROLES.put("BORDER_STRONG", "界面没有「强描边」这一档：现在只有一条 1px 的边");
         UNUSED_ROLES.put("TEXT_DISABLED", "「灰掉不可点」那一档**已经存在**，只是借的是 TEXT_SECONDARY"
-                + "（NvgButton 的 action==null、NvgColorChip 的无效色块）—— 缺的是专属色，不是缺那一档");
+                + "（Button 的 action==null、ColorChip 的无效色块）—— 缺的是专属色，不是缺那一档");
         UNUSED_ROLES.put("DANGER", "危险色还没上：删除按钮现在用的是普通文字色");
     }
 

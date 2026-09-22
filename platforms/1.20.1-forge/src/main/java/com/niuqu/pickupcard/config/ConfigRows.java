@@ -1,7 +1,7 @@
 package com.niuqu.pickupcard.config;
 
 import com.niuqu.pickupcard.render.nvg.ui.ConfigLayout;
-import com.niuqu.pickupcard.render.nvg.ui.NvgWidget;
+import dev.e33.trellis.ui.widget.Widget;
 import com.niuqu.pickupcard.render.nvg.ui.Tween;
 import dev.e33.trellis.tokens.Tokens;
 
@@ -62,7 +62,7 @@ final class ConfigRows {
     private final List<Row> list = new ArrayList<>();
 
     /** 一行选项（标签 + 控件 + 悬停说明）。 */
-    void cell(String label, NvgWidget widget, String hint) {
+    void cell(String label, Widget widget, String hint) {
         list.add(new Row(label, widget, hint));
     }
 
@@ -120,13 +120,13 @@ final class ConfigRows {
      * <p>【为什么不是 record】悬停进度是这一行的<b>状态</b>，每行一份；record 装不下。 */
     static final class Row {
         final String label;
-        final NvgWidget widget;
+        final Widget widget;
         final String hint;
         final Tween hover = Tween.at(0f, 0L);
         /** 这一帧的行顶 y（小节头画字用；选项行以控件位置为准）。 */
         float yAt;
 
-        Row(String label, NvgWidget widget, String hint) {
+        Row(String label, Widget widget, String hint) {
             this.label = label;
             this.widget = widget;
             this.hint = hint;
@@ -140,7 +140,7 @@ final class ConfigRows {
             return label;
         }
 
-        NvgWidget widget() {
+        Widget widget() {
             return widget;
         }
 

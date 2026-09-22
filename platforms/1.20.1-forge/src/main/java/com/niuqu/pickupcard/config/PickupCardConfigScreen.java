@@ -5,7 +5,7 @@ import com.niuqu.pickupcard.layout.HudSafeZone;
 import com.niuqu.pickupcard.layout.LayoutSettings;
 import com.niuqu.pickupcard.notice.PickupCardSettings;
 import com.niuqu.pickupcard.render.CardStage;
-import com.niuqu.pickupcard.render.nvg.ui.NvgButton;
+import dev.e33.trellis.ui.widget.Button;
 import com.niuqu.pickupcard.render.nvg.ui.NvgPalette;
 import com.niuqu.pickupcard.render.nvg.ui.ConfigLayout;
 import com.niuqu.pickupcard.render.nvg.ui.NvgUi;
@@ -19,11 +19,11 @@ import dev.e33.trellis.text.TextMeasurer;
 import dev.e33.trellis.tokens.Units;
 import dev.e33.trellis.ui.ScrollContainer;
 import dev.e33.trellis.ui.UiTree;
-import com.niuqu.pickupcard.render.nvg.ui.NvgWidget;
+import dev.e33.trellis.ui.widget.Widget;
 import com.niuqu.pickupcard.render.nvg.ui.McGlyphPainter;
-import com.niuqu.pickupcard.render.nvg.ui.PaintCtx;
+import dev.e33.trellis.ui.widget.PaintCtx;
 import com.niuqu.pickupcard.render.nvg.ui.Tween;
-import com.niuqu.pickupcard.render.nvg.ui.NvgTextField;
+import dev.e33.trellis.ui.widget.TextField;
 import com.niuqu.pickupcard.style.StyleModel;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.resources.language.I18n;
@@ -38,6 +38,7 @@ import java.util.IdentityHashMap;
 import java.util.Map;
 import java.util.function.BooleanSupplier;
 import java.util.function.Supplier;
+import dev.e33.trellis.ui.widget.WidgetPalette;
 
 /**
  * 游戏内配置界面：<b>左侧一列分类，右侧实时预览 + 选项行</b>（同一行里左边标签、右边控件）。
@@ -127,7 +128,7 @@ public final class PickupCardConfigScreen extends Screen {
     /** 这一帧画过几个控件。 */
     public int paintedCount() {
         int painted = 0;
-        for (NvgWidget w : widgets()) {
+        for (Widget w : widgets()) {
             if (w.paintedIn(now)) {
                 painted++;
             }
@@ -259,7 +260,7 @@ public final class PickupCardConfigScreen extends Screen {
      */
     private UiTree trellisColumn() {
         List<ConfigRows.Row> rows = rowsModel.all();
-        NvgWidget[] controls = new NvgWidget[rows.size()];
+        Widget[] controls = new Widget[rows.size()];
         int present = 0;
         for (int i = 0; i < rows.size(); i++) {
             controls[i] = rows.get(i).isHeader() ? null : rows.get(i).widget();
@@ -402,14 +403,14 @@ public final class PickupCardConfigScreen extends Screen {
         int row = TrellisColumn.focusedControlRow(tree);
         List<ConfigRows.Row> rows = rowsModel.all();
         ConfigRows.Row line = row >= 0 && row < rows.size() ? rows.get(row) : null;
-        NvgWidget w = line == null ? null : line.widget();
+        Widget w = line == null ? null : line.widget();
         // 行内的文本框标签是空串（过滤页那三条规则的输入框），所以名字回落到行标签 ——
         // 读日志的人要的是"哪一行"，不是"控件自己叫什么"。
         String name = w == null ? "-" : (w.label().isEmpty() ? line.label() : w.label());
-        boolean editing = w instanceof NvgTextField field && field.editing();
+        boolean editing = w instanceof TextField field && field.editing();
         return String.format(java.util.Locale.ROOT, "焦点行=%d 焦点控件=%s 值=%s 编辑中=%s 草稿=%s",
                 row, name, w == null ? "-" : w.value(), editing,
-                editing ? String.valueOf(((NvgTextField) w).draft()) : "-");
+                editing ? String.valueOf(((TextField) w).draft()) : "-");
     }
 
     /**
@@ -427,7 +428,7 @@ public final class PickupCardConfigScreen extends Screen {
      * 所以它就是"这一下被判成重复了没有"，而且是从框架自己嘴里说出来的 —— 宿主没有第二份账。
      *
      * <p>【"被吃=false"是对的】方向键在这一页没有任何控件接（`WidgetSlot` 的 KEY_DOWN 走
-     * `NvgWidget.keyPressed`，默认返回 false），所以事件会照常落回 MC 的默认路径。探针要验的
+     * `Widget.keyPressed`，默认返回 false），所以事件会照常落回 MC 的默认路径。探针要验的
      * 是记账，不是"谁吃掉了键"。
      */
     public String keyRepeatForHarness() {
@@ -477,14 +478,14 @@ public final class PickupCardConfigScreen extends Screen {
     private List<ConfigPageSpec.Row> specRows = List.of();
     /** 一行 = 一个标签 + 一个自绘控件 + 一句悬停提示 + 这一行的悬停进度。 */
     private final ConfigRows rowsModel = new ConfigRows();
-    private final List<NvgWidget> tabButtons = new ArrayList<>();
+    private final List<Widget> tabButtons = new ArrayList<>();
     /** 预览底下那排「切样例」按钮（预览收起时它们是零矩形，点不到）。 */
-    private final List<NvgWidget> sampleButtons = new ArrayList<>();
+    private final List<Widget> sampleButtons = new ArrayList<>();
     /**
      * <b>树外控件的几何</b>（标签列、切样例按钮）：它们不在树的几何里，由排布者自己拿着 ——
      * 每个控件仍然只有<b>一个</b>出处（控件自己那份 {@code x/y/w/h} 已随 A-10 第二步删掉）。
      */
-    private final Map<NvgWidget, Rect> chipBoxes = new IdentityHashMap<>();
+    private final Map<Widget, Rect> chipBoxes = new IdentityHashMap<>();
     private NvgPalette palette = NvgPalette.dark(StyleModel.Accents.defaults(),
             Units.u(this.height));
     /** 控件里点出来的"切换分类/重建"请求：不在事件遍历中途重建列表。 */
@@ -523,7 +524,7 @@ public final class PickupCardConfigScreen extends Screen {
     /** 过滤页的回宿：摆行、把拒绝原因说到底部那行、请求同页重建。 */
     private final FilterPageBuilder.Host filterHost = new FilterPageBuilder.Host() {
         @Override
-        public void cell(String label, NvgWidget widget, String hint) {
+        public void cell(String label, Widget widget, String hint) {
             PickupCardConfigScreen.this.cell(label, widget, hint);
         }
 
@@ -545,7 +546,7 @@ public final class PickupCardConfigScreen extends Screen {
      * <p>【为什么不再用 "▸ " 前缀】四个标签都挂前缀时，字宽被吃掉一大截，而且状态是
      * "文字里的一个符号"这件事本身就不该由文字承担 —— 底色和强调条说这件事更快。
      */
-    private static final class Chip extends NvgWidget {
+    private static final class Chip extends Widget {
 
         private final Supplier<String> text;
         private final BooleanSupplier selected;
@@ -580,17 +581,17 @@ public final class PickupCardConfigScreen extends Screen {
         /** 几何从 {@code ctx.box()} 来：树外控件的盒子由排布者交进来（{@code chipBoxes}）。 */
         @Override
         protected void paint(PaintCtx ctx) {
-            NvgPalette p = ctx.palette();
+            WidgetPalette p = ctx.palette();
             float w = ctx.width();
             float h = ctx.height();
             boolean on = selected.getAsBoolean();
-            ctx.well(0f, 0f, w, h, on ? p.wellHover : wellColor(p));
+            ctx.well(0f, 0f, w, h, on ? p.wellHover() : wellColor(p));
             if (on) {
                 // 选中那颗描一圈强调色：底色一档差别在深色主题下太细，看不清"我在哪一页"
-                ctx.strokeRoundRect(0f, 0f, w, h, p.radius, NvgUi.fade(p.accent, 0.5f));
+                ctx.strokeRoundRect(0f, 0f, w, h, p.radius(), NvgUi.fade(p.accent(), 0.5f));
             }
             float ty = (h - ctx.lineHeight()) / 2f;
-            int color = on ? p.text : p.textDim;
+            int color = on ? p.text() : p.textDim();
             if (leftAligned) {
                 // 【缩字不穿列】页签标签左对齐，英文页名（"Placement & stacking"）比中文
                 // 宽一截，直画会穿出胶囊叠到配置列小节头上（2026-09-19 英文截图抓到）
@@ -760,7 +761,7 @@ public final class PickupCardConfigScreen extends Screen {
             }
         }
         cell(I18n.get("pickupcard.config.button.restore"),
-                new NvgButton("", () -> I18n.get("pickupcard.config.button.restore.short"),
+                new Button("", () -> I18n.get("pickupcard.config.button.restore.short"),
                         this::restorePageDefaults),
                 ConfigPageSpec.restoreHint(restored, n));
     }
@@ -786,7 +787,7 @@ public final class PickupCardConfigScreen extends Screen {
         pendingRebuild = true;      // 行没变但值全变：重建让控件显示活配置
     }
 
-    private void cell(String label, NvgWidget widget, String hint) {
+    private void cell(String label, Widget widget, String hint) {
         rowsModel.cell(label, widget, hint);
     }
 
@@ -829,7 +830,7 @@ public final class PickupCardConfigScreen extends Screen {
         // 小节头那根刺和文本样本会按旧偏移差一格格子（评审指出的 S3-9）。
         updateTrellisColumn();
         driveAnimations();
-        for (NvgWidget w : chips()) {
+        for (Widget w : chips()) {
             // 树外的控件（标签列、切样例按钮）：命中还是自己判 —— 它们不在树的几何里
             Rect box = chipBoxes.get(w);
             w.hover(box != null && box.contains(mouseX, mouseY));
@@ -849,7 +850,7 @@ public final class PickupCardConfigScreen extends Screen {
                 drawTabAccent(ui);
                 // 【标签列必须自己画一遍】它不参与配置列的裁剪与换页淡入（换页时它不动）；
                 // 几何由排布者给（{@code chipBoxes}）。
-                for (NvgWidget w : tabButtons) {
+                for (Widget w : tabButtons) {
                     w.draw(surface.ctxFor(chipBoxes.get(w)));
                 }
                 // 配置项那一列：裁剪到视口里 —— 滚出去的标签标记与滚动条不许糊在别的列上。
@@ -866,7 +867,7 @@ public final class PickupCardConfigScreen extends Screen {
                 TrellisColumn.paint(surface, trellisColumn());
                 drawScrollBar(ui);
                 ui.popClip();
-                for (NvgWidget w : sampleButtons) {
+                for (Widget w : sampleButtons) {
                     w.draw(surface.ctxFor(chipBoxes.get(w)));
                 }
             }
@@ -1020,7 +1021,7 @@ public final class PickupCardConfigScreen extends Screen {
         // （MC 不替屏幕补发 keyReleased）。这行让"还按着"的账在界面消失前结平，并给每一个
         // 还按着的键补一次 KEY_UP。
         // 【别把补发说成"控件已经收尾了"】KEY_UP 今天在整个宿主里<b>没有消费者</b>
-        // （`WidgetSlot` 有意不接、`NvgWidget` 也没有 keyReleased）——
+        // （`WidgetSlot` 有意不接、`Widget` 也没有 keyReleased）——
         // 补发的实际效果只有"清账"这一件事，控件什么都不知道。等真有按住态控件时再回来改这句话。
         // 【为什么要判 null】trellisColumn() 是惰性的：一帧都没渲染就被换屏时，这里会凭空建
         // 一整列再扔掉（且建树若抛异常就抛在 Minecraft.setScreen 里）。没有树 = 没有账。
@@ -1082,21 +1083,21 @@ public final class PickupCardConfigScreen extends Screen {
         // 标题靠左、副标题跟同一个左缘（用户要求标题不居中；对齐 MARGIN 与标签列同一起点）。
         // 状态行钉在标题行右端 —— 总开关是"整体生效没生效"的唯一真源，藏进页里就得翻页才知道。
         ui.text(this.title.getString(), ConfigLayout.MARGIN, 6f, 0xFFFFFFFF);
-        ui.text(I18n.get("pickupcard.config.subtitle"), ConfigLayout.MARGIN, 17f, p.textDim);
+        ui.text(I18n.get("pickupcard.config.subtitle"), ConfigLayout.MARGIN, 17f, p.textDim());
         ui.textRight(status(), this.width - PAD - 4f, 6f,
-                eff.enabled() ? p.accent : p.textDim);
+                eff.enabled() ? p.accent() : p.textDim());
         // 标题和内容之间那条线：没有它，标题行和第一行标签会连成一片
         ui.fillRoundRect(ConfigLayout.MARGIN, ConfigLayout.TOP - 5f,
                 Math.max(0f, this.width - ConfigLayout.MARGIN * 2f), 1f, 0.5f,
-                NvgUi.fade(p.outline, 0.6f));
+                NvgUi.fade(p.outline(), 0.6f));
         // 标签那一列：列排时是一竖条底，顶排时是一横条底
         ui.fillGradient(lo.tabs().x() - 2f, lo.tabs().y() - 2f, lo.tabs().w() + 4f,
-                lo.tabs().h() + 4f, p.panel, 0x80202836);
+                lo.tabs().h() + 4f, p.panel(), 0x80202836);
         // 预览列：面板底 + 标题（收掉时这两样都不画）
         if (lo.previewVisible()) {
-            ui.text(I18n.get("pickupcard.config.preview"), lo.preview().x(), lo.preview().y(), p.textDim);
+            ui.text(I18n.get("pickupcard.config.preview"), lo.preview().x(), lo.preview().y(), p.textDim());
             ui.fillRoundRect(lo.preview().x() - 2f, lo.preview().y() + 10f,
-                    lo.preview().w() + 4f, Math.max(0f, lo.preview().h() - 12f), p.radius,
+                    lo.preview().w() + 4f, Math.max(0f, lo.preview().h() - 12f), p.radius(),
                     0x40202A38);
         } else {
             // 「预览被收掉了」的提示挪到 drawHint 那一拍用 raw gui 画：在这里画的话，
@@ -1145,10 +1146,10 @@ public final class PickupCardConfigScreen extends Screen {
         float y = a.y() + (b.y() - a.y()) * t;
         if (lo.tabsOnTop()) {
             ui.fillRoundRect(x + 2f, y + a.h() - 1.5f, Math.max(0f, a.w() - 4f), 2f, 1f,
-                    ui.palette.accent);
+                    ui.palette.accent());
         } else {
             ui.fillRoundRect(x - 2.5f, y + 2f, 2.5f, Math.max(0f, a.h() - 4f), 1.25f,
-                    ui.palette.accent);
+                    ui.palette.accent());
         }
     }
 
@@ -1164,7 +1165,7 @@ public final class PickupCardConfigScreen extends Screen {
                 continue;
             }
             ui.fillRoundRect(labelX() - 3f, row.yAt + 5f, 2f, 8f, 1f,
-                    NvgUi.fade(ui.palette.accent, 0.45f));
+                    NvgUi.fade(ui.palette.accent(), 0.45f));
         }
     }
 
@@ -1212,8 +1213,8 @@ public final class PickupCardConfigScreen extends Screen {
                         box, McFont.EM, LABEL_MIN_FONT, LABEL_ELLIPSIS);
                 // 悬停时标签由暗到亮：它、那条高亮带、底部那句说明指的是同一行
                 int argb = row.isHeader()
-                        ? palette.textDim
-                        : NvgUi.mix(palette.textDim, palette.text, row.hover.at(now));
+                        ? palette.textDim()
+                        : NvgUi.mix(palette.textDim(), palette.text(), row.hover.at(now));
                 drawLabel(gui, fit, argb);
                 if (log != null) {
                     if (log.length() > 0) {
@@ -1293,7 +1294,7 @@ public final class PickupCardConfigScreen extends Screen {
             }
         }
         if (hint == null) {
-            for (NvgWidget chip : chips()) {
+            for (Widget chip : chips()) {
                 Rect box = chipBoxes.get(chip);
                 if (chip instanceof Chip c && c.hint != null && box != null
                         && box.contains((float) mouseX, (float) mouseY)) {
@@ -1328,7 +1329,7 @@ public final class PickupCardConfigScreen extends Screen {
         gui.fill(Math.round(ConfigLayout.MARGIN) - 5, this.height - 43,
                 Math.round(ConfigLayout.MARGIN) + bandW + 5, this.height - 28, 0xF010141C);
         gui.drawString(this.font, shown, Math.round(ConfigLayout.MARGIN), this.height - 40,
-                palette.textDim);
+                palette.textDim());
         // 右端那句「预览被收掉了」：只在预览隐藏时有，与左边的说明同一拍、同一套垫底。
         // 从前它在 drawChrome（NanoVG 拍）里画，垫底会被控件底盖住、字却排队到 close()，
         // 底字分家——两样都挪到这里用 raw gui 画，先后顺序就再也错不了。
@@ -1338,7 +1339,7 @@ public final class PickupCardConfigScreen extends Screen {
             int cw = this.font.width(collapsed);
             int right = Math.round(lo.items().right());
             gui.fill(right - cw - 4, this.height - 42, right + 4, this.height - 29, 0x9010141C);
-            gui.drawString(this.font, collapsed, right - cw, this.height - 40, palette.textDim);
+            gui.drawString(this.font, collapsed, right - cw, this.height - 40, palette.textDim());
         }
     }
 
@@ -1359,8 +1360,8 @@ public final class PickupCardConfigScreen extends Screen {
         float x = lo.items().right() - 3f;
         float y = lo.items().y() + 4f + t * (trackH - barH);
         // 细条厚度/圆角从调色板来（与滑条轨道是同一个角色，A-13 评审列的"细条 3u + 1.5u"）。
-        ui.fillRoundRect(x, y, ui.palette.trackThickness, barH, ui.palette.trackRadius,
-                ui.palette.textDim);
+        ui.fillRoundRect(x, y, ui.palette.trackThickness(), barH, ui.palette.trackRadius(),
+                ui.palette.textDim());
     }
 
     // ------------------------------------------------------------------
@@ -1393,8 +1394,8 @@ public final class PickupCardConfigScreen extends Screen {
     // ------------------------------------------------------------------
 
     /** 所有自绘控件：事件遍历、悬停刷新、重建时都用这一份（小节头没有控件，不在其中）。 */
-    private List<NvgWidget> widgets() {
-        List<NvgWidget> all = chips();
+    private List<Widget> widgets() {
+        List<Widget> all = chips();
         for (ConfigRows.Row row : rowsModel.all()) {
             if (!row.isHeader()) {
                 all.add(row.widget());
@@ -1404,8 +1405,8 @@ public final class PickupCardConfigScreen extends Screen {
     }
 
     /** 分段按钮（标签 + 样例）：底部那句说明与点击都要能找到它们。 */
-    private List<NvgWidget> chips() {
-        List<NvgWidget> all = new ArrayList<>(tabButtons);
+    private List<Widget> chips() {
+        List<Widget> all = new ArrayList<>(tabButtons);
         all.addAll(sampleButtons);
         return all;
     }
@@ -1439,7 +1440,7 @@ public final class PickupCardConfigScreen extends Screen {
         if (onControl) {
             return true;        // 树已经把它按下去了，控件也收到 press 了
         }
-        for (NvgWidget w : chips()) {
+        for (Widget w : chips()) {
             // 树外的控件（标签列、切样例按钮）：命中还是自己判 —— 它们不在树的几何里，
             // 几何来自排布者那一份（{@code chipBoxes}），按下/松开/悬停用的是同一个矩形。
             Rect box = chipBoxes.get(w);
@@ -1459,7 +1460,7 @@ public final class PickupCardConfigScreen extends Screen {
         // 行内控件：树把抬起<b>发给按下的那一个</b>（指针捕获）—— 拖到格子外面松手，
         // 控件也能把手感收回去；落点还在格子里才算一次点击（见 WidgetSlot）。
         trellisColumn().pointerUp((float) mouseX, (float) mouseY);
-        for (NvgWidget w : chips()) {
+        for (Widget w : chips()) {
             // 树外的控件：命中还是自己判，用的是排布者那一份几何（见 mouseClicked）
             Rect box = chipBoxes.get(w);
             if (box != null) {
@@ -1576,8 +1577,8 @@ public final class PickupCardConfigScreen extends Screen {
     // ------------------------------------------------------------------
 
     /** 按选项名找控件（含标签与样例按钮）。找不到返回 null —— 调用方要报，不能静默点空。 */
-    public NvgWidget widgetFor(String label) {
-        for (NvgWidget b : chips()) {
+    public Widget widgetFor(String label) {
+        for (Widget b : chips()) {
             if (b.label().equals(label)) {
                 return b;
             }
@@ -1592,7 +1593,7 @@ public final class PickupCardConfigScreen extends Screen {
 
     /** 走真实事件路径点一下某个选项（按下 → 松开），返回是否点到。 */
     public boolean clickOption(String label) {
-        NvgWidget w = widgetFor(label);
+        Widget w = widgetFor(label);
         if (w == null) {
             return false;
         }
@@ -1623,7 +1624,7 @@ public final class PickupCardConfigScreen extends Screen {
      * harness 的 {@code clickOption} / {@code dragOption} / {@code optionDump} 全走它 ——
      * 三条读数与绘制必然同一个矩形，不存在"日志说在这、画在别处"。
      */
-    private Rect boxOf(NvgWidget widget) {
+    private Rect boxOf(Widget widget) {
         if (chipBoxes.containsKey(widget)) {
             return chipBoxes.get(widget);
         }
@@ -1638,7 +1639,7 @@ public final class PickupCardConfigScreen extends Screen {
 
     /** 走真实事件路径拖一下滑条（按下 → 拖到 ratio 处 → 松开）—— 验的是拖拽，不是点击。 */
     public boolean dragOption(String label, double ratio) {
-        NvgWidget w = widgetFor(label);
+        Widget w = widgetFor(label);
         if (w == null) {
             return false;
         }
@@ -1687,7 +1688,7 @@ public final class PickupCardConfigScreen extends Screen {
     /** 选项名 + 位置 + 显示值。布局是算出来的，"框压到边上了"必须能不靠眼睛查出来。 */
     public List<String> optionDump() {
         return rowsModel.all().stream().filter(r -> !r.isHeader()).map(r -> {
-            NvgWidget w = r.widget();
+            Widget w = r.widget();
             Rect box = boxOf(w);        // 几何只有树（行内）/ 排布者（树外）这一个出处
             return r.label() + "=" + Math.round(box.x()) + "," + Math.round(box.y())
                     + " " + Math.round(box.width()) + "x" + Math.round(box.height())

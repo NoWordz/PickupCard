@@ -1,5 +1,6 @@
 package com.niuqu.pickupcard.render.nvg.ui;
 
+import dev.e33.trellis.ui.widget.GlyphPainter;
 /**
  * {@link GlyphPainter} 的真机实现：<b>转发给 {@link NvgUi}</b>（MC 的字形 + 延迟批次）。
  *
