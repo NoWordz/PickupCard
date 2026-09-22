@@ -23,6 +23,7 @@ import com.niuqu.pickupcard.render.nvg.ui.NvgWidget;
 import com.niuqu.pickupcard.render.nvg.ui.McGlyphPainter;
 import com.niuqu.pickupcard.render.nvg.ui.PaintCtx;
 import com.niuqu.pickupcard.render.nvg.ui.Tween;
+import com.niuqu.pickupcard.render.nvg.ui.NvgTextField;
 import com.niuqu.pickupcard.style.StyleModel;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.resources.language.I18n;
@@ -300,6 +301,28 @@ public final class PickupCardConfigScreen extends Screen {
                 columnPointerX(), columnPointerY(),
                 TrellisColumn.controlRowAt(tree, columnPointerX(), columnPointerY()),
                 tree.hovered() == null ? "无" : tree.hovered().bounds().toString());
+    }
+
+    /**
+     * 给 harness 用：<b>键盘路由读数</b>（A-11）。
+     *
+     * <p>【为什么必须能读出来】"焦点在哪一行""键有没有真的走到控件"这两件事，截图一个都答不出来
+     * （打字有反应也可能是没人吃掉、漏到别处去了）。行号只从 {@link TrellisColumn#focusedControlRow}
+     * 来 —— 和命中、悬停底读的是同一棵树、同一个 {@code UiTree#focused()}。
+     */
+    public String keyboardRouteDump() {
+        UiTree tree = trellisColumn();
+        int row = TrellisColumn.focusedControlRow(tree);
+        List<ConfigRows.Row> rows = rowsModel.all();
+        ConfigRows.Row line = row >= 0 && row < rows.size() ? rows.get(row) : null;
+        NvgWidget w = line == null ? null : line.widget();
+        // 行内的文本框标签是空串（过滤页那三条规则的输入框），所以名字回落到行标签 ——
+        // 读日志的人要的是"哪一行"，不是"控件自己叫什么"。
+        String name = w == null ? "-" : (w.label().isEmpty() ? line.label() : w.label());
+        boolean editing = w instanceof NvgTextField field && field.editing();
+        return String.format(java.util.Locale.ROOT, "焦点行=%d 焦点控件=%s 值=%s 编辑中=%s 草稿=%s",
+                row, name, w == null ? "-" : w.value(), editing,
+                editing ? String.valueOf(((NvgTextField) w).draft()) : "-");
     }
 
     /** 配置项那一列的滚动视口；每帧按当前几何重建（画布会变，视口跟着变）。 */
@@ -1236,9 +1259,8 @@ public final class PickupCardConfigScreen extends Screen {
                 return true;
             }
         }
-        for (NvgWidget w : widgets()) {
-            w.blur();       // 点在空白处：所有控件交还焦点（文本框的光标就该停）
-        }
+        // 点在空白处：聚焦归树 —— requestFocus(null) 会给旧焦点那一个发 BLUR，
+        // 控件由此知道该收尾（文本框停编辑、光标停）。宿主不再自己遍历控件抹焦点状态。
         tree.requestFocus(null);
         return super.mouseClicked(mouseX, mouseY, button);
     }
@@ -1288,24 +1310,27 @@ public final class PickupCardConfigScreen extends Screen {
         return true;
     }
 
+    /**
+     * 键盘：<b>由树按焦点转发</b>（A-11 起）—— 宿主那趟"遍历所有控件兜底转发"已删。
+     *
+     * <p>【为什么返回值直接当"吃掉了"用】树上没焦点时 {@code keyDown} 返回 false，这时才轮到
+     * MC 的默认处理（Esc 关界面、功能键之类）；有焦点但控件拒收（比如文本框不在编辑态）
+     * 也返回 false，同样该放过去 —— 否则一个"看得见但没在编辑"的框会把整屏快捷键都吃掉。
+     * 两种情况的区分（{@code tree.focused() == null}）在界面上用不到，需要时再问。
+     */
     @Override
     public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
-        trellisColumn().keyDown(keyCode);      // 键盘跟着焦点走，宿主照样先收（返回值不动宿主）
-        for (NvgWidget w : widgets()) {
-            if (w.keyPressed(keyCode, modifiers)) {
-                return true;
-            }
+        if (trellisColumn().keyDown(keyCode, modifiers)) {
+            return true;
         }
         return super.keyPressed(keyCode, scanCode, modifiers);
     }
 
+    /** 敲字：同上，只发给焦点控件那一格（树的 CHAR 阶段）。 */
     @Override
     public boolean charTyped(char codePoint, int modifiers) {
-        trellisColumn().charTyped(codePoint);
-        for (NvgWidget w : widgets()) {
-            if (w.charTyped(codePoint)) {
-                return true;
-            }
+        if (trellisColumn().charTyped(codePoint)) {
+            return true;
         }
         return super.charTyped(codePoint, modifiers);
     }

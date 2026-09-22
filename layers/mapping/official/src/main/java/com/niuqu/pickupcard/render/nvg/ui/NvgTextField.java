@@ -22,9 +22,9 @@ import org.lwjgl.glfw.GLFW;
  * <p>【焦点为什么没有扩散】焦点仍然只在这一个控件类型里：没有 Tab 漫游、没有快捷键、
  * 没有拖选。多一种要打字的控件不等于要长成第二个 UI 框架。
  *
- * <p>【键盘还没搬进树（A-10 第二步的范围之外）】{@code press} 由树转发（于是焦点、编辑态
- * 照样进得来），但 {@code keyPressed/charTyped} 仍是宿主按控件自己的 {@code focused}
- * 转发 —— ControlSlot 是 focusable 的，接 BLUR/KEY 是"键盘也搬进树"那一步的事。
+ * <p>【键盘归树了（A-11 起）】键由树按<b>焦点</b>转发到控件
+ * （{@code UiTree.keyDown → ControlSlot → NvgTextField.keyPressed}），宿主的兜底遍历已删 ——
+ * 于是"谁能收到键"和"谁拿着焦点"必然是同一件事，不再有"两个布尔值偶尔不一致"的窗口。
  */
 public final class NvgTextField extends NvgWidget {
 
@@ -90,11 +90,20 @@ public final class NvgTextField extends NvgWidget {
         return taken;
     }
 
+    /**
+     * 焦点变了的反应：<b>交还焦点就该收尾</b>（编辑停、草稿丢 —— 提示文案与光标都该停）。
+     *
+     * <p>【为什么不再 override {@code blur()}】标志的落地不能交给子类（见
+     * {@link NvgWidget#focusChanged(boolean)}）：这里只写"我这一侧要做什么"。
+     * 拿到焦点时什么都不做 —— 编辑态由按下（{@code press}）开，点击与聚焦是两条路，
+     * 在这里顺手开编辑的话，"焦点回来"与"刚点进来"就没法区分了。
+     */
     @Override
-    public void blur() {
-        super.blur();
-        editing = false;
-        draft = null;
+    protected void onFocusChanged(boolean value) {
+        if (!value) {
+            editing = false;
+            draft = null;
+        }
     }
 
     @Override
@@ -120,7 +129,8 @@ public final class NvgTextField extends NvgWidget {
         }
         if (keyCode == GLFW.GLFW_KEY_ESCAPE) {
             // Esc = 放弃这一稿。颜色框那种"每敲一个字就生效"的，放弃也回不去，
-            // 所以它靠 blur() 收尾；这里只负责别再往下传（否则会把界面关掉）。
+            // 所以它靠"交还焦点"收尾（{@code onFocusChanged(false)}）；这里只负责别再往下传
+            // （否则会把界面关掉）。
             editing = false;
             draft = null;
             return true;
@@ -154,6 +164,17 @@ public final class NvgTextField extends NvgWidget {
     public boolean editing() {
         return editing;
     }
+    /**
+     * 正在编辑的那一稿（没有在编辑时是 {@code null}）。
+     *
+     * <p>【为什么要有这个读数】"键有没有真的走到控件"不能只看"屏幕上的字变了" ——
+     * 打字有反应也可能是别处吃的。这个框显示的就是草稿（见 {@code paint}），
+     * 所以把草稿读出来，等于直接读"键确实到了这个控件里"。
+     */
+    public String draft() {
+        return draft;
+    }
+
 
     @Override
     protected void paint(PaintCtx ctx) {

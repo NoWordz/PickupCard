@@ -25,7 +25,7 @@ import java.util.List;
  * <p>【它现在管什么】配置列那一棵组件树（{@link #buildColumn}）由 Trellis 建、布局、命中、
  * 绘制（悬停底 + 控件本体）；标签的<b>文本框</b>和<b>适配字号</b>由它给（{@link #labelBox} /
  * {@link #fitLabel}）；"指着哪一行、点到哪一行、谁正被按住"也从它回答
- * （{@link #controlRowAt} / {@link #pressedControlRow}）。宿主那侧不再自己画控件、不再自己存控件
+ * （{@link #controlRowAt} / {@link #pressedControlRow} / {@link #focusedControlRow}）。宿主那侧不再自己画控件、不再自己存控件
  * 几何、不再自己维护悬停；它每帧要做的只剩两条：把这一帧的信息交给它（列矩形与滚动偏移、
  * 指针位置、帧号），以及给字形落笔。
  *
@@ -265,6 +265,30 @@ public final class TrellisColumn {
         return -1;
     }
 
+    /**
+     * 键焦点落在<b>哪一行的控件</b>上（不在任何控件上就是 {@code -1}）。
+     *
+     * <p>【为什么它可以只问树】焦点只有一份真相（{@link UiTree#focused()}），控件那一份是
+     * 被同步过去的 —— 所以"哪一行拿着键盘"不需要再看任何控件自己的布尔值。
+     * 与 {@link #pressedControlRow} 同一个形状：读树、翻出它落在第几个 ControlSlot 上。
+     *
+     * <p>调用方：harness 的键盘路由读数（"焦点行"这个数只能从这里出来）。
+     */
+    public static int focusedControlRow(UiTree ui) {
+        Component focused = ui.focused();
+        if (focused == null) {
+            return -1;
+        }
+        List<Component> lines = ui.root().children();
+        for (int i = 0; i < lines.size(); i++) {
+            List<Component> cells = lines.get(i).children();
+            if (cells.size() >= 2 && cells.get(1) == focused) {
+                return i;
+            }
+        }
+        return -1;
+    }
+
     // -----------------------------------------------------------------------
     // 命中：指着哪一行、点到哪一行，都从这棵树回答
     // -----------------------------------------------------------------------
@@ -316,10 +340,10 @@ public final class TrellisColumn {
     /**
      * 一行里<b>控件那一格</b>：几何归树（{@code bounds()} 就是这一格），行为仍归宿主控件。
      *
-     * <p>【这一步只交命中】{@code focusable(true)} 开着，于是按下会走
-     * {@code UiTree.pointerDown → requestFocus}（换焦点发的是 BLUR，见那里的注释）。
-     * 键还不在这条路上：宿主仍按控件自己的 {@code focused} 转发，BLUR 暂时没人接 ——
-     * 接它是"键盘也搬进树"那一步的事。
+     * <p>【焦点与键盘都在这条路上（A-10 第三、四步）】{@code focusable(true)} 开着，于是按下会走
+     * {@code UiTree.pointerDown → requestFocus}；焦点一变，这一格就收到 BLUR / FOCUS 并转给控件，
+     * 而树把键<b>只发给焦点组件</b>（{@code UiTree.keyDown → 这一格 → 控件}）—— 见 {@link #onEvent}。
+     * 于是"控件拿着焦点"和"键到控件"来自同一个决定，控件不再自己挣焦点。
      *
      * <p>【"算不算一次点击"为什么在这里判】{@code UiTree.pointerUp} 保证抬起发给
      * <b>按下的那一个</b>（指针捕获），但 {@code CLICK} 是在 {@code POINTER_UP}
@@ -349,6 +373,24 @@ public final class TrellisColumn {
                     widget.release(bounds(), event.x(), event.y(),
                             bounds().contains(event.x(), event.y()));
                     return true;
+                // 【键盘（A-11）】键只到这里来（树把键发给<b>焦点组件</b>），
+                // 再由这一格转给控件。于是"控件收到键"与"控件拿着焦点"是同一件事的两个面，
+                // 返回值也原样交回去：控件拒收（返回 false）时树照实说"没人吃掉"。
+                case KEY_DOWN:
+                    return widget.keyPressed(event.keyCode(), event.modifiers());
+                case CHAR:
+                    return widget.charTyped(event.character());
+                // 【焦点事件是通知，一定吃掉】BLUR / FOCUS 本身就是"你交还了 / 你拿到了"，
+                // 放它继续冒泡没有别的意思。顺序由树保证：先旧的 BLUR、后新的 FOCUS。
+                case BLUR:
+                    widget.focusChanged(false);
+                    return true;
+                case FOCUS:
+                    widget.focusChanged(true);
+                    return true;
+                // 【KEY_UP 故意不接】现在没有任何控件需要它；这里返回 true 会把这个键
+                // 从 MC 的默认路径上抢走（谁来收、收得对不对都看不出来）。
+                // 等真有"按住/抬起"的手感可做时再回来加，别提前占位。
                 default:
                     return false;
             }

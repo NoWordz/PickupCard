@@ -19,13 +19,23 @@ import dev.e33.trellis.geom.Rect;
  * <p>【形状与文字分两处提交】见 {@link PaintCtx}：形状走 Trellis 原语，文字走
  * {@link GlyphPainter}（MC 的位图字形只能由 MC 画）—— 控件不用管这件事，
  * 它调 {@code ctx.text(...)} 时只是把位置交出去。
+ *
+ * <p>【焦点为什么归树（A-11 起）】焦点只有一份真相，住在
+ * {@code dev.e33.trellis.ui.UiTree} 里（那棵树知道谁拿着）；控件这一份是被它
+ * <b>同步过来的状态</b>，和 {@link #hover} 那一份同一个性质 —— 由 {@link #focusChanged(boolean)}
+ * 写，控件自己不许再有第二个地方写它。这样做才有"键只发给焦点那一个"这件事：
+ * 从前焦点是控件自己挣的（按一下、悬停走开就清掉），宿主只能每帧遍历所有控件兜底转发。
  */
 public abstract class NvgWidget {
 
     private final String label;
-    /** 鼠标悬停 / 被按下 / 持有键盘焦点。三个状态下控件长得不一样，这是"能操作"的唯一提示。 */
+    /**
+     * 鼠标悬停 / 被按下 / 持有键盘焦点。前两个由调用方给，焦点由 {@code UiTree} 同步 ——
+     * 三个状态下控件长得不一样，这是"能操作"的唯一提示。
+     */
     protected boolean hovered;
     protected boolean pressed;
+    /** <b>树同步过来的</b>（唯一写入口是 {@link #focusChanged(boolean)}，见类注释）。子类只读。 */
     protected boolean focused;
 
     protected NvgWidget(String label) {
@@ -87,7 +97,8 @@ public abstract class NvgWidget {
             return false;
         }
         pressed = true;
-        focused = true;
+        // 【按下不再顺手拿焦点】谁拿焦点由树在命中时决定（{@code UiTree.pointerDown →
+        // requestFocus}），控件只收结果 —— 自己在这里写一份就是第二份真相。
         return true;
     }
 
@@ -113,12 +124,14 @@ public abstract class NvgWidget {
     public void drag(Rect box, double mouseX, double mouseY) {
     }
 
-    /** 悬停也由调用方给（行内控件来自树，树外的来自屏幕自己的命中）。 */
+    /**
+     * 悬停也由调用方给（行内控件来自树，树外的来自屏幕自己的命中）。
+     *
+     * <p>它<b>不动焦点</b>：指针飘一下不该让键盘换人（否则鼠标一动输入就跑到别处去了）。
+     * 焦点的事只有一处 —— 树在按下时决定，然后把 {@link #focusChanged(boolean)} 推过来。
+     */
     public void hover(boolean value) {
         hovered = value;
-        if (!value && !pressed) {
-            focused = false;
-        }
     }
 
     /** 敲键盘（只有文本框这类需要）。 */
@@ -130,10 +143,36 @@ public abstract class NvgWidget {
         return false;
     }
 
-    /** 点在别处：交还焦点。 */
-    public void blur() {
-        focused = false;
-        pressed = false;
+    /**
+     * 我是不是那个拿着键焦点的控件。<b>只读</b> —— 状态由树同步（见类注释）。
+     */
+    public final boolean focused() {
+        return focused;
+    }
+
+    /**
+     * 焦点变了（树在 {@code FOCUS} / {@code BLUR} 事件里推过来）。
+     *
+     * <p><b>final</b>：子类改不了"标志必须先落地、再让子类反应"这件事。它只写
+     * {@link #onFocusChanged(boolean)}，于是子类里问 {@link #focused()} 拿到的<b>一定</b>是
+     * 新值（否则每个子类都得自己猜"这个通知之后轮到我了吗"）。
+     */
+    public final void focusChanged(boolean value) {
+        if (focused == value) {
+            return;         // 没变就不通知：重复通知会把"一拿焦点就全选"变成"每次都重来一遍"
+        }
+        focused = value;
+        onFocusChanged(value);
+    }
+
+    /**
+     * 拿到 / 交还焦点的反应（默认什么都不做）。
+     *
+     * <p>【为什么要有这个钩子】文本框交还焦点时必须收尾（停掉编辑态、丢掉草稿），
+     * 而"标志先落地"这条规矩不能交给子类去遵守 —— 从前它是 {@code blur()} 的 override，
+     * 谁都可以在里面把标志写坏。
+     */
+    protected void onFocusChanged(boolean value) {
     }
 
     /** 点一下释放时触发（按钮/开关/循环都用这个语义）。 */

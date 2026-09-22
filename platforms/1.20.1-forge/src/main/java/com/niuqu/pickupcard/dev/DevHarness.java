@@ -504,6 +504,25 @@ public final class DevHarness {
                 checkPainted(mc);
                 return;
             }
+            // ---- A-11：键盘路由（焦点只有一份真相，在树里）----
+            // 【为什么这两行必须成对】"焦点哪一行"与"焦点有没有交还"是这件事的两半：
+            // 只有第一行的话，"焦点永远赖在文本框上"和"焦点确实在文本框上"在日志里长得一样。
+            if (configTicks == WARMUP_TICKS + 100) {
+                // 点进「加一条」那个输入框（过滤页三个名单各有一个，按标签取到的第一个是黑名单的），
+                // 敲几个字符但不回车 —— 键走的是"树 → 焦点控件"这条路，草稿停在控件里
+                if (clickByLabel(mc, I18n.get("pickupcard.config.filter.addRow"))) {
+                    typeChars(mc, "abc");
+                }
+                PickupCard.LOGGER.info("[harness-auto] 键盘路由: {}", keyboardDump(mc));
+                return;
+            }
+            if (configTicks == WARMUP_TICKS + 101) {
+                // 再点另一行（黑名单表头那颗只读钮）：焦点必须换到那一行去 ——
+                // 换焦点走的是"先给旧的 BLUR、再给新的 FOCUS"，旧控件由此收尾（停编辑、丢草稿）
+                clickByLabel(mc, I18n.get("pickupcard.config.filter.blacklist"));
+                PickupCard.LOGGER.info("[harness-auto] 键盘路由: {}", keyboardDump(mc));
+                return;
+            }
             if (configTicks == WARMUP_TICKS + 102) {
                 // 点刚加进去那一条的「删除」：列表必须真的短回去
                 clickByLabel(mc, "minecraft:cobblestone");
@@ -623,6 +642,16 @@ public final class DevHarness {
         }
 
         /**
+         * 键盘路由读数（焦点在哪一行、那个控件叫什么、值是多少）。
+         * <p>【为什么这条读数只能从这里出来】"焦点归树"之后，宿主手上<b>没有</b>第二份焦点，
+         * 所以"现在谁拿着键盘"这个问题只有树答得出来（见 {@code TrellisColumn.focusedControlRow}）。
+         */
+        private static String keyboardDump(Minecraft mc) {
+            return mc.screen instanceof PickupCardConfigScreen screen ? screen.keyboardRouteDump()
+                    : "(不是配置界面)";
+        }
+
+        /**
          * 控件自检：屏幕上的控件，这一帧是不是<b>全部</b>都被画过。
          * <p>【为什么这条必须自动报】"控件在、也能点、就是没画"这种 bug 全绿通过：点击有效、
          * 布局数字正确、单测也不管绘制 —— 只有人盯着截图才看得出，而这次真的漏了整整一列
@@ -679,6 +708,19 @@ public final class DevHarness {
             if (!screen.dragOption(label, ratio)) {
                 PickupCard.LOGGER.warn("[harness-auto] 界面上找不到『{}』这个控件", label);
             }
+        }
+
+        /**
+         * 往当前焦点控件里敲几个字符（<b>不回车</b>）。
+         * <p>【为什么不复用 {@code typeByLabel}】它点完就回车提交 —— 而键盘路由要在"字敲进去了、
+         * 但还没提交"这一刻读：提交会把编辑态关掉，读数就看不出"焦点还在不在这一行"。
+         */
+        private static boolean typeChars(Minecraft mc, String text) {
+            if (!(mc.screen instanceof PickupCardConfigScreen screen)) return false;
+            for (char c : text.toCharArray()) {
+                screen.charTyped(c, 0);
+            }
+            return true;
         }
 
         /** 往某个文本框打字并回车（点 → 逐字 → 回车提交）。 */
