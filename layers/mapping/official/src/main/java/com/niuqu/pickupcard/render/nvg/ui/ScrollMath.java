@@ -1,7 +1,12 @@
 package com.niuqu.pickupcard.render.nvg.ui;
 
 /**
- * 滚动那点数学。<b>纯函数，能离线单测</b>（{@code ScrollMathTest}）。
+ * <b>⚠️ 现在只作对照侧：没有生产调用方了</b>（2026-09-22 / A-16 起）。
+ * 偏移与夹取归了框架的 {@code dev.e33.trellis.ui.ScrollContainer}，本类与
+ * {@link NvgScroll} 只剩 {@code ScrollMathTest} 在测。留着的理由见 {@link NvgScroll} 的注释
+ * （它是当年滚轮口径唯一的成文证据）。
+ *
+ * <p>滚动那点数学。<b>纯函数，能离线单测</b>（{@code ScrollMathTest}）。
  * <p>
  * 【为什么单独一个类】列表要回答的其实只有三个问题：能挪多远、现在挪到哪、鼠标指着第几行。
  * 把这三点算清楚，界面那边就只剩"把 -offset 加到 y 上"。

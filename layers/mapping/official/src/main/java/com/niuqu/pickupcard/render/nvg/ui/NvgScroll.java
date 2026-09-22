@@ -1,7 +1,15 @@
 package com.niuqu.pickupcard.render.nvg.ui;
 
 /**
- * 一个可滚动的列表视口：把"滚轮 / 裁剪 / 命中"这三件事收在一处。
+ * <b>⚠️ 现在只作对照侧：没有生产调用方了</b>（2026-09-22 / A-16 起）。
+ * 配置列那三件事 —— 偏移、夹取、裁剪框 —— 全部归了框架的
+ * {@code dev.e33.trellis.ui.ScrollContainer}，这个类与 {@link ScrollMath} 只剩
+ * {@code ScrollMathTest} 还在测。留着是有意的：它是当年那套滚轮口径唯一的成文证据，
+ * 顺带也是"一格实际滚了 9 行、注释却写着 3 行"那个 bug 的现场
+ * （见 {@code TrellisColumn.ROWS_PER_NOTCH} 与 {@code TrellisWheelStepTest}）。
+ * 要删就这两个类连同测试一起删，别只删一半。
+ *
+ * <p>一个可滚动的列表视口：把"滚轮 / 裁剪 / 命中"这三件事收在一处。
  * <p>
  * 【为什么不是控件】它不画自己（滚动条要不要画由界面决定），只回答四个问题：
  * 能滚到哪、现在在哪、鼠标指着第几行、裁剪框推给谁。

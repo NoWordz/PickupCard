@@ -79,19 +79,19 @@ public final class TrellisColumn {
     private static final float STEP_ROW_H = Tokens.Size.ROW_H;
 
     /**
-     * 滚轮一格滚几行。
+     * 滚轮一格滚几行 —— <b>9</b>。
      *
-     * <p>【这个数改了手感，评审抓出来的】旧宿主那一行是
+     * <p>【这个数为什么是 9，而不是注释里那个 3】旧宿主那一行是
      * {@code itemsScroll.wheel(delta, contentHeight, ConfigRows.rowStep(u) * 3f)}，
-     * 而 {@code ScrollMath.wheel} 内部<b>又乘了一次</b> {@code NvgScroll.ROWS_PER_NOTCH} ——
-     * 所以**实际一格是 9 行**，尽管那行注释写的是"一格滚三行"（代码与注释不符）。
-     * A-16 按注释的原意取 3 行。**要么改回 9 行，要么就用 3 行 —— 正本里标了待拍板**
-     * （{@code docs/plan.md} 的 A-16 一节）。
+     * 而 {@code ScrollMath.wheel} 内部<b>又乘了一次</b> {@code NvgScroll.ROWS_PER_NOTCH = 3} ——
+     * 所以**实际一格滚了 9 行**，尽管那行注释写的是"一格滚三行"（代码与注释不符，谁都没发现）。
+     * 评审把这个算术翻出来之后，用户 2026-09-22 拍板：**按实际行为（9 行）保留已发布手感**，
+     * 注释改成实话。`TrellisWheelStepTest` 钉住这个数 —— 它从来没被任何测试钉过。
      *
      * <p>步长按"行"而不是像素给：行高随 u 变，写死像素会让同一格滚轮在大画布上滚得少、
      * 小画布上滚得多。
      */
-    private static final float ROWS_PER_NOTCH = 3f;
+    private static final float ROWS_PER_NOTCH = 9f;
 
     /**
      * 接进宿主上下文。帧由宿主开也由宿主关，这里只画。
