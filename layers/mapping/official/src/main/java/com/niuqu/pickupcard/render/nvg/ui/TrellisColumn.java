@@ -12,6 +12,7 @@ import dev.e33.trellis.layout.Style;
 import dev.e33.trellis.text.TextAlign;
 import dev.e33.trellis.text.TextLayout;
 import dev.e33.trellis.text.TextMeasurer;
+import dev.e33.trellis.tokens.Tokens;
 import dev.e33.trellis.ui.Component;
 import dev.e33.trellis.ui.UiEvent;
 import dev.e33.trellis.ui.UiTree;
@@ -56,18 +57,32 @@ public final class TrellisColumn {
         throw new AssertionError("no instances");
     }
 
-    /** 与 {@link ConfigRows} 同一套几何口径。 */
-    private static final float PAD = 6f;
-    private static final float GAP = 6f;
-    private static final float LABEL_MIN = 24f;
-    private static final float CONTROL_MIN = 48f;
-    private static final float CONTROL_MAX = 130f;
-    private static final float CONTROL_FRACTION = 0.45f;
-    // 行距/行高与 com.niuqu.pickupcard.config.ConfigRows 一致（20 / 18）。
-    // 【为什么抄数而不是引用】那个类是包私有、且在另一个包（config），跨包看不见 ——
-    // 这正是"同一个几何口径散在两个包"的样子，也是 Trellis 想收掉的那类东西。
-    private static final float ROW_H = 18f;
-    private static final float ROW_GAP = 20f - ROW_H;
+    /**
+     * 这一列的几何口径：<b>只从 L0 Token 来，一个裸数字都不留</b>。
+     *
+     * <p>【为什么是 token × u，不是像素】这些数的单位是 u（自适应单位，见
+     * {@link Tokens.Unit}）。今天 u 取基准 {@link Tokens.Unit#BASE}，所以数值和从前**逐位相同**
+     * （6 / 6 / 24 / 48 / 130 / 0.45 / 18 / 2）。
+     *
+     * <p>【⚠️ 但 {@link #U} 是 {@code static final}，密度模型接不上来】等 u 变成每帧按屏幕算时，
+     * 这些常量会**静默沿用基准值 2** —— 也就是说：接密度那一步**必须改这里**，把 {@code U} 换成
+     * 每帧读进来的那个数（{@code ConfigRows} 那三个 int 是同一个坑）。别以为"改 token 就够了"。
+     *
+     * <p>【为什么不再抄 {@code ConfigRows} 的数】从前这里抄了宿主那份口径，理由是那个类是包私有、
+     * 跨包看不见 —— 那正是"同一把尺子散在三处"的样子。现在两边读同一份 token
+     * （宿主那边 {@code controlW / controlX / labelX} 三处仍各有一份算术，那是 A-4 那 1.3px
+     * 口径差的来源，**留作独立对照侧**，别随手删）。
+     */
+    private static final float U = Tokens.Unit.BASE;
+    private static final float PAD = Tokens.Space.STEP_3 * U;
+    private static final float GAP = Tokens.Space.STEP_3 * U;
+    private static final float LABEL_MIN = Tokens.Size.LABEL_MIN_W * U;
+    private static final float CONTROL_MIN = Tokens.Size.CONTROL_MIN_W * U;
+    private static final float CONTROL_MAX = Tokens.Size.CONTROL_MAX_W * U;
+    private static final float CONTROL_FRACTION = Tokens.Size.CONTROL_WIDTH_FRACTION;
+    private static final float ROW_H = Tokens.Size.ROW_H * U;
+    /** 行缝 = 1u：行距与行高在声明式里是同一个事实的两面（20 = 18 + 2），不是两个独立常数。 */
+    private static final float ROW_GAP = Tokens.Space.STEP_1 * U;
 
     /**
      * 接进宿主上下文。帧由宿主开也由宿主关，这里只画。

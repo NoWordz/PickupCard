@@ -3,6 +3,7 @@ package com.niuqu.pickupcard.config;
 import com.niuqu.pickupcard.render.nvg.ui.ConfigLayout;
 import com.niuqu.pickupcard.render.nvg.ui.NvgWidget;
 import com.niuqu.pickupcard.render.nvg.ui.Tween;
+import dev.e33.trellis.tokens.Tokens;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -21,19 +22,30 @@ import java.util.List;
  */
 final class ConfigRows {
 
-    /** 全界面统一的行距/行高：放不下就滚，节奏不随内容变。 */
-    static final int ROW_STEP = 20;
-    static final int ROW_H = 18;
+    /**
+     * 全界面统一的行距/行高：放不下就滚，节奏不随内容变。
+     *
+     * <p>【为什么是 token 而不是写死的 20 / 18】这两个数、加上下面那个内缩，是同一把尺子在宿主的
+     * 那一份；适配器（{@code TrellisColumn}）从前还得再抄一遍。现在两边都读 L0 Token，
+     * 单位是 u —— 今天 u 取基准 {@link Tokens.Unit#BASE}，所以数值**逐位不变**。
+     *
+     * <p>【为什么还留着 int】这一列的行 y 是整数算术（{@code Math.round(scrollOffset)} 那套）。
+     * 等密度模型接上（u 按屏幕尺寸算）时，这里要跟着改成**每帧算**，不能停在 static final。
+     */
+    static final int ROW_H = Math.round(Tokens.Size.ROW_H * Tokens.Unit.BASE);
+    /** 行缝 = 1u：行距是"行高 + 行缝"，不是第三个独立常数（20 = 18 + 2）。 */
+    static final int ROW_GAP = Math.round(Tokens.Space.STEP_1 * Tokens.Unit.BASE);
+    static final int ROW_STEP = ROW_H + ROW_GAP;
 
     /**
-     * 第一行相对配置列顶的内缩 —— 贴着列顶会和标题行糊在一起，留 2px 呼吸。
+     * 第一行相对配置列顶的内缩 = 1u —— 贴着列顶会和标题行糊在一起。
      *
-     * <p>【为什么放在这里而不是写在屏幕里】它是"行模型"的几何，而且现在有第二个消费者：
+     * <p>【为什么放在这里而不是写在屏幕里】它是"行模型"的几何，而且有第二个消费者：
      * Trellis 组件列要拿同一个数当布局树的内边距（{@code TrellisColumn.buildColumn(..., topInset)}）。
      * 放一处、两边取同一个源。反过来做（适配器里补个 2）就是又一份口径 —— 2026-09-21 真机
      * 实测过后果：整列 12 行集体高 2 逻辑 px。
      */
-    static final int ROWS_TOP_INSET = 2;
+    static final int ROWS_TOP_INSET = Math.round(Tokens.Space.STEP_1 * Tokens.Unit.BASE);
 
     private final List<Row> list = new ArrayList<>();
 
