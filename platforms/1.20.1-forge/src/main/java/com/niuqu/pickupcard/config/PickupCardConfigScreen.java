@@ -336,6 +336,57 @@ public final class PickupCardConfigScreen extends Screen {
     }
 
     /**
+     * 给 harness 用：<b>A-16 的滚动命中读数</b>。
+     *
+     * <p>【为什么这两条只能是真机读数】旧行为的两个症状在静止截图里<b>一个都看不出来</b>：
+     * 画面是对的，只是鼠标落在底部那几行上没反应、落在视口上方反而点到了看不见的行。
+     * 离线测试钉的是几何，这一句钉的是"宿主接进滚动容器之后，那条链在真帧里仍然通"。
+     *
+     * <p>读数要成立，调用前必须<b>真的滚起来</b>：停在装得下的页上滚是滚不动的
+     * （9 行装得下 → 偏移恒 0），得在外观页（12 行 / 可见 10 行）上做。
+     *
+     * <p>期望：{@code 底部那行=N→命中N}（两个数相等），{@code 视口上方误命中=0}。
+     */
+    public String scrollHitDump() {
+        UiTree tree = trellisColumn();
+        ConfigLayout.Rect items = layout().items();
+        float offset = scrollOffset();
+        List<ConfigRows.Row> rows = rowsModel.all();
+        int visible = 0;
+        int bottomRow = -1;
+        int bottomHit = -2;
+        for (int i = 0; i < rows.size(); i++) {
+            Rect box = TrellisColumn.controlBox(tree, i);
+            if (box == null) {
+                continue;
+            }
+            float cy = box.y() + box.height() / 2f;
+            if (cy < items.y() || cy >= items.bottom()) {
+                continue;
+            }
+            visible++;
+            bottomRow = i;
+            bottomHit = TrellisColumn.controlRowAt(tree, box.x() + 1f, cy);
+        }
+        int aboveHits = 0;
+        for (float y = items.y() - offset; y < items.y(); y += 1f) {
+            for (int i = 0; i < rows.size(); i++) {
+                Rect box = TrellisColumn.controlBox(tree, i);
+                if (box == null) {
+                    continue;
+                }
+                if (TrellisColumn.controlRowAt(tree, box.x() + 1f, y) >= 0) {
+                    aboveHits++;
+                    break;
+                }
+            }
+        }
+        return String.format(java.util.Locale.ROOT,
+                "偏移=%.0f 可见控件行=%d 底部那行=%d→命中%d 视口上方误命中=%d",
+                offset, visible, bottomRow, bottomHit, aboveHits);
+    }
+
+    /**
      * 给 harness 用：<b>键盘路由读数</b>（A-11）。
      *
      * <p>【为什么必须能读出来】"焦点在哪一行""键有没有真的走到控件"这两件事，截图一个都答不出来

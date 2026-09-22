@@ -628,6 +628,25 @@ public final class DevHarness {
                     }
                     return;
                 }
+                if (look == 5) {
+                    // 【A-16：滚动这条链必须在真机上真的走一遍】上面那张是滚动前的样子。
+                    // 【为什么滚在这一页】外观页 12 行、可见 10 行，才有溢出可滚；通用页只有 9 行、
+                    // 装得下 —— 在那里滚一格是"0 → 0"，读数看着没崩，其实什么都没验
+                    // （第 33 轮就是这么发现的：那一步从落地起就没滚起来过）。
+                    if (mc.screen instanceof PickupCardConfigScreen screen) {
+                        screen.scrollForHarness(-1);
+                    }
+                    return;
+                }
+                if (look == 6) {
+                    // 隔一帧再读：偏移要等下一帧的布局才落到几何上。
+                    if (mc.screen instanceof PickupCardConfigScreen screen) {
+                        PickupCard.LOGGER.info("[harness-auto] A-16 滚动命中: {}",
+                                screen.scrollHitDump());
+                    }
+                    capture(mc, "look-scrolled");
+                    return;
+                }
             }
             if (configTicks >= WARMUP_TICKS + 118 + CYCLE_EVERY * CYCLE_FRAMES + 8) {
                 PickupCard.LOGGER.info("[harness-auto] 配置界面模式收工，退出客户端");
