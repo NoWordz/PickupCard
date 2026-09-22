@@ -1346,6 +1346,16 @@ public final class PickupCardConfigScreen extends Screen {
      */
     @Override
     public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
+        // 【Tab / Shift+Tab（A-15b）】焦点遍历归框架（`UiTree.focusNext`），宿主只负责认键。
+        // 【为什么放在 keyDown 之前】Tab 必须保证能换焦点：先让控件收的话，焦点会永远赖在第一颗上
+        // （Shift+Tab 同理）。而且换完焦点要**吃掉**这个键 —— 放它继续走，MC 会拿它做界面元素遍历
+        // （原版那套 `children()`），同一颗 Tab 键上就挂着两套焦点。
+        if (keyCode == GLFW.GLFW_KEY_TAB) {
+            boolean forward = (modifiers & GLFW.GLFW_MOD_SHIFT) == 0;
+            if (trellisColumn().focusNext(forward)) {
+                return true;
+            }
+        }
         if (trellisColumn().keyDown(keyCode, modifiers)) {
             return true;
         }

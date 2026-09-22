@@ -516,14 +516,28 @@ public final class DevHarness {
                 PickupCard.LOGGER.info("[harness-auto] 键盘路由: {}", keyboardDump(mc));
                 return;
             }
+            // ---- A-15b：Tab / Shift+Tab 焦点遍历（焦点看得见了，现在还要能用键走）----
+            // 【为什么这两条要紧挨着上面那一条】上一条把焦点停在「Add one」那一行（第 3 行）。
+            // 从"已知在第 3 行"出发按 Tab，落点是不是第 4 行，才是这条路径唯一的证据 ——
+            // 单看一个行号说明不了"它往前走了"。
             if (configTicks == WARMUP_TICKS + 101) {
+                pressTab(mc, true);
+                PickupCard.LOGGER.info("[harness-auto] Tab 之后: {}", keyboardDump(mc));
+                return;
+            }
+            if (configTicks == WARMUP_TICKS + 102) {
+                pressTab(mc, false);
+                PickupCard.LOGGER.info("[harness-auto] Shift+Tab 之后: {}", keyboardDump(mc));
+                return;
+            }
+            if (configTicks == WARMUP_TICKS + 103) {
                 // 再点另一行（黑名单表头那颗只读钮）：焦点必须换到那一行去 ——
                 // 换焦点走的是"先给旧的 BLUR、再给新的 FOCUS"，旧控件由此收尾（停编辑、丢草稿）
                 clickByLabel(mc, I18n.get("pickupcard.config.filter.blacklist"));
                 PickupCard.LOGGER.info("[harness-auto] 键盘路由: {}", keyboardDump(mc));
                 return;
             }
-            if (configTicks == WARMUP_TICKS + 102) {
+            if (configTicks == WARMUP_TICKS + 104) {
                 // 点刚加进去那一条的「删除」：列表必须真的短回去
                 clickByLabel(mc, "minecraft:cobblestone");
                 PickupCard.LOGGER.info("[harness-auto] 删掉那条之后: {}", filterDump(mc));
@@ -715,6 +729,18 @@ public final class DevHarness {
          * <p>【为什么不复用 {@code typeByLabel}】它点完就回车提交 —— 而键盘路由要在"字敲进去了、
          * 但还没提交"这一刻读：提交会把编辑态关掉，读数就看不出"焦点还在不在这一行"。
          */
+        /**
+         * 按一下 Tab（{@code forward=false} 就是 Shift+Tab）。
+         *
+         * <p>走的是玩家真正走的那条路：{@code Screen.keyPressed} → 树的
+         * {@code focusNext} —— 不是直接问树要一个行号，否则验的就不是"键能不能换焦点"。
+         */
+        private static boolean pressTab(Minecraft mc, boolean forward) {
+            if (!(mc.screen instanceof PickupCardConfigScreen screen)) return false;
+            screen.keyPressed(GLFW.GLFW_KEY_TAB, 0, forward ? 0 : GLFW.GLFW_MOD_SHIFT);
+            return true;
+        }
+
         private static boolean typeChars(Minecraft mc, String text) {
             if (!(mc.screen instanceof PickupCardConfigScreen screen)) return false;
             for (char c : text.toCharArray()) {

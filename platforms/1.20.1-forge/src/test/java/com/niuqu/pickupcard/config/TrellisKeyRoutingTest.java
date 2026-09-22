@@ -195,6 +195,32 @@ class TrellisKeyRoutingTest {
         assertEquals(List.of(), focusLog, "值没变就不该再通知一次");
     }
 
+    @Test
+    @DisplayName("A-15b：Tab 走到下一行的控件，Shift+Tab 走回来（焦点行由树给）")
+    void tabWalksTheColumnRows() {
+        // 这一棵是宿主真正建的那种形态：3 行、中间那行是小节头（没有控件）。
+        UiTree ui = column();
+
+        // 先点第一行的控件，让焦点从"已知位置"出发
+        ui.pointerDown(centerX(ui, 0), centerY(ui, 0));
+        ui.pointerUp(centerX(ui, 0), centerY(ui, 0));
+        assertEquals(0, TrellisColumn.focusedControlRow(ui), "点过之后焦点该在第 0 行");
+
+        // 【这条最要紧】中间是小节头 —— 它没有控件，Tab 必须**跳过**它直接到第 2 行。
+        // 不跳的话键盘顺序会和视觉顺序错开一格，而且只有按过键的人看得出来。
+        assertTrue(ui.focusNext(), "树上有可聚焦控件，Tab 该有用");
+        assertEquals(2, TrellisColumn.focusedControlRow(ui),
+                "第 0 行的下一个该是第 2 行 —— 中间那个小节头不是控件，必须被跳过");
+
+        // 走到头环绕回第 0 行
+        assertTrue(ui.focusNext());
+        assertEquals(0, TrellisColumn.focusedControlRow(ui), "最后一颗的下一下该环绕");
+
+        // 反向
+        assertTrue(ui.focusPrevious());
+        assertEquals(2, TrellisColumn.focusedControlRow(ui), "Shift+Tab 该倒着走");
+    }
+
     private static Rect control(UiTree ui, int row) {
         return ui.root().children().get(row).children().get(1).bounds();
     }
