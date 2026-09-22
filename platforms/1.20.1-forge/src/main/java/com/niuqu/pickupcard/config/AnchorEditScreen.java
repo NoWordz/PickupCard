@@ -97,6 +97,9 @@ public final class AnchorEditScreen extends Screen {
     private WidgetSlot saveSlot;
     private WidgetSlot resetSlot;
 
+    /** 这棵树布局过没有 —— {@code bounds()} 在布局之前读会 NPE（见 {@link #treeDump()}）。 */
+    private boolean treeLaidOut;
+
     public AnchorEditScreen(Screen parent) {
         super(net.minecraft.network.chat.Component.translatable("pickupcard.anchor.title"));
         this.parent = parent;
@@ -162,6 +165,10 @@ public final class AnchorEditScreen extends Screen {
     private static final class Box extends Component {
         Box(Style style) {
             style(style);
+            // 【为什么关掉状态叠加层】基类那层白色覆盖是给"有底色的控件"做反馈的；这些盒子
+            // 自己不画任何东西，叠上去就是**凭空多一层白雾**：指针停在中间那段（撑开的 spacer）
+            // 整条刷白，按住更是 24% 白。A-17 起它们在树里 —— 这是本轮新引入的观感变化（评审逮到的）。
+            stateOverlay(false);
         }
 
         @Override
@@ -173,28 +180,39 @@ public final class AnchorEditScreen extends Screen {
      * 蒙层那一格：<b>画半透明底 + 接住拖拽</b>。
      *
      * <p>【为什么拖拽挂在它身上】这一屏的"点哪都行"是编辑场的手感（用户 2026-09-19 拍板）：
-     * 全屏的一格接住按下，偏移记的是"手与最新那张卡的相对位置"，所以卡不会跳到指针底下。
-     * 放在树上之后，这段状态由 {@link UiEvent.Type#DRAG} 驱动，不再由宿主自己记鼠标 ——
-     * 拖到屏幕外面松手也照样收得到结束（树的指针捕获）。
+     * 全屏的那一格是这趟拖拽的所有者，抓取偏移记的是"手与最新那张卡的相对位置"，
+     * 所以卡不会跳到指针底下。它<b>不碰</b> POINTER_DOWN / POINTER_UP —— 那是发给最深的
+     * 命中目标的（按钮要它）；拖拽有自己的三个事件，而"这一下按的算不算拖"由树判定。
      */
     private final class DragSurface extends Component {
 
         DragSurface(Style style) {
             style(style);
             draggable(true);
+            // 它自己画薄暮色，不要基类那层白色叠加（按在边缘时那层会铺满整屏）
+            stateOverlay(false);
         }
 
         @Override
         protected void drawContent(Canvas canvas) {
             // 薄暮色：括号和字读得出，遮挡关系还看得清（值与改动前那笔 gui.fill 相同）
-            // 薄暮色：括号和字读得出，遮挡关系还看得清（值与改动前那笔 gui.fill 相同）
             canvas.fillRect(bounds(), 0x59000000);
         }
 
+        /**
+         * 只管拖拽那三个事件，<b>POINTER_DOWN / POINTER_UP 一概不接</b>。
+         *
+         * <p>【为什么】这两个是发给最深的命中目标的，而这一格是根 —— 在<b>捕获阶段</b>把它们
+         * 吃掉，等于让整屏所有子控件都收不到按下：A-17 第一版就是这么把两颗按钮点死的
+         * （按钮有焦点环、看着像活的，就是什么都不做；评审从代码推出来的）。
+         * 拖拽改用 {@link UiEvent.Type#DRAG_START} 之后，它有自己的成套事件，不必再借别人的按下。
+         */
         @Override
         protected boolean onEvent(UiEvent event) {
             switch (event.type()) {
-                case POINTER_DOWN:
+                case DRAG_START:
+                    // 抓取偏移 = 手抓住的是最新那张卡的哪个位置（抓取以卡为基准 —— 见类注释）。
+                    // 按下的那一点由框架给（DRAG_START 的坐标就是它），不必去蹭 POINTER_DOWN。
                     CardSlot newest = sampleSlots().get(0);
                     grabDx = event.x() - newest.x();
                     grabDy = event.y() - newest.y();
@@ -202,11 +220,9 @@ public final class AnchorEditScreen extends Screen {
                     dragging = true;
                     return true;
                 case DRAG:
-                    if (dragging) {
-                        setAnchorFromCard(event.x() - grabDx, event.y() - grabDy);
-                    }
+                    setAnchorFromCard(event.x() - grabDx, event.y() - grabDy);
                     return true;
-                case POINTER_UP:
+                case DRAG_END:
                     dragging = false;
                     return true;
                 default:
@@ -342,6 +358,7 @@ public final class AnchorEditScreen extends Screen {
         // 【树先算完再画】几何、悬停、拖拽目标全在树上；指针每帧推给它一次（MC 每帧都调 render），
         // 拖拽因此是"每帧按当前位置更新"，而不是靠 mouseDragged 那一串事件。
         tree.layout(new Rect(0f, 0f, this.width, this.height), 1f / guiScale());
+        treeLaidOut = true;
         tree.pointerMove(mouseX, mouseY);
         TrellisColumn.syncHover(tree);
 
@@ -488,6 +505,21 @@ public final class AnchorEditScreen extends Screen {
         return super.keyPressed(keyCode, scanCode, modifiers);
     }
 
+    /**
+     * 键抬起：<b>必须转发</b>（A-11b 在配置屏还掉的那笔债，编辑场这一版也要还）。
+     *
+     * <p>不转发的话树上"这个键还按着"的账永远出不去 —— 编辑场里按 Enter 激活按钮之后就换屏了，
+     * 今天看不出后果，但同一棵树上的 {@code repeatsDeduced()} 会读出虚高的数（读数一脏，
+     * 下一次真机验收就骗人）。评审指出的正是这一条。
+     */
+    @Override
+    public boolean keyReleased(int keyCode, int scanCode, int modifiers) {
+        if (tree != null && tree.keyUp(keyCode, modifiers)) {
+            return true;
+        }
+        return super.keyReleased(keyCode, scanCode, modifiers);
+    }
+
     @Override
     public void onClose() {
         cancel();       // Esc 走这里：取消，不写配置
@@ -546,8 +578,11 @@ public final class AnchorEditScreen extends Screen {
      * 两个 {@code Rect}，读数里没有它们的身影（所以那时也证明不了"画的和命中的是同一份"）。
      */
     public String treeDump() {
-        if (tree == null) {
-            return "(树还没建)";
+        if (tree == null || !treeLaidOut) {
+            // 【为什么要判"布局过没有"】bounds() 读的是布局算出来的那个矩形，一帧都没渲染过时
+            // 节点还是 null（`Component.bounds()` 当场 NPE）。窗口最小化时 MC 会跳过渲染，
+            // 而 harness 照样会调这个读数 —— 那种情况下不该是一个 NPE（评审逮到的）。
+            return tree == null ? "(树还没建)" : "(树还没布局)";
         }
         Rect t = titleBox.bounds();
         Rect h = hintBox.bounds();
@@ -576,6 +611,24 @@ public final class AnchorEditScreen extends Screen {
         mouseDragged(fx * this.width, fy * this.height, 0, 0, 0);
         mouseReleased(fx * this.width, fy * this.height, 0);
         return true;
+    }
+
+    /**
+     * 给 harness 用：<b>点一下「回到默认」那颗钮</b>（按下 + 抬起都走真事件路径，
+     * 落点是树给的那一格的中心）。
+     *
+     * <p>【为什么必须有这一条】A-17 第一版的蒙层在<b>捕获阶段</b>把 POINTER_DOWN 吃掉了，
+     * 两颗按钮全点不动 —— 而当时的 harness 只驱动过"拖"和"取消"，**谁都没点过按钮**，
+     * 所以三轮真机全绿（评审从代码推出来的，不是真机看出来的）。这一条补上那个缺口：
+     * 它红 = 按钮又死了。读数里"锚点变回（自动）"就是钮活着的证据。
+     */
+    public String clickResetForHarness() {
+        Rect box = resetSlot.bounds();
+        float cx = box.x() + box.width() / 2f;
+        float cy = box.y() + box.height() / 2f;
+        mouseClicked(cx, cy, 0);
+        mouseReleased(cx, cy, 0);
+        return stateDump();
     }
 
     public boolean saveForHarness() {

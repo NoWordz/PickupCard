@@ -396,6 +396,14 @@ public final class DevHarness {
                 // 先拍再取消：这一帧才是拖完之后的（上一帧缓冲已按锚点 0.70/0.60 渲染过）
                 // —— 括号被夹在边距上 + 「卡已贴边距」提示，方案一所见即所得的定妆照
                 capture(mc, "editor-clamped");
+                // 【A-17 评审那条真 bug 的回归】编辑场的按钮曾经点不动（蒙层在捕获阶段吃掉了
+                // POINTER_DOWN），而当时的 harness 只驱动过拖拽与取消 —— 谁都没点过按钮，
+                // 所以三轮真机全绿。这一下点的是真按钮、走真事件路径；拍完照再点，
+                // 免得改掉上面那张定妆照的内容。
+                if (mc.screen instanceof AnchorEditScreen editor) {
+                    PickupCard.LOGGER.info("[harness-auto] 点『回到默认』之后: {}",
+                            editor.clickResetForHarness());
+                }
                 // Esc 取消：配置必须原样（没写盘），回到配置界面
                 if (mc.screen instanceof AnchorEditScreen editor) {
                     editor.cancelForHarness();
