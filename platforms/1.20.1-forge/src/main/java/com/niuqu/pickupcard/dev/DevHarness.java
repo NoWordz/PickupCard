@@ -596,7 +596,7 @@ public final class DevHarness {
                 return;
             }
             if (configTicks >= WARMUP_TICKS + 118 + CYCLE_EVERY * CYCLE_FRAMES
-                    && configTicks < WARMUP_TICKS + 118 + CYCLE_EVERY * CYCLE_FRAMES + 8) {
+                    && configTicks < WARMUP_TICKS + 118 + CYCLE_EVERY * CYCLE_FRAMES + 12) {
                 // 【外观页补拍】翻页流程从前只走 通用→布局→动画→过滤，外观页（颜色 chip 那几行）
                 // 从来没有被截过图——英文文案在不在框里只有真截一张才算数。
                 int look = configTicks - WARMUP_TICKS - 118 - CYCLE_EVERY * CYCLE_FRAMES;
@@ -647,8 +647,30 @@ public final class DevHarness {
                     capture(mc, "look-scrolled");
                     return;
                 }
+                if (look == 7) {
+                    // ---- A-11b：长按重复（框架推断）----
+                    // 【为什么必须真机走这一条】"同一个键没抬又按下 = 重复"这条判据完全建立在
+                    // "按下与抬起都真的到得了树"之上；而宿主从前压根没有 keyReleased 覆写
+                    // （第 36 轮之前那条链是断的）。探针一口气把 首按 / 不松再来 / 抬起 / 再按
+                    // 四步走完 —— 中间不隔帧，见 keyRepeatForHarness 的说明。
+                    if (mc.screen instanceof PickupCardConfigScreen screen) {
+                        PickupCard.LOGGER.info("[harness-auto] A-11b 长按重复: {}", screen.keyRepeatForHarness());
+                    }
+                    return;
+                }
+                if (look == 8) {
+                    // 探针之后界面还得是好的：这几下键不该把树弄坏。
+                    // 【读数里"焦点行=-1"是对的】这一页从头到尾没点过任何一行，本来就没有焦点控件 ——
+                    // 它证明的是"探针没把树弄出焦点"，不是"焦点被键挪走了"（本轮前半段
+                    // "Tab 之后 / Shift+Tab 之后"那两条读数才是焦点那件事的证据）。
+                    if (mc.screen instanceof PickupCardConfigScreen screen) {
+                        PickupCard.LOGGER.info("[harness-auto] A-11b 探针之后的键盘路由: {}", screen.keyboardRouteDump());
+                    }
+                    capture(mc, "key-repeat-probe");
+                    return;
+                }
             }
-            if (configTicks >= WARMUP_TICKS + 118 + CYCLE_EVERY * CYCLE_FRAMES + 8) {
+            if (configTicks >= WARMUP_TICKS + 118 + CYCLE_EVERY * CYCLE_FRAMES + 12) {
                 PickupCard.LOGGER.info("[harness-auto] 配置界面模式收工，退出客户端");
                 mc.stop();
             }

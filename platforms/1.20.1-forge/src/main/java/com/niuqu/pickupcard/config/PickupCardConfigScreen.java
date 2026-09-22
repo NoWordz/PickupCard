@@ -413,6 +413,53 @@ public final class PickupCardConfigScreen extends Screen {
     }
 
     /**
+     * 给 harness 用：<b>长按重复整条推断链</b>走一遍（A-11b）。
+     *
+     * <p>【为什么这一串要连着做完，不分成几步】"还按着"是<b>跨事件</b>的状态：分开做的话，
+     * 中间隔着的帧会跑 {@code render} 里那道"窗口失焦就结账"的守卫
+     * （harness 是后台启动的，这一轮<b>没有</b>记录窗口算不算活跃 —— 所以这里按最坏情况设计：
+     * 只要它有可能结账，跨帧的探针就不可靠）。一口气做完，读的就是这条链本身。
+     *
+     * <p>【为什么用方向键不用 Tab】Tab 会被宿主在 {@code keyPressed} 里截走换焦点（那是 A-15b 的
+     * 口径），到不了树；方向键会照常走到树里。本探针要测的是<b>树怎么记账</b>，不是焦点去哪。
+     *
+     * <p>【读数里的"重复增量"是什么】树在把一次按下标成重复的<b>同一个分支</b>里加那个计数器，
+     * 所以它就是"这一下被判成重复了没有"，而且是从框架自己嘴里说出来的 —— 宿主没有第二份账。
+     *
+     * <p>【"被吃=false"是对的】方向键在这一页没有任何控件接（`ControlSlot` 的 KEY_DOWN 走
+     * `NvgWidget.keyPressed`，默认返回 false），所以事件会照常落回 MC 的默认路径。探针要验的
+     * 是记账，不是"谁吃掉了键"。
+     */
+    public String keyRepeatForHarness() {
+        UiTree tree = trellisColumn();
+        int key = GLFW.GLFW_KEY_DOWN;
+        StringBuilder out = new StringBuilder();
+        out.append("按下#1（首按）").append(step(tree, key, false));
+        out.append(" | 按下#2（不松手，真机上就是系统送来的那次重复）").append(step(tree, key, false));
+        out.append(" | 抬起").append(step(tree, key, true));
+        out.append(" | 按下#3（抬过之后）").append(step(tree, key, false));
+        out.append(" | 收尾抬起").append(step(tree, key, true));
+        return out.toString();
+    }
+
+    /**
+     * 走一步键事件：<b>从 MC 的入口进</b>（{@link #keyPressed}/{@link #keyReleased}），
+     * 不是直接调树。
+     *
+     * <p>【为什么必须从这里进】"按下与抬起都到得了树"这件事是靠**宿主那两趟转发**成立的，
+     * 而宿主从前压根没有 {@code keyReleased} 覆写。直接调 {@code tree.keyDown/keyUp} 的话，
+     * 把转发整趟删掉读数照样好看（它测的只是树自己的记账）—— 那就成了自带答案的探针。
+     * 从这一层进，转发一断，读数里的"按后按着"就会变成 false、"被判重复"永远 0。
+     */
+    private String step(UiTree tree, int key, boolean up) {
+        boolean heldBefore = tree.isKeyHeld(key);
+        int repeatsBefore = tree.repeatsDeduced();
+        boolean eaten = up ? keyReleased(key, 0, 0) : keyPressed(key, 0, 0);
+        return String.format(java.util.Locale.ROOT, "（按前按着=%s 被判重复=%d 被吃=%s 按后按着=%s）",
+                heldBefore, tree.repeatsDeduced() - repeatsBefore, eaten, tree.isKeyHeld(key));
+    }
+
+    /**
      * 同页重建时要接回来的滚动偏移：{@link #rebuild()} 记、{@link #updateTrellisColumn()} 写回。
      *
      * <p>【为什么需要它】偏移现在住在滚动容器里（A-16），而重建会换一棵树、也就是换一个容器。
@@ -769,6 +816,8 @@ public final class PickupCardConfigScreen extends Screen {
         now = System.currentTimeMillis();
         frameMouseX = mouseX;
         frameMouseY = mouseY;
+        // 【A-11b 的"失焦结账"不在这里，在 tick() 里】理由见那个方法：它要派发事件，
+        // 不该插在绘制路径中间。
         if (pendingRebuild) {
             pendingRebuild = false;
             rebuild();
@@ -936,8 +985,51 @@ public final class PickupCardConfigScreen extends Screen {
         previewAtMaxUs = 0L;
     }
 
+    /**
+     * 每 tick 一次（20 次/秒）：窗口一旦失焦，就把"还按着"的账结掉（A-11b）。
+     *
+     * <p>【为什么必须有人做这件事】MC 不替屏幕补发 keyReleased（1.20.1 里没有屏幕级的
+     * releaseAllKeys，只有 {@code KeyMapping.releaseAll()} 管它自己的键位 —— 实测），而配置界面
+     * 开着时失焦<b>不会</b>换屏（{@code Minecraft.pauseGame} 只在没有屏幕时动作），所以
+     * {@link #removed()} 那条路也走不到。少了这道守卫，切出去再切回来，第一次按下就会被判成
+     * 长按重复。
+     *
+     * <p>【为什么在 tick 里、不在 render 里】结账会派发 KEY_UP（回调链一路到控件）。
+     * 放进 render 就是在<b>绘制路径中途</b>跑别人的回调 —— 今天没有控件接 KEY_UP 所以看不出差别，
+     * 但那正是"将来才炸"的那种位置（回调里改焦点 / 重建，就会和同一帧的绘制错开半拍）。
+     *
+     * <p>【代价】每 tick 过一次 {@code trellisColumn}：空账时只是一个 {@code isEmpty}，
+     * 而首帧 / 换页 / 换 u 那一拍它顺带建列 —— 那本来同一帧也要建，没有多出来的活。
+     *
+     * <p>【一条已知缺口，不打算修】按住某个键切出去、切回来时手还按着：GLFW 会立刻补发一发
+     * action=2（重复），而账刚被这道守卫清空，于是那一发在树上算"首按"。
+     * 系统没把 action 号给我们（见 {@code UiEvent.Type.KEY_DOWN}），这一下确实分不出来 ——
+     * 症状是"切回来第一次长按不响应"，可接受。
+     */
+    @Override
+    public void tick() {
+        super.tick();
+        if (!Minecraft.getInstance().isWindowActive() && trellisColumn != null) {
+            trellisColumn.releaseAllKeys();
+        }
+    }
+
     @Override
     public void removed() {
+        // 【A-11b：关界面这一帧是最后的收尾机会】按着键被 Esc 关掉、或者换屏，抬键永远不会来了
+        // （MC 不替屏幕补发 keyReleased）。这行让"还按着"的账在界面消失前结平，并给每一个
+        // 还按着的键补一次 KEY_UP。
+        // 【别把补发说成"控件已经收尾了"】KEY_UP 今天在整个宿主里<b>没有消费者</b>
+        // （`TrellisColumn.ControlSlot` 有意不接、`NvgWidget` 也没有 keyReleased）——
+        // 补发的实际效果只有"清账"这一件事，控件什么都不知道。等真有按住态控件时再回来改这句话。
+        // 【为什么要判 null】trellisColumn() 是惰性的：一帧都没渲染就被换屏时，这里会凭空建
+        // 一整列再扔掉（且建树若抛异常就抛在 Minecraft.setScreen 里）。没有树 = 没有账。
+        if (trellisColumn != null) {
+            int keysHeld = trellisColumn.releaseAllKeys();
+            if (keysHeld > 0) {
+                PickupCard.LOGGER.info("[trellis] 关界面时结掉 {} 个还按着的键", keysHeld);
+            }
+        }
         reportFrames();
         super.removed();
     }
@@ -1440,6 +1532,31 @@ public final class PickupCardConfigScreen extends Screen {
         return super.keyPressed(keyCode, scanCode, modifiers);
     }
 
+    /**
+     * 键抬起：<b>必须转发给树</b>（A-11b）。
+     *
+     * <p>【不转发会怎样】树上"这个键还按着"的账永远结不掉，于是<b>之后的每一次按下都会被判成长按重复</b>。
+     * 这件事在界面上今天看不出来（没有控件读那个标记），却会让"按住 / 长按"这类手感从第一天起就是错的：
+     * 长按和首按在树上再也分不开 —— 而那正是"按住不放"与"点一下"两种操作的唯一区别。
+     *
+     * <p>【真机上它一定会来】GLFW 的 action 0 走 {@code Screen.keyReleased}（与 keyPressed 同一份
+     * {@code KeyboardHandler} 实测）；宿主从前没有覆写它，所以这条链是<b>从来没接上</b>的。
+     *
+     * <p>【"抬起多于按下"是正常的，照发】两台情况下树会收到它没见按下过的键的抬起：
+     * ① {@code keyPressed} 里被宿主截走的键（Tab 换焦点那条路压根没进树）；
+     * ② 界面打开时手正按着的键（MC 只复位自己的键位，不通知屏幕）。
+     * 抬起是事实，不该因为我们没记账就吞掉（见 {@code UiEvent.Type#KEY_UP}）。
+     *
+     * <p>【返回值照旧原样交回】控件不接（返回 false）就还给 MC 的默认路径。
+     */
+    @Override
+    public boolean keyReleased(int keyCode, int scanCode, int modifiers) {
+        if (trellisColumn().keyUp(keyCode, modifiers)) {
+            return true;
+        }
+        return super.keyReleased(keyCode, scanCode, modifiers);
+    }
+
     /** 敲字：同上，只发给焦点控件那一格（树的 CHAR 阶段）。 */
     @Override
     public boolean charTyped(char codePoint, int modifiers) {
@@ -1542,7 +1659,14 @@ public final class PickupCardConfigScreen extends Screen {
         return true;
     }
 
-    /** 走真实事件路径往某个文本框里打字并回车（点一下拿焦点 → 逐字 → 回车提交）。 */
+    /**
+     * 走真实事件路径往某个文本框里打字并回车（点一下拿焦点 → 逐字 → 回车提交）。
+     *
+     * <p>【回车的按下必须配一次抬起（A-11b）】这里合成的是"玩家按了一下回车"，而树从这一下
+     * 开始就把 ENTER 记在"还按着"的账上 —— 不补抬起的话，那笔账会一直挂着：之后任何一次
+     * ENTER 都会被判成长按重复，{@code removed()} 那条日志也会凭空报出"结掉 1 个还按着的键"，
+     * 从此不能当成"当时真有个键被按着"的证据（评审逮到的就是这个）。
+     */
     public boolean typeOption(String label, String text) {
         if (!clickOption(label)) {
             return false;
@@ -1551,6 +1675,7 @@ public final class PickupCardConfigScreen extends Screen {
             charTyped(c, 0);
         }
         keyPressed(GLFW.GLFW_KEY_ENTER, 0, 0);
+        keyReleased(GLFW.GLFW_KEY_ENTER, 0, 0);
         return true;
     }
 
