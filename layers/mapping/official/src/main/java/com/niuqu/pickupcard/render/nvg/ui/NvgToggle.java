@@ -64,6 +64,10 @@ public final class NvgToggle extends NvgWidget {
         // 钮面两色走调色板（A-13 评审列的"钮面颜色对"）：与 NvgSlider 是同一个角色，
         // 从前两处各写一遍 0xFFFFFFFF / 0xFFD5DAE5 —— 值一个字没改。
         float knobX = on ? pillX + pillW - r : pillX + r;
+        // **半径 = 胶囊半径 - 1（基准下 4）—— 上面那两行说的是"色"同角色，半径不是**：
+        // 这条钮是**胶囊内切**，必须比胶囊半径小 1，否则圆的切线顶出胶囊边（屏幕越大越明显）；
+        // 滑条那颗是**独立圆钮**，不受任何胶囊约束（基准下 5）。A-13 评审判定"两条不同的规矩"，
+        // 硬捏成一个数会改外观 —— 见 NvgSlider 同一处的注释。
         ctx.circle(knobX, pillY + r, r - 1f, on ? p.knobActive : p.knobIdle);
         if (hovered) {
             // 焦点不再画在这条描边上（A-15）：焦点环由框架基类画，见 NvgWidget.wellColor 的注释。

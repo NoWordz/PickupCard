@@ -114,6 +114,10 @@ public final class NvgSlider extends NvgWidget {
             ctx.fillRoundRect(tx, ty, filled, tt, tr, p.accent);
         }
         float knobR = p.knobRadius;
+        // **为什么这里是 5，而 NvgToggle 那颗是 4 —— 不是重复，是两条规矩**：
+        // 滑条这颗是**独立圆钮**，半径自己说了算；开关那颗是**胶囊内切**，必须比胶囊半径小 1，
+        // 否则圆的切线顶出胶囊边。A-13 评审判定"硬捏成一个数会改外观"，所以两个数各留各的 ——
+        // 别下一次又当成重复收一遍（理由见 NvgToggle 同一处的注释）。
         // 钮面两色走调色板（A-13 评审列的"钮面颜色对"）：与 NvgToggle 是同一个角色，
         // 从前两处各写一遍 0xFFFFFFFF / 0xFFD5DAE5 —— 值一个字没改。
         ctx.circle(tx + filled, ty + tr, knobR,
