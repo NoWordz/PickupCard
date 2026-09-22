@@ -18,6 +18,7 @@ import dev.e33.trellis.geom.Snapping;
 import dev.e33.trellis.text.FontStack;
 import dev.e33.trellis.text.TextLayout;
 import dev.e33.trellis.text.TextMeasurer;
+import dev.e33.trellis.tokens.Units;
 import dev.e33.trellis.ui.UiTree;
 import com.niuqu.pickupcard.render.nvg.ui.NvgWidget;
 import com.niuqu.pickupcard.render.nvg.ui.McGlyphPainter;
@@ -373,7 +374,8 @@ public final class PickupCardConfigScreen extends Screen {
      * 每个控件仍然只有<b>一个</b>出处（控件自己那份 {@code x/y/w/h} 已随 A-10 第二步删掉）。
      */
     private final Map<NvgWidget, Rect> chipBoxes = new IdentityHashMap<>();
-    private NvgPalette palette = NvgPalette.dark(StyleModel.Accents.defaults());
+    private NvgPalette palette = NvgPalette.dark(StyleModel.Accents.defaults(),
+            Units.u(this.height));
     /** 控件里点出来的"切换分类/重建"请求：不在事件遍历中途重建列表。 */
     private boolean pendingRebuild;
     /** 同页重建（规则增删）保留滚动偏移；换页清零。 */
@@ -525,7 +527,7 @@ public final class PickupCardConfigScreen extends Screen {
         trellisColumn = null;
         trellisColumnRows = -1;
         trellisColumnControls = -1;
-        palette = NvgPalette.of(CardStage.INSTANCE.previewStyle());
+        palette = NvgPalette.of(CardStage.INSTANCE.previewStyle(), unit());
         StyleModel style = CardStage.INSTANCE.previewStyle();
         PickupCardSettings eff = PickupCardConfig.snapshot();
         // 页面归属、控件、默认值 —— 全部只有注册表这一个出处

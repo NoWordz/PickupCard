@@ -7,6 +7,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import dev.e33.trellis.geom.Rect;
 import dev.e33.trellis.render.nanovg.NvgCanvas;
 import dev.e33.trellis.render.nanovg.Offscreen;
+import dev.e33.trellis.tokens.Units;
 import com.niuqu.pickupcard.style.StyleModel;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -60,7 +61,7 @@ class TrellisWidgetPaintTest {
                 "离屏台要一份字体（Trellis 的度量表就是它烘的）：" + FONT
                         + "。这份路径与 settings.gradle 的 includeBuild 同一个本机检出。");
         off = Offscreen.create((int) (W * SCALE), (int) (H * SCALE), FONT);
-        palette = NvgPalette.dark(StyleModel.Accents.defaults());
+        palette = NvgPalette.dark(StyleModel.Accents.defaults(), Units.u(240f));
     }
 
     @AfterAll

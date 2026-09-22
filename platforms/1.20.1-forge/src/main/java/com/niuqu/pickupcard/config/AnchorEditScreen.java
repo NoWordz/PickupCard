@@ -96,7 +96,8 @@ public final class AnchorEditScreen extends Screen {
         // 真卡挂起：屏幕上只能有一摞卡（见类注释）
         PickupCard.LOGGER.info("[编辑场] init");
         CardStage.INSTANCE.setSuspended(true);
-        palette = NvgPalette.of(CardStage.INSTANCE.previewStyle());
+        palette = NvgPalette.of(CardStage.INSTANCE.previewStyle(),
+                dev.e33.trellis.tokens.Units.u(this.height));
         int bw = 120;
         int bh = 18;
         int gap = 8;

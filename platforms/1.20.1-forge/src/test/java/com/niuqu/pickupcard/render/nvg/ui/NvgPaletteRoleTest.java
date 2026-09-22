@@ -6,6 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.niuqu.pickupcard.style.StyleModel;
 import dev.e33.trellis.tokens.Tokens;
+import dev.e33.trellis.tokens.Units;
 import java.lang.reflect.Field;
 import java.lang.reflect.Modifier;
 import java.util.LinkedHashMap;
@@ -99,13 +100,20 @@ class NvgPaletteRoleTest {
     @Test
     @DisplayName("尺寸来自 token × u：圆角 4、描边 1（不乘 u）、滑块半径 5")
     void sizesComeFromTokens() {
-        NvgPalette palette = NvgPalette.dark(StyleModel.Accents.defaults());
-        assertEquals(4f, palette.radius, 0.001f, "Radius.MD(2u) × u(2)");
-        assertEquals(1f, palette.outlineWidth, 0.001f,
-                "Size.HAIRLINE：绝对 1px，**不乘 u**（细线不该随屏幕放大）");
-        assertEquals(5f, palette.knobRadius, 0.001f, "Size.KNOB_RADIUS(2.5u) × u(2)");
-        // 细条：滑条轨道与滚动条共用的那一对（A-13 评审列的"细条 3u + 1.5u"）。
-        // 绝对 px、不乘 u —— 与 HAIRLINE 同一个理由（细线不该随屏幕变粗）。
+        // A-14：u 由调用方按画布高算好传进来。这里显式用 240 画布（u=1.5）那一档 ——
+        // 就是为了证明**调色板尺寸真的跟着 u 缩**（从前烤死在 BASE，u 变了它纹丝不动）。
+        NvgPalette palette = NvgPalette.dark(StyleModel.Accents.defaults(), Units.u(240f));
+        float u = Units.u(240f);
+        assertEquals(1.5f, u, 0.001f, "240 在地板线之下 → 撞 MIN");
+        assertEquals(Tokens.Radius.MD * u, palette.radius, 0.001f, "Radius.MD(2u) × u(1.5) = 3");
+        assertEquals(Tokens.Size.KNOB_RADIUS * u, palette.knobRadius, 0.001f,
+                "Size.KNOB_RADIUS(2.5u) × u(1.5) = 3.75");
+        // 基准档对照：u=2 时才是 4 / 5。
+        NvgPalette atBase = NvgPalette.dark(StyleModel.Accents.defaults(), Tokens.Unit.BASE);
+        assertEquals(4f, atBase.radius, 0.001f, "基准档 Radius.MD × 2");
+        assertEquals(5f, atBase.knobRadius, 0.001f, "基准档 KNOB_RADIUS × 2");
+        // 这两条**不乘 u**：细线看起来该多细是"看得清"的事，屏幕大一号不该变粗。
+        assertEquals(1f, palette.outlineWidth, 0.001f, "Size.HAIRLINE：绝对 1px");
         assertEquals(3f, palette.trackThickness, 0.001f, "细条厚度（滑条轨道 / 滚动条共用）");
         assertEquals(1.5f, palette.trackRadius, 0.001f, "细条圆角 = 厚度的一半");
     }

@@ -18,7 +18,8 @@ import dev.e33.trellis.tokens.Tokens;
  * **颜色角色**（{@code Tokens.Color.*}，真源 {@code design/tokens.css}），而**值仍由本项目给** ——
  * 这是已发布外观（v0.1.0 起就这样、{@code main} 上也有），直接换成框架那份值等于悄悄改了
  * 玩家看到的东西。所以要收敛的是**语言**（角色名与层级），不是色号。
- * **尺寸则相反，必须收敛**：它们是 token × u，今天 u 取基准所以数值不变。
+ * **尺寸则相反，必须收敛**：它们是 {@code token × u}，A-14 起 u **每帧按画布高算**
+ * （原来是烤死的 {@code static final U = Tokens.Unit.BASE}）—— 见 {@link #radius}。
  *
  * <p>【哪几个角色故意不用】`Color.BORDER_STRONG` / `TEXT_DISABLED` / `DANGER` / `FOCUS_RING`
  * 至今没有对应字段（分别是"强描边""禁用态""危险色""焦点环"还没做）。这一组对应关系由
@@ -41,10 +42,14 @@ public final class NvgPalette {
      * 控件底（悬停）—— 角色：{@code Color.OVERLAY_HOVER}。
      *
      * <p>⚠️ **角色对得上、机制不同，而且框架那一层现在就已经叠在这下面**：框架的表达是
-     * "底色 + 一层白色叠加"（`Component.draw` 无条件画），宿主用的是三个绝对色。后果不是"将来迁移时
-     * 才要注意"—— 底色 alpha 只盖住七成左右，所以**改框架 `OVERLAY_HOVER / OVERLAY_PRESS` 的 alpha
+     * "底色 + 一层白色叠加"，宿主用的是三个绝对色。后果不是"将来迁移时才要注意"——
+     * 底色 alpha 只盖住七成左右，所以**改框架 `OVERLAY_HOVER / OVERLAY_PRESS` 的 alpha
      * 会直接改到玩家的观感**。也就是说"值全由本项目给"这条口径**今天只成立一半**。
-     * 框架侧目前没有"别画叠加层"的开关（`Component.draw` 是 final 且无条件）—— 这是记在案的真欠账。
+     *
+     * <p>【A-14 的更新】框架侧**已经有**"别画叠加层"的开关了
+     * （{@code Component.stateOverlay(false)}，A-13 记的那条欠账已补）——
+     * 但宿主**还没有打开它**（行内控件现在是"自己画 well 色 + 框架再叠一层"）。
+     * 翻转它会改观感，所以留着等一次明确的决定；开关本身纯加法、不影响任何现有画面。
      */
     public final int wellHover;
     /** 控件底（按下）—— 角色：{@code Color.OVERLAY_PRESS}。机制差别同 {@link #wellHover}。 */
@@ -77,14 +82,20 @@ public final class NvgPalette {
     /** 圆钮的"沉面"（滑条常态、开关处于关时）。角色同上，也是宿主自己的。值不变（原 {@code 0xFFD5DAE5}）。 */
     public final int knobIdle;
 
-    // ---- 尺寸（token × u；u 今天取基准，见 {@link Tokens.Unit}）----
-    private static final float U = Tokens.Unit.BASE;
-    /** 控件圆角 = {@code Radius.MD} × u（基准下 4）。 */
-    public float radius = Tokens.Radius.MD * U;
+    /**
+     * 控件圆角 = {@code Radius.MD} × u（A-14 起 u 每帧按画布高算，基准下 4）。
+     *
+     * <p>【为什么 u 是构造参数、这里不再有 {@code U = Tokens.Unit.BASE}】尺寸全是
+     * {@code token × u}，而 u 是每帧按画布高算的（{@code Units.u(h)}）—— 把它写成
+     * {@code static final} 会把基准尺寸烤进调色板，于是"行高跟着 u 缩、控件圆钮不缩"
+     * （u=1.5 时 14px 的行里塞一个按基准画的钮）。**这是 A-14 漏掉的最后一处**：
+     * 调色板在 {@code rebuild()} 里每次重建，u 现成可取。
+     */
+    public final float radius;
     /** 细线（描边）粗细 = {@code Size.HAIRLINE} —— **绝对 1px，不乘 u**（细线不该随屏幕放大）。 */
-    public float outlineWidth = Tokens.Size.HAIRLINE;
-    /** 滑块（圆）半径 = {@code Size.KNOB_RADIUS} × u（基准下 5）。 */
-    public float knobRadius = Tokens.Size.KNOB_RADIUS * U;
+    public final float outlineWidth = Tokens.Size.HAIRLINE;
+    /** 滑块（圆）半径 = {@code Size.KNOB_RADIUS} × u（A-14 起每帧算，基准下 5）。 */
+    public final float knobRadius;
     /**
      * 细条（滑条轨道 / 屏幕滚动条）的厚度与圆角。
      *
@@ -99,20 +110,19 @@ public final class NvgPalette {
     /** 细条的圆角（= 厚度的一半，胶囊端）。见 {@link #trackThickness}。 */
     public float trackRadius = 1.5f;
     // 【删掉的两个字段（2026-09-22）】`rowHeight = 18f` 与 `trackHeight = 6f` —— **全仓没有任何读点**：
-    // 行高由 `ConfigRows` / 组件树用 `Size.ROW_H × u` 给；轨道高**还没有 token**（`NvgSlider` 里那句
-    // 细条 3u + 圆角 1.5u，与屏幕里滚动条那一对是同一份裸数字，两处各写一遍 —— 记在下一片）。
+    // 行高由 `ConfigRows` / 组件树用 `Size.ROW_H × u` 给；轨道高由 `trackThickness` 给。
     // 留着这两个死字段只会让人以为"改这里能调行高/轨道高"，而改了什么都不发生。
 
     /** 深色界面。默认就是它 —— 游戏里九成时间在暗环境，浅色面板会晃眼。 */
-    public static NvgPalette dark(StyleModel.Accents a) {
+    public static NvgPalette dark(StyleModel.Accents a, float u) {
         return new NvgPalette(0xF0101218, 0xC0202836, 0x80202836, 0xB0364152, 0xC04A5871,
-                a.xp(), 0x40FFFFFF, 0xFFEBEFF6, 0xFF9AA4AD, 0xFFFFFFFF, 0xFFD5DAE5);
+                a.xp(), 0x40FFFFFF, 0xFFEBEFF6, 0xFF9AA4AD, 0xFFFFFFFF, 0xFFD5DAE5, u);
     }
 
     /** 浅色：跟着主题走（主题是浅色时用这套）。 */
-    public static NvgPalette light(StyleModel.Accents a) {
+    public static NvgPalette light(StyleModel.Accents a, float u) {
         return new NvgPalette(0xF0E9ECF3, 0xC0FFFFFF, 0x60D5DAE5, 0xA0C3CAD8, 0xC0A9B2C4,
-                a.xp(), 0x40000000, 0xFF1B1F27, 0xFF5A6272, 0xFFFFFFFF, 0xFFD5DAE5);
+                a.xp(), 0x40000000, 0xFF1B1F27, 0xFF5A6272, 0xFFFFFFFF, 0xFFD5DAE5, u);
     }
 
     /**
@@ -124,17 +134,17 @@ public final class NvgPalette {
      * （见类注释：旧版正是"颜色散在六个控件文件里"才改不干净的）。让界面 chrome 也能
      * 整套换肤是另一个决定，不属于"清理重复"。
      */
-    public static NvgPalette of(StyleModel style) {
+    public static NvgPalette of(StyleModel style, float u) {
         // 卡面底色偏亮（fillTop 的 alpha/亮度高）就当作浅色主题
         int rgb = style.fillTop() & 0xFFFFFF;
         int brightness = ((rgb >> 16) & 0xFF) + ((rgb >> 8) & 0xFF) + (rgb & 0xFF);
         StyleModel.Accents accents = style.accents();
-        return brightness > 3 * 128 ? light(accents) : dark(accents);
+        return brightness > 3 * 128 ? light(accents, u) : dark(accents, u);
     }
 
     private NvgPalette(int backdrop, int panel, int well, int wellHover, int wellPressed,
                        int accent, int outline, int text, int textDim,
-                       int knobActive, int knobIdle) {
+                       int knobActive, int knobIdle, float u) {
         this.backdrop = backdrop;
         this.panel = panel;
         this.well = well;
@@ -146,5 +156,8 @@ public final class NvgPalette {
         this.textDim = textDim;
         this.knobActive = knobActive;
         this.knobIdle = knobIdle;
+        // 尺寸：token × u。u 由调用方按画布高算好传进来（见 radius 的 javadoc）。
+        this.radius = Tokens.Radius.MD * u;
+        this.knobRadius = Tokens.Size.KNOB_RADIUS * u;
     }
 }

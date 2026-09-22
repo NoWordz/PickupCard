@@ -7,6 +7,7 @@ import com.niuqu.pickupcard.render.nvg.ui.ConfigLayout;
 import com.niuqu.pickupcard.render.nvg.ui.NvgWidget;
 import com.niuqu.pickupcard.render.nvg.ui.TrellisColumn;
 import dev.e33.trellis.tokens.Tokens;
+import dev.e33.trellis.tokens.Units;
 import dev.e33.trellis.geom.Rect;
 import dev.e33.trellis.ui.UiTree;
 import java.util.ArrayList;
@@ -65,10 +66,31 @@ class TrellisHitParityTest {
     private static final float EDGE_BAND = 2f;
 
     @Test
-    @DisplayName("判据 1：逐点扫整个配置列，Trellis 的命中与宿主的控件矩形只在左右边缘带里不一致")
+    @DisplayName("判据 1（基准 u）：逐点扫整个配置列，Trellis 的命中与宿主的控件矩形只在左右边缘带里不一致")
     void trellisHitsMatchHostControlRects() {
+        scan(U);
+    }
+
+    /**
+     * <b>A-14：同一个对账要在 u ≠ BASE 时也成立。</b>
+     *
+     * <p>【为什么必须补这一条】A-14 起宿主的 {@code controlW / controlX / labelX} 也乘了 u
+     * （见验算侧），而这条对账是"Trellis 树里的命中"与"宿主自己那份算术"**唯一**的水平比对。
+     * 只在基准那一档扫过，等于"u 缩放这条路上有没有新的边缘带错位"没人看着。
+     * 拿真机 427×240 那一档（u=1.5）重扫一遍，判据与基准档完全相同（边缘带以内算边缘）。
+     */
+    @Test
+    @DisplayName("判据 1（u=1.5）：u 缩放之后，同一份逐点扫描仍然只在边缘带里不一致")
+    void trellisHitsMatchHostControlRectsAtAdaptiveUnit() {
+        float u = Units.u(CANVAS_H);
+        assertEquals(1.5f, u, 0.001f, "这一档就是要验「非基准 u」这条路，u 得真的是 1.5");
+        scan(u);
+    }
+
+    /** 逐点扫一遍：Trellis 命中 vs 宿主控件矩形，只许在左右边缘带里不一致。 */
+    private static void scan(float u) {
         ConfigLayout lo = ConfigLayout.compute(CANVAS_W, CANVAS_H);
-        UiTree ui = TrellisColumn.buildColumn(CONTROLS, ConfigRows.topInset(U), U);
+        UiTree ui = TrellisColumn.buildColumn(CONTROLS, ConfigRows.topInset(u), u);
         ui.layout(new Rect(lo.items().x(), lo.items().y(), lo.items().w(), lo.items().h()),
                 1f / GUI_SCALE);
 
@@ -79,13 +101,13 @@ class TrellisHitParityTest {
 
         for (float y = lo.items().y(); y < lo.items().bottom(); y += STEP) {
             for (float x = lo.items().x(); x < lo.items().right(); x += STEP) {
-                int host = hostControlAt(lo, x, y);
+                int host = hostControlAt(lo, x, y, u);
                 int trellis = trellisControlAt(ui, x, y);
                 if (host == trellis) {
                     agree++;
                     continue;
                 }
-                if (insideEdgeBand(lo, x, y)) {
+                if (insideEdgeBand(lo, x, y, u)) {
                     edgeOnly++;
                 } else {
                     wrong.add("(" + x + "," + y + ") 宿主=" + host + " Trellis=" + trellis);
@@ -99,10 +121,10 @@ class TrellisHitParityTest {
             if (!hasControl(i)) {
                 continue;       // 小节头没有控件，中心点无从谈起
             }
-            Rect r = hostControl(lo, i);
+            Rect r = hostControl(lo, i, u);
             float cx = r.x() + r.width() / 2f;
             float cy = r.y() + r.height() / 2f;
-            int host = hostControlAt(lo, cx, cy);
+            int host = hostControlAt(lo, cx, cy, u);
             int trellis = trellisControlAt(ui, cx, cy);
             controlCenters.add(i + "->" + host);
             assertEquals(host, trellis, "第 " + i + " 行控件中心：两边答案不一致");
@@ -122,20 +144,20 @@ class TrellisHitParityTest {
     // -----------------------------------------------------------------------
 
     /** 宿主那一套：控件右对齐到列右缘留 6，宽按比例夹上下限（整数运算）。 */
-    private static Rect hostControl(ConfigLayout lo, int line) {
-        float y = Math.round(lo.items().y()) + ConfigRows.topInset(U)
-                + line * (float) ConfigRows.rowStep(U);
-        return new Rect(ConfigRows.controlX(lo, U), y, ConfigRows.controlW(lo, U), ConfigRows.rowH(U));
+    private static Rect hostControl(ConfigLayout lo, int line, float u) {
+        float y = Math.round(lo.items().y()) + ConfigRows.topInset(u)
+                + line * (float) ConfigRows.rowStep(u);
+        return new Rect(ConfigRows.controlX(lo, u), y, ConfigRows.controlW(lo, u), ConfigRows.rowH(u));
     }
 
-    private static int hostControlAt(ConfigLayout lo, float x, float y) {
+    private static int hostControlAt(ConfigLayout lo, float x, float y, float u) {
         // 宿主自己也把行控件夹在视口里（屏幕里那句「滚出视口的行不该还能被点到」）。
         // 不镜像这一条，比出来的就不是几何差，而是"一边裁一边不裁"。
         if (y < lo.items().y() || y >= lo.items().bottom()) {
             return -1;
         }
         for (int i = 0; i < ROWS; i++) {
-            if (hasControl(i) && hostControl(lo, i).contains(x, y)) {
+            if (hasControl(i) && hostControl(lo, i, u).contains(x, y)) {
                 return i;
             }
         }
@@ -157,12 +179,12 @@ class TrellisHitParityTest {
      * <p>宿主说"没命中"、Trellis 说"命中第 i 行"的那些点也在这里 —— 它们同样只是边缘带：
      * 差的那 1.3 逻辑 px 正好是宿主取整吃掉的宽度。
      */
-    private static boolean insideEdgeBand(ConfigLayout lo, float x, float y) {
+    private static boolean insideEdgeBand(ConfigLayout lo, float x, float y, float u) {
         for (int i = 0; i < ROWS; i++) {
             if (!hasControl(i)) {
                 continue;
             }
-            Rect r = hostControl(lo, i);
+            Rect r = hostControl(lo, i, u);
             if (y >= r.y() && y < r.bottom()
                     && (Math.abs(x - r.x()) <= EDGE_BAND || Math.abs(x - r.right()) <= EDGE_BAND)) {
                 return true;
