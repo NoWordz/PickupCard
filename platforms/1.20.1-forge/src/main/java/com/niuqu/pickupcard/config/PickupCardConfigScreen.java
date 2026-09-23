@@ -24,7 +24,8 @@ import dev.e33.trellis.ui.UiTree;
 import dev.e33.trellis.ui.widget.Widget;
 import com.niuqu.pickupcard.render.nvg.ui.McGlyphPainter;
 import dev.e33.trellis.ui.widget.PaintCtx;
-import com.niuqu.pickupcard.render.nvg.ui.Tween;
+import dev.e33.trellis.motion.Animated;
+import dev.e33.trellis.motion.Easing;
 import dev.e33.trellis.ui.widget.TextField;
 import com.niuqu.pickupcard.style.StyleModel;
 import net.minecraft.client.Minecraft;
@@ -70,8 +71,6 @@ public final class PickupCardConfigScreen extends Screen {
      * 短动画的时长（毫秒）：只在"我按了东西"的那一瞬间回答问题。超过 200ms 它就开始和
      * 玩家的下一次操作抢时间；短于 80ms 就等于没有。
      */
-    private static final long HOVER_IN_MS = 110L;
-    private static final long HOVER_OUT_MS = 150L;
     private static final long TAB_MS = 160L;
     /** 「加一条」被拒时那句话在底部停留多久（够读完，又不会把悬停说明永久顶掉）。 */
     private static final long FILTER_NOTE_MS = 6_000L;
@@ -108,12 +107,12 @@ public final class PickupCardConfigScreen extends Screen {
         ConfigLayout.Rect card = lo.previewCard();
         float hover = 0f;
         for (ConfigRows.Row row : rowsModel.all()) {
-            hover = Math.max(hover, row.hover.at(now));
+            hover = Math.max(hover, row.hoverValueAt(now));
         }
         return String.format(java.util.Locale.ROOT,
                 "页=%s 样例=%s 预览卡区=(x%.0f y%.0f w%.0f h%.0f) 强调条=%.2f 预览=%s 最大行悬停=%.2f 画了=%s",
                 page.label(), sample.label(), card.x(), card.y(), card.w(), card.h(),
-                tabAccentAnim.at(now),
+                tabAccentAnim.at(now * 1_000_000L),
                 preview.stateDump(),
                 hover, paintedDump());
     }
@@ -526,7 +525,7 @@ public final class PickupCardConfigScreen extends Screen {
     private String forcedHover;
 
     /** 标签强调条：值 = 选中那一颗的序号（小数 = 正在滑）。 */
-    private final Tween tabAccentAnim = Tween.at(0f, 0L);
+    private final Animated tabAccentAnim = Animated.of(0f);
 
     /** 「位置」行的回调：显示当前锚点值、打开编辑场（界面自己才知道这两件事）。 */
     private final ConfigPageSpec.AnchorBridge anchorBridge = new ConfigPageSpec.AnchorBridge() {
@@ -648,7 +647,7 @@ public final class PickupCardConfigScreen extends Screen {
     protected void init() {
         rebuild();
         now = System.currentTimeMillis();
-        tabAccentAnim.snap(page.ordinal());
+        tabAccentAnim.snapTo(page.ordinal());
     }
 
     private void rebuild() {
@@ -1385,7 +1384,7 @@ public final class PickupCardConfigScreen extends Screen {
      */
     private void driveAnimations() {
         preview.drive(now, sample);
-        tabAccentAnim.retarget(page.ordinal(), now, TAB_MS);
+        tabAccentAnim.retarget(page.ordinal(), (int) TAB_MS, Easing.EASE_OUT_CUBIC, now * 1_000_000L);
         // 悬停哪一行<b>问树</b>：它读的是 Component.bounds()，跟悬停底、命中是同一份几何。
         // 指针位置用组件列认的那一份（harness 可以让它假装停在某一行上）—— 这样缓动的行与
         // 画出来的带子必然是同一条，不会出现"带子在这行、字亮的是那行"。
@@ -1400,7 +1399,7 @@ public final class PickupCardConfigScreen extends Screen {
             boolean on = forcedHover != null
                     ? row.label().equals(forcedHover)
                     : i == hoveredControl;
-            row.hover.retarget(on ? 1f : 0f, now, on ? HOVER_IN_MS : HOVER_OUT_MS);
+            row.driveHover(on, now);
         }
     }
 
@@ -1467,7 +1466,7 @@ public final class PickupCardConfigScreen extends Screen {
     private void drawTabAccent(NvgUi ui) {
         ConfigLayout lo = layout();
         int count = ConfigPageSpec.Page.values().length;
-        float idx = tabAccentAnim.at(now);
+        float idx = tabAccentAnim.at(now * 1_000_000L);
         float low = Math.max(0f, Math.min(count - 1f, (float) Math.floor(idx)));
         float high = Math.max(0f, Math.min(count - 1f, (float) Math.ceil(idx)));
         ConfigLayout.Rect a = lo.tabRect((int) low, count);
@@ -1545,7 +1544,7 @@ public final class PickupCardConfigScreen extends Screen {
                 // 悬停时标签由暗到亮：它、那条高亮带、底部那句说明指的是同一行
                 int argb = row.isHeader()
                         ? palette.textDim()
-                        : NvgUi.mix(palette.textDim(), palette.text(), row.hover.at(now));
+                        : NvgUi.mix(palette.textDim(), palette.text(), row.hoverValueAt(now));
                 drawLabel(gui, fit, argb);
                 if (log != null) {
                     if (log.length() > 0) {

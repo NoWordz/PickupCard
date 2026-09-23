@@ -2,7 +2,8 @@ package com.niuqu.pickupcard.config;
 
 import com.niuqu.pickupcard.render.nvg.ui.ConfigLayout;
 import dev.e33.trellis.ui.widget.Widget;
-import com.niuqu.pickupcard.render.nvg.ui.Tween;
+import dev.e33.trellis.motion.Animated;
+import dev.e33.trellis.motion.Easing;
 import dev.e33.trellis.tokens.Tokens;
 
 import java.util.ArrayList;
@@ -119,10 +120,18 @@ final class ConfigRows {
     /** 一行：标签 + 控件 + 悬停提示 + 悬停进度。
      * <p>【为什么不是 record】悬停进度是这一行的<b>状态</b>，每行一份；record 装不下。 */
     static final class Row {
+        /**
+         * 悬停淡入 / 淡出的时长（毫秒）。<b>住在这里</b>而不是界面类里：它是这一行的动画属性，
+         * 而 {@link #driveHover} / {@link #hoverValueAt} 也要读它 —— 三个东西放一起，
+         * 才有人能离线钉住它们（{@code ConfigHoverAnimationTest}）。
+         */
+        static final long HOVER_IN_MS = 110L;
+        static final long HOVER_OUT_MS = 150L;
+
         final String label;
         final Widget widget;
         final String hint;
-        final Tween hover = Tween.at(0f, 0L);
+        final Animated hover = Animated.of(0f);
         /** 这一帧的行顶 y（小节头画字用；选项行以控件位置为准）。 */
         float yAt;
 
@@ -130,6 +139,25 @@ final class ConfigRows {
             this.label = label;
             this.widget = widget;
             this.hint = hint;
+        }
+
+        /**
+         * 把这一行的悬停进度朝目标推一步（{@code nowMs} 是这一帧的毫秒时刻）。
+         *
+         * <p>【为什么收在这里】这一小段同时管两件容易写错的事：<b>单位换算</b>
+         * （宿主是毫秒、{@link Animated} 要纳秒，乘错 1e6 会让动画静默地快/慢 1000 倍）
+         * 与<b>时长选择</b>（淡入/淡出不同）。留在界面里就只能靠肉眼看动画；搬到模型上，
+         * 离线测试就能对帧断言。调用序必须是"先 drive、后取"（{@link #hoverValueAt}），
+         * 与旧 {@code Tween} 一致。
+         */
+        void driveHover(boolean on, long nowMs) {
+            hover.retarget(on ? 1f : 0f, (int) (on ? HOVER_IN_MS : HOVER_OUT_MS),
+                    Easing.EASE_OUT_CUBIC, nowMs * 1_000_000L);
+        }
+
+        /** 这一帧的悬停进度（0 = 没悬停，1 = 完全悬停）。{@code nowMs} 与 {@link #driveHover} 同一个时刻。 */
+        float hoverValueAt(long nowMs) {
+            return hover.at(nowMs * 1_000_000L);
         }
 
         boolean isHeader() {
