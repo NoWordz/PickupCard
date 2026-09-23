@@ -236,6 +236,15 @@ public final class DevHarness {
         private static final boolean GRID_ONLY = "grid".equalsIgnoreCase(MODE);
         private static int gridTicks;
 
+        /**
+         * {@code -PharnessAuto=modal}：第五个形态（模态 / 对话框，A-27）→ 读数 + 截图 → 退出。
+         * <p>验的是<b>输入独占</b>：模态开着时，落在面板外的点击、键、滚轮<b>都不许</b>穿到底下的
+         * 配置列；而框架这一层没验过的东西是"一屏两棵树 + 宿主独占路由"（不是"再压一个 Screen"
+         * —— 那验的是 MC 的 Screen 栈）。独立一条时间线，与 {@code tickConfig} 互不干扰。
+         */
+        private static final boolean MODAL_ONLY = "modal".equalsIgnoreCase(MODE);
+        private static int modalTicks;
+
         /** 把请求的 GUI 缩放应用上去（只做一次），并把画布尺寸打进日志。 */
         private static void applyGuiScale(Minecraft mc) {
             if (GUI_SCALE.equalsIgnoreCase("off")) {
@@ -309,6 +318,10 @@ public final class DevHarness {
             }
             if (GRID_ONLY) {
                 tickGrid(mc);
+                return;
+            }
+            if (MODAL_ONLY) {
+                tickModal(mc);
                 return;
             }
             ticks++;
@@ -848,6 +861,158 @@ public final class DevHarness {
             float[] center = screen.cellCenterForHarness(index);
             screen.mouseClicked(center[0], center[1], 0);
             screen.mouseReleased(center[0], center[1], 0);
+        }
+
+        /**
+         * <b>第五个形态：模态 / 对话框</b>（A-27）。
+         *
+         * <p>时间线（都在配置屏上跑 —— 模态是配置屏里的一层，不是另一屏）：
+         * <ol>
+         *   <li>开配置屏 → 切过滤页 → 记"模态没开时"的列状态；</li>
+         *   <li>点「恢复本页默认」→ 模态弹出 → 截图 + 读数；</li>
+         *   <li><b>在面板外点一下</b> → 读数：模态还在（外点被吃掉）、底下列的滚动偏移与焦点
+         *       <b>一个字没动</b>（输入没穿过去）；</li>
+         *   <li><b>往底下那一列滚一格</b> → 偏移仍不动（滚轮被模态吃掉）；</li>
+         *   <li>把指针停在「取消」上（截图看悬停底）→ 按 Esc → 模态关、<b>配置屏还在</b>
+         *       （Esc 没把关界面那件事穿透）；</li>
+         *   <li>再开模态 → 点「确认」→ 名单被清空（动作真发生了）+ 模态关。</li>
+         * </ol>
+         */
+        static void tickModal(Minecraft mc) {
+            if (mc.level == null || mc.getOverlay() != null) {
+                return;
+            }
+            if (!(mc.screen instanceof PickupCardConfigScreen)) {
+                mc.setScreen(new PickupCardConfigScreen(null));
+                return;
+            }
+            applyGuiScale(mc);
+            modalTicks++;
+            PickupCardConfigScreen screen = (PickupCardConfigScreen) mc.screen;
+
+            if (modalTicks == WARMUP_TICKS) {
+                mc.setScreen(new PickupCardConfigScreen(null));
+                PickupCard.LOGGER.info("[harness-auto] 模态模式：配置屏已打开");
+                return;
+            }
+            // 切到过滤页（「恢复本页默认」在那里是破坏性的 → 会弹确认）。
+            if (modalTicks == WARMUP_TICKS + 20) {
+                clickByLabel(mc, I18n.get("pickupcard.config.page.filter.name"));
+                return;
+            }
+            if (modalTicks == WARMUP_TICKS + 24) {
+                // 加一条规则（黑名单），这样"确认清空"有一个可观察的后果。
+                // typeByLabel 自己会点输入框 + 敲字 + 回车提交（见 typeOption）。
+                typeByLabel(mc, I18n.get("pickupcard.config.filter.addRow"), "minecraft:dirt");
+                return;
+            }
+            if (modalTicks == WARMUP_TICKS + 26) {
+                // 【先证明这一列真的滚得动】不然"模态开着时偏移不动"是一条**空断言**：
+                // "被吃掉了"和"这一页根本不溢出、偏移恒为 0"在读数上长得一模一样
+                // （A-27 评审指出）。所以先滚一格，把"能滚"这件事坐实，再拿它当基准。
+                float before = modalScroll(mc);
+                screen.scrollForHarness(-1.0d);
+                float after = modalScroll(mc);
+                columnScrollable = after != before;
+                if (columnScrollable) {
+                    // 滚回基准位置，让后面的比较从同一个点出发。
+                    screen.scrollForHarness(1.0d);
+                }
+                baseScroll = modalScroll(mc);
+                PickupCard.LOGGER.info("[harness-auto] 模态探针 基准: 偏移={} 探针可滚={}（滚前 {} → 滚后 {}）名单={}",
+                        baseScroll, columnScrollable, before, after, filterDump(mc));
+                if (!columnScrollable) {
+                    PickupCard.LOGGER.warn("[harness-auto] 模态探针：这一页在当前画布上不溢出，"
+                            + "「滚轮被模态吃掉」这条探针**证明不了**东西（偏移本来就是 0）");
+                }
+                return;
+            }
+            if (modalTicks == WARMUP_TICKS + 28) {
+                // 点「恢复本页默认」→ 在过滤页应当弹出确认对话框。
+                clickByLabel(mc, I18n.get("pickupcard.config.button.restore"));
+                return;
+            }
+            if (modalTicks == WARMUP_TICKS + 30) {
+                boolean open = screen.modalOpenForHarness();
+                if (!open) {
+                    PickupCard.LOGGER.error("[harness-auto] 模态探针：点了恢复默认但对话框没弹出");
+                }
+                PickupCard.LOGGER.info("[harness-auto] 模态探针 弹出: 开={} {}", open, modalDump(mc));
+                capture(mc, "open");
+                return;
+            }
+            if (modalTicks == WARMUP_TICKS + 32) {
+                // 【输入独占 · 外半段】在面板外点一下：模态不许关、底下列一个数都不许动。
+                screen.clickOutsideModalForHarness();
+                PickupCard.LOGGER.info("[harness-auto] 模态探针 面板外点击: 开={} 偏移={}（基准 {}）{}",
+                        screen.modalOpenForHarness(), modalScroll(mc), baseScroll, modalDump(mc));
+                return;
+            }
+            if (modalTicks == WARMUP_TICKS + 34) {
+                // 【输入独占 · 滚轮】往底下那一列滚一格：偏移必须一寸没动。
+                // ⚠️ 只有 columnScrollable 为真时这条才有判别力（见 +26 那条的说明）。
+                screen.scrollForHarness(-1.0d);
+                float now = modalScroll(mc);
+                if (columnScrollable && now != baseScroll) {
+                    PickupCard.LOGGER.error("[harness-auto] 模态探针：滚轮**穿透**到了底下列"
+                            + "（偏移 {} → {}，模态开着时它不该动）", baseScroll, now);
+                }
+                PickupCard.LOGGER.info("[harness-auto] 模态探针 面板外滚轮: 偏移={}（基准 {}，"
+                                + "{}）", now, baseScroll,
+                        columnScrollable ? "应不动" : "无判别力：这一列本来就不滚");
+                return;
+            }
+            if (modalTicks == WARMUP_TICKS + 36) {
+                // 指针停在「取消」上（悬停底看得见）—— 与截图隔一个 tick，因为截图读的是上一帧。
+                screen.pointModalAtForHarness("cancel");
+                PickupCard.LOGGER.info("[harness-auto] 模态探针 悬停: {}", screen.modalHoverForHarness());
+                return;
+            }
+            if (modalTicks == WARMUP_TICKS + 38) {
+                capture(mc, "hover-cancel");
+                return;
+            }
+            if (modalTicks == WARMUP_TICKS + 40) {
+                // 【输入独占 · 键盘】Esc = 取消：模态关，但**配置屏必须还在**（Esc 没穿透去关屏）。
+                screen.keyPressed(GLFW.GLFW_KEY_ESCAPE, 0, 0);
+                screen.keyReleased(GLFW.GLFW_KEY_ESCAPE, 0, 0);
+                PickupCard.LOGGER.info("[harness-auto] 模态探针 Esc: 模态开={} 配置屏在={} 名单={}",
+                        screen.modalOpenForHarness(),
+                        mc.screen instanceof PickupCardConfigScreen, filterDump(mc));
+                return;
+            }
+            if (modalTicks == WARMUP_TICKS + 42) {
+                // 再开一次，这次走「确认」：名单必须被真的清空，模态随之关掉。
+                screen.openRestoreConfirmForHarness();
+                return;
+            }
+            if (modalTicks == WARMUP_TICKS + 44) {
+                screen.clickModalForHarness("confirm");
+                return;
+            }
+            if (modalTicks == WARMUP_TICKS + 46) {
+                capture(mc, "confirmed");
+                PickupCard.LOGGER.info("[harness-auto] 模态探针 确认: 模态开={} 名单={}",
+                        screen.modalOpenForHarness(), filterDump(mc));
+                return;
+            }
+            if (modalTicks >= WARMUP_TICKS + 48) {
+                PickupCard.LOGGER.info("[harness-auto] 模态模式收工，退出客户端");
+                mc.stop();
+            }
+        }
+
+        /** 模态模式下"底下列的滚动偏移"—— 输入独占的读数就靠它不动。 */
+        private static float baseScroll;
+        /** 这一列在模态之前**证明过能滚**没有 —— 不能滚的话"偏移没动"是无判别力的读数。 */
+        private static boolean columnScrollable;
+
+        private static float modalScroll(Minecraft mc) {
+            return mc.screen instanceof PickupCardConfigScreen s ? s.scrollOffsetForHarness() : -1f;
+        }
+
+        private static String modalDump(Minecraft mc) {
+            return mc.screen instanceof PickupCardConfigScreen s ? s.modalDumpForHarness() : "-";
         }
 
         /** 预览重播连拍：每 24 tick（1.2s）一张，5 张覆盖一个 4.6s 周期。 */

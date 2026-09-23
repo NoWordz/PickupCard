@@ -19,7 +19,10 @@
   "pickupcard.config.button.restore.short": "恢复",
   "pickupcard.config.restore.count": "重置本页 %s 项（其他页不动）",
   "pickupcard.config.restore.anchorNote": "；锚点不在这里 —— 它归编辑场的「回到默认」",
-  "pickupcard.config.restore.filter": "清空三张名单 —— 误点会把你自己加的规则全删掉",
+  "pickupcard.config.restore.filter": "清空三张名单（会先问一次确认）—— 清掉的是你自己加的规则",
+  "pickupcard.config.modal.restore.message": "清空黑名单、白名单、静音名单？三张名单里的规则会全部删除，不能撤销。",
+  "pickupcard.config.modal.confirm": "清空",
+  "pickupcard.config.modal.cancel": "取消",
 
   "pickupcard.config.page.general.name": "通用",
   "pickupcard.config.page.general.hint": "弹不弹卡、要不要显示名字、什么算同一样东西",

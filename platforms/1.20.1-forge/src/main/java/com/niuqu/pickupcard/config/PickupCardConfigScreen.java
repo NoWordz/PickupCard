@@ -8,6 +8,7 @@ import com.niuqu.pickupcard.render.CardStage;
 import dev.e33.trellis.ui.widget.Button;
 import com.niuqu.pickupcard.render.nvg.ui.NvgPalette;
 import com.niuqu.pickupcard.render.nvg.ui.ConfigLayout;
+import com.niuqu.pickupcard.render.nvg.ui.ConfirmModal;
 import com.niuqu.pickupcard.render.nvg.ui.NvgUi;
 import com.niuqu.pickupcard.render.nvg.ui.TrellisColumn;
 import com.niuqu.pickupcard.render.nvg.ui.McFont;
@@ -16,6 +17,7 @@ import dev.e33.trellis.geom.Snapping;
 import dev.e33.trellis.text.FontStack;
 import dev.e33.trellis.text.TextLayout;
 import dev.e33.trellis.text.TextMeasurer;
+import dev.e33.trellis.tokens.Tokens;
 import dev.e33.trellis.tokens.Units;
 import dev.e33.trellis.ui.ScrollContainer;
 import dev.e33.trellis.ui.UiTree;
@@ -498,6 +500,20 @@ public final class PickupCardConfigScreen extends Screen {
     private String filterNote = "";
     private long filterNoteAt;
 
+    /**
+     * <b>模态层</b>（A-27，第五个形态）：非 null = 屏幕正中压着一扇确认对话框。
+     *
+     * <p>【为什么这屏需要它】「恢复本页默认」在过滤页是<b>破坏性</b>的 —— 它清空玩家自己加的三张
+     * 名单（那条提示语原话：<b>误点会把你自己加的规则全删掉</b>）。所以在过滤页这一步值得问一句。
+     *
+     * <p>【为什么不是"再压一个 Screen"】{@code Screen} 栈会<b>白送</b>输入独占，那样验的是 MC、
+     * 不是框架。这一扇是<b>同一屏、同一个 {@code NvgUi} 里的第二棵树</b>，路由由本类的
+     * {@code modal != null} 分支自己独占 —— 那才是框架这一层没验过的东西。
+     */
+    private ConfirmModal.Modal modal;
+    /** 模态确认时做什么。 */
+    private Runnable modalOnConfirm;
+
     /** 预览舞台：动画页的自动舞台 + 其他页的静止卡（身份、节拍、落位全在它那里）。 */
     private final PreviewStage preview = new PreviewStage();
 
@@ -653,6 +669,15 @@ public final class PickupCardConfigScreen extends Screen {
         trellisColumnRows = -1;
         trellisColumnControls = -1;
         palette = NvgPalette.of(CardStage.INSTANCE.previewStyle(), unit());
+        // 【模态要跟着重建（A-27 评审）】窗口 resize 会走到这里，而模态树的字号（token × u）、
+        // 带色（pickup 旧 palette）、正文断行（按旧屏宽）都是**建的时候定死的** —— 不重建的话，
+        // 整屏都换了档，对话框还停在上一个尺寸/配色上（不炸，但一眼看着"这扇没跟着变"）。
+        if (modal != null) {
+            Runnable action = modalOnConfirm;
+            modal = null;
+            modalOnConfirm = action;
+            rebuildModal();
+        }
         StyleModel style = CardStage.INSTANCE.previewStyle();
         PickupCardSettings eff = PickupCardConfig.snapshot();
         // 页面归属、控件、默认值 —— 全部只有注册表这一个出处
@@ -781,8 +806,126 @@ public final class PickupCardConfigScreen extends Screen {
         }
         cell(I18n.get("pickupcard.config.button.restore"),
                 new Button("", () -> I18n.get("pickupcard.config.button.restore.short"),
-                        this::restorePageDefaults),
+                        // 【过滤页先问一句】它的"恢复默认"是清空玩家自己加的三张名单 ——
+                        // 提示语自己写着"误点会把规则全删掉"，那就该有一道确认（见 A-27）。
+                        // 其他页照旧直接恢复：写回出厂值不丢玩家输入，多问一次只是烦。
+                        this::requestRestorePageDefaults),
                 ConfigPageSpec.restoreHint(restored, n));
+    }
+
+    /** 恢复按钮的动作：过滤页先弹确认（破坏性），其余页直接恢复。 */
+    private void requestRestorePageDefaults() {
+        if (page == ConfigPageSpec.Page.FILTER) {
+            openRestoreConfirm();
+        } else {
+            restorePageDefaults();
+        }
+    }
+
+    /**
+     * 打开「确认清空三张名单」这扇模态。
+     *
+     * <p>正文宽高<b>实量</b>：{@code font.width} 量这一句要用多宽、按行数给多高 ——
+     * 不从 token 猜（A-24 的评审逮过"猜宽 → 字形缝把字缩成糊字"）。
+     */
+    private void openRestoreConfirm() {
+        modalOnConfirm = this::restorePageDefaults;
+        rebuildModal();
+    }
+
+    /**
+     * 按<b>当前</b> u / 屏宽 / 调色板重建这扇模态（开的时候、以及 resize 之后各调一次）。
+     * <p>正文宽高<b>实量</b>：{@code font.width} 量这一句要用多宽、按行数给多高 ——
+     * 不从 token 猜（A-24 的评审逮过"猜宽 → 字形缝把字缩成糊字"）。
+     */
+    private void rebuildModal() {
+        String msg = I18n.get("pickupcard.config.modal.restore.message");
+        float pad = Tokens.Space.STEP_3 * unit();
+        // 正文盒的宽：量出来的字宽，但不超过屏宽的一半减内边距（否则一句话能把面板拉得比屏还宽）。
+        float maxW = Math.max(Tokens.Size.LABEL_MIN_W * unit(), this.width * 0.5f - pad * 2f);
+        // 【必须真的断行】盒子按行数给高，而画的时候是逐行居中 —— 不断行的话一句话会横向冲出面板
+        // （A-27 的截图当场逮到过：盒子 3 行高，字却是一整行糊到面板外）。
+        modalLines = wrap(msg, maxW);
+        float msgW = 0f;
+        for (String line : modalLines) {
+            msgW = Math.max(msgW, this.font.width(line));
+        }
+        float lineH = this.font.lineHeight;
+        modal = ConfirmModal.build(
+                I18n.get("pickupcard.config.modal.confirm"),
+                I18n.get("pickupcard.config.modal.cancel"),
+                this::confirmModal,
+                this::cancelModal,
+                msgW, lineH * modalLines.size(), Tokens.Size.CONTROL_MIN_W * unit(), unit(), palette,
+                // 【面板要不透明】palette.panel() 是给常驻控件的半透色（0xC0），铺成整块面板
+                // 会把蒙层下的东西透上来 —— 对话框是"盖住底下"的东西，底色必须是实心的。
+                0xF0181E28);
+    }
+
+    /**
+     * 按可用宽把一句话切成几行（贪心按词断；单个词比整行还宽时<b>逐字符硬断</b>）。
+     * <p>【为什么必须自己断】MC 的 {@code drawString} 不会换行，而 {@code textFitted} 只会<b>缩字</b>
+     * —— 两者都会得到"字溢出面板/缩成糊字"。面板的宽高来自真实排版，所以断行也只能在这一层做。
+     * <p>【为什么硬断不能省】中文那句正文<b>一个空格都没有</b>，{@code split(" ")} 只得到一个
+     * "词" —— 只按词断的话它整句出去、宽度上限被静默无视（评审 2026-09-23 在窄窗口上量到的）。
+     */
+    private List<String> wrap(String text, float maxW) {
+        List<String> out = new ArrayList<>();
+        StringBuilder line = new StringBuilder();
+        for (String word : text.split(" ")) {
+            String candidate = line.isEmpty() ? word : line + " " + word;
+            if (this.font.width(candidate) <= maxW) {
+                line.setLength(0);
+                line.append(candidate);
+                continue;
+            }
+            // 当前行装不下这个词：先冲掉当前行（非空时）。
+            if (!line.isEmpty()) {
+                out.add(line.toString());
+                line.setLength(0);
+            }
+            if (this.font.width(word) <= maxW) {
+                line.append(word);
+                continue;
+            }
+            // 单个"词"都比整行宽（中文整句就是一个词）→ 逐字符硬断。
+            StringBuilder chunk = new StringBuilder();
+            for (int i = 0; i < word.length(); i++) {
+                if (chunk.length() > 0 && this.font.width(chunk.toString() + word.charAt(i)) > maxW) {
+                    out.add(chunk.toString());
+                    chunk.setLength(0);
+                }
+                chunk.append(word.charAt(i));
+            }
+            line.append(chunk);
+        }
+        if (!line.isEmpty()) {
+            out.add(line.toString());
+        }
+        return out.isEmpty() ? List.of("") : out;   // 空串也要给一行，免得盒子高为 0
+    }
+
+    /** 正文的断行结果（{@link #wrap} 算好，画的时候逐行居中）。 */
+    private List<String> modalLines = List.of();
+
+    /** 确认：执行挂起的动作，关掉模态。 */
+    private void confirmModal() {
+        Runnable action = modalOnConfirm;
+        closeModal();
+        if (action != null) {
+            action.run();
+        }
+    }
+
+    /** 取消 / Esc / 点面板外：什么都不做，关掉模态。 */
+    private void cancelModal() {
+        closeModal();
+    }
+
+    private void closeModal() {
+        modal = null;
+        modalOnConfirm = null;
+        modalLines = List.of();
     }
 
     /**
@@ -898,16 +1041,183 @@ public final class PickupCardConfigScreen extends Screen {
         // 【为什么门控在 chromePainted 上】NanoVG 起不来时这一帧本来就"没有界面"
         // （begin 的契约）：只把字画上去，等于在没有底的地方浮一层文字；而且树那一帧
         // 根本没布局过，读 box 会读到空节点。
-        if (chromePainted) {
+        //
+        // 【模态开着时这几趟全部跳过（A-27）】它们是<b>原版批次</b>（raw gui），跑在 NvgUi
+        // 那一帧<b>之后</b> —— 也就是跑在模态蒙层<b>上面</b>。第一版没跳，真机截图里配置行的标签、
+        // 输入框、预览卡全都浮在对话框上（蒙层压不住它们），看着像画坏了。
+        // 模态的语义就是"底下先放下"：底下那几趟这一帧干脆不画。
+        boolean modalOpen = modal != null;
+        if (chromePainted && !modalOpen) {
             drawLabels(gui);
         }
         // 预览放在最后：它自己开一帧（里面还有原版图标与文字），压在自绘界面之上。
         long previewStart = System.nanoTime();
-        drawPreview(gui);
+        if (!modalOpen) {
+            drawPreview(gui);
+        }
         previewNanos = System.nanoTime() - previewStart;
-        drawHint(gui, mouseX, mouseY);
-        drawTrellisTextSample(gui);
+        if (!modalOpen) {
+            drawHint(gui, mouseX, mouseY);
+            drawTrellisTextSample(gui);
+        }
+        // 【模态层：自己开一帧（A-27）】见 drawModal 的说明 —— 它必须在底下那一屏的
+        // **延迟文字**都提交完之后才画，否则底下的输入框文字会浮到蒙层上。
+        drawModal(gui, mouseX, mouseY);
         frameCost(System.nanoTime() - frameStart);
+    }
+
+    /**
+     * 画模态层：压暗背板 → 面板 → 正文 → 两颗钮，<b>自己开一个 {@code NvgUi} 帧</b>。
+     *
+     * <p>【为什么必须是第二个帧，而不是同一帧里的第二棵树】这一屏的控件文字是
+     * <b>先登记、{@code close()} 时才画</b>的（{@code NvgUi} 的延迟批次）。而蒙层与面板是
+     * <b>NanoVG 即时路径</b>（画在 {@code close()} 之前）—— 同一帧里画的话，底下配置列的
+     * <b>延迟文字会在蒙层之上</b>冒出来（A-27 第一版真机截图就是这么错的：蒙层上浮着底下的
+     * 输入框文字与预览卡，看着像画坏了）。开第二个帧 = 先让底下那一屏连同它的延迟文字
+     * 全部落地，模态再整个盖上去。{@code drawPreview} 用的也是这条（它开自己的帧）。
+     *
+     * <p>【"一屏两棵树"没变】两棵树仍然同屏共存、没有任何共享状态（那是框架级的结论，
+     * 见 {@code ConfirmModalTest}）；这里多出来的只是<b>两个绘制帧</b>的顺序保证。
+     */
+    private void drawModal(GuiGraphics gui, int mouseX, int mouseY) {
+        ConfirmModal.Modal m = modal;
+        if (m == null) {
+            return;
+        }
+        // 树要先 tick 再布局：悬停缓动来自组件基类（漏了 tick 就是"悬停硬切、不报错"）。
+        m.tree().tick(now * 1_000_000L);
+        ConfirmModal.layout(m, this.width, this.height, 1f / guiScale());
+        // 指针与悬停：真指针；harness 可以用 pointModalAtForHarness 定住（读悬停态用）。
+        float mx = modalPointerSet ? modalPointerX : mouseX;
+        float my = modalPointerSet ? modalPointerY : mouseY;
+        m.tree().pointerMove(mx, my);
+        TrellisColumn.syncHover(m.tree());      // 悬停只有一份真相：树判，控件收
+
+        try (NvgUi ui = NvgUi.begin(gui, palette, mx, my, now)) {
+            if (ui == null) {
+                return;
+            }
+            // 压暗背板：模态之下的一切都被这层盖住 —— 它是"底下不可交互"的视觉说法。
+            // 【为什么这么不透明（85%）】第一版用 69%，底下那一屏的颜色还是透出来不少；
+            // 模态的语义就是"底下先放下"，蒙层要压得住。
+            ui.fillRoundRect(0f, 0f, this.width, this.height, 0f, 0xD8000000);
+            // 正文：逐行居中（换行由 {@link #wrap} 在开模态时算好；盒子高 = 行数 × 行高）。
+            // 【面板本体不在这里画】它由组件自己的 Surface 画（见 ConfirmModal.build 的 panelColor），
+            // 同一块地方画两遍只会让先画那笔被后画那笔盖掉（评审指出宿主那笔是多余的）。
+            Rect mb = m.messageBox();
+            float lineH = this.font.lineHeight;
+            for (int i = 0; i < modalLines.size(); i++) {
+                ui.textCentered(modalLines.get(i), mb.x() + mb.width() / 2f,
+                        mb.y() + i * lineH, palette.text());
+            }
+            // 两颗钮：由组件树那一趟画（与悬停/命中同几何）。
+            TrellisColumn.Frame surface = TrellisColumn.surface(ui.canvas(), palette,
+                    new McGlyphPainter(ui), guiScale());
+            TrellisColumn.paint(surface, m.tree());
+        }
+    }
+
+    /** 模态上的指针（NaN = 用真指针）；harness 用。 */
+    private boolean modalPointerSet;
+    private float modalPointerX;
+    private float modalPointerY;
+
+    /**
+     * 给 harness 用：把模态树上的指针定到某颗钮的中心（{@code "confirm"} / {@code "cancel"}）。
+     * <p>与 {@code pointColumnAtForHarness} 同一条口径：只改"指针在哪"，路由仍走真那条。
+     */
+    public boolean pointModalAtForHarness(String which) {
+        if (modal == null) {
+            return false;
+        }
+        Rect box = "confirm".equals(which) ? modal.confirmBox()
+                : "cancel".equals(which) ? modal.cancelBox() : null;
+        if (box == null) {
+            return false;
+        }
+        modalPointerSet = true;
+        modalPointerX = box.x() + box.width() / 2f;
+        modalPointerY = box.y() + box.height() / 2f;
+        // 立刻把这次移动派发下去，harness 下一 tick 才能读到"悬停/焦点已经变了"。
+        modal.tree().pointerMove(modalPointerX, modalPointerY);
+        return true;
+    }
+
+    /** 给 harness 用：模态树上"指针正指着哪颗钮"（{@code "-"} = 没指着任何钮）。 */
+    public String modalHoverForHarness() {
+        return modal == null ? "-" : modal.hoveredName();
+    }
+
+    /** 给 harness 用：模态开着没有 + 读数。 */
+    public boolean modalOpenForHarness() {
+        return modal != null;
+    }
+
+    public String modalDumpForHarness() {
+        if (modal == null) {
+            return "-";
+        }
+        Rect mb = modal.messageBox();
+        float widest = 0f;
+        for (String line : modalLines) {
+            widest = Math.max(widest, this.font.width(line));
+        }
+        // 【自检】两颗钮这一帧被画过几个 —— "钮在树里、这一帧却没画"是静默空白，只有这个数能抓。
+        // 时刻用树上那个纳秒值（now*1e6），不是毫秒 now（单位差会让它恒为 0，见 A-23 真机教训）。
+        int painted = modal.paintedCount(now * 1_000_000L);
+        return modal.dump() + " 焦点=" + modal.focusedName() + " 自检=" + painted + "/2"
+                + String.format(java.util.Locale.ROOT,
+                        " 正文盒=%.0fx%.0f 行数=%d 最宽行=%.0f 画布=%.0fx%.0f u=%.2f",
+                        mb.width(), mb.height(), modalLines.size(), widest,
+                        (float) this.width, (float) this.height, unit());
+    }
+
+    /** 给 harness / 触发点用：打开「确认清空名单」模态（走的是和点按钮同一条路）。 */
+    public void openRestoreConfirmForHarness() {
+        openRestoreConfirm();
+    }
+
+    /**
+     * 给 harness 用：点模态上的某一颗钮（{@code "confirm"} / {@code "cancel"}）——
+     * 走的是<b>界面自己的鼠标路径</b>（{@code mouseClicked} → {@code mouseReleased}），
+     * 不是直接调动作；这样"输入独占那几道门"也一并被走到。
+     */
+    public boolean clickModalForHarness(String which) {
+        if (modal == null) {
+            return false;
+        }
+        Rect box = "confirm".equals(which) ? modal.confirmBox()
+                : "cancel".equals(which) ? modal.cancelBox() : null;
+        if (box == null) {
+            return false;
+        }
+        float x = box.x() + box.width() / 2f;
+        float y = box.y() + box.height() / 2f;
+        modalPointerSet = true;
+        modalPointerX = x;
+        modalPointerY = y;
+        mouseClicked(x, y, 0);
+        mouseReleased(x, y, 0);
+        return true;
+    }
+
+    /**
+     * 给 harness 用：<b>假装指针落在模态面板外</b>点一下 —— 验"输入独占"的外半段：
+     * 落在面板外的点击既不该穿到底下的配置列，也不该动作。
+     */
+    public void clickOutsideModalForHarness() {
+        if (modal == null) {
+            return;
+        }
+        Rect p = modal.panelBox();
+        // 选一个**保证在面板外、也保证在屏内**的点：优先面板左侧留白，不够就右边。
+        float x = p.x() >= 40f ? p.x() - 20f : Math.min(this.width - 1f, p.right() + 20f);
+        float y = p.y() + p.height() / 2f;
+        modalPointerSet = true;
+        modalPointerX = x;
+        modalPointerY = y;
+        mouseClicked(x, y, 0);
+        mouseReleased(x, y, 0);
     }
 
     /** 试点的样本文本：故意带中文、带中点，专门试 MC 字形 + Trellis 摆位。 */
@@ -1432,6 +1742,17 @@ public final class PickupCardConfigScreen extends Screen {
 
     @Override
     public boolean mouseClicked(double mouseX, double mouseY, int button) {
+        // 【模态最先吃事件（A-27 的输入独占）】开着的时候，底下的配置列<b>一点都不该收到</b> ——
+        // 这就是"模态"的定义。落在面板外的点击也被吃掉（否则会点到底下的控件），但什么也不做。
+        if (modal != null) {
+            if (!modal.hitInside((float) mouseX, (float) mouseY)) {
+                return true;                    // 外面：吃掉，不动作
+            }
+            if (button == 0) {
+                modal.pointerDown((float) mouseX, (float) mouseY);
+            }
+            return true;
+        }
         UiTree tree = trellisColumn();
         // 【行内控件：命中由树说了算】controlRowAt 读的就是 Component.bounds()，
         // 跟悬停底、标签、说明共用一份几何（判据 1）。滚出视口的行不再需要 host 那套
@@ -1476,6 +1797,11 @@ public final class PickupCardConfigScreen extends Screen {
 
     @Override
     public boolean mouseReleased(double mouseX, double mouseY, int button) {
+        // 【模态独占】抬起也归它：不发到底下那一列（否则"按在模态上、松在底下列上"会穿帮）。
+        if (modal != null) {
+            modal.pointerUp((float) mouseX, (float) mouseY);
+            return true;
+        }
         // 行内控件：树把抬起<b>发给按下的那一个</b>（指针捕获）—— 拖到格子外面松手，
         // 控件也能把手感收回去；落点还在格子里才算一次点击（见 WidgetSlot）。
         trellisColumn().pointerUp((float) mouseX, (float) mouseY);
@@ -1491,6 +1817,10 @@ public final class PickupCardConfigScreen extends Screen {
 
     @Override
     public boolean mouseDragged(double mouseX, double mouseY, int button, double dragX, double dragY) {
+        // 【模态独占拖拽】开着时底下的控件一个都不该被拖。
+        if (modal != null) {
+            return true;
+        }
         // 拖拽只发给"正被按着"的那一个（A-10 第二步）。而"谁被按着"和"它的盒子在哪"都问树 ——
         // 控件不再存几何，所以盒子必须由这里交进去（与 press 收到的是同一个对象）。
         UiTree tree = trellisColumn();
@@ -1505,11 +1835,18 @@ public final class PickupCardConfigScreen extends Screen {
         return true;
     }
 
-    // 【为什么没有 mouseMoved】1.20.1 的 GuiEventListener 没这个方法（它是后加的），
-    // 而"鼠标在哪"每帧都要知道 —— 悬停状态统一在 render() 开头按当前鼠标位置刷。
+    // 【为什么没有 mouseMoved】它在 1.20.1 的 GuiEventListener 里**是有的**（default 方法），
+    // ⚠️ 但旧注释写"1.20.1 没这个方法"是错的（A-27 的评审用 javap 核过：1.20.1 有 `mouseMoved`）
+    // —— 正确的是：`Screen` / `AbstractContainerEventHandler` **都没有覆写它**，那个 default
+    // 是空实现、不转发给任何子项，所以覆写它收不到东西。而"鼠标在哪"每帧都要知道 ——
+    // 悬停状态统一在 render() 开头按当前鼠标位置刷（与真实调用路径一致）。
 
     @Override
     public boolean mouseScrolled(double mouseX, double mouseY, double delta) {
+        // 【模态独占滚轮】开着时不滚底下的配置列（模态面板本身不滚 —— 它按自然尺寸长到刚好）。
+        if (modal != null) {
+            return true;
+        }
         UiTree tree = trellisColumn();
         // 【谁该滚，由容器自己声明（A-16）】事件从"指针底下那个组件"往上冒泡，滚动容器收掉它。
         // "一格滚三行"这个手感在适配器给容器的 notchStep 里（{@code TrellisColumn.ROWS_PER_NOTCH}），
@@ -1536,6 +1873,23 @@ public final class PickupCardConfigScreen extends Screen {
      */
     @Override
     public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
+        // 【模态独占键盘（A-27）】Esc = 取消（吃掉，不关整屏）；其余键只发给模态自己的焦点。
+        // 【为什么这里必须挡住 Esc】MC 默认把 Esc 当"关界面"——漏下去的话按 Esc 等于
+        // 连模态带配置屏一起关掉，那正是模态最该避免的。
+        if (modal != null) {
+            if (keyCode == GLFW.GLFW_KEY_ESCAPE) {
+                cancelModal();
+                return true;
+            }
+            if (keyCode == GLFW.GLFW_KEY_TAB) {
+                // 焦点遍历也归模态：Tab 不许溜到底下的配置列去。
+                boolean forward = (modifiers & GLFW.GLFW_MOD_SHIFT) == 0;
+                modal.tree().focusNext(forward);
+                return true;
+            }
+            modal.keyDown(keyCode, modifiers);
+            return true;        // 模态开着时，没有键该落到别处
+        }
         // 【Tab / Shift+Tab（A-15b）】焦点遍历归框架（`UiTree.focusNext`），宿主只负责认键。
         // 【为什么放在 keyDown 之前】Tab 必须保证能换焦点：先让控件收的话，焦点会永远赖在第一颗上
         // （Shift+Tab 同理）。而且换完焦点要**吃掉**这个键 —— 放它继续走，MC 会拿它做界面元素遍历
@@ -1571,6 +1925,11 @@ public final class PickupCardConfigScreen extends Screen {
      */
     @Override
     public boolean keyReleased(int keyCode, int scanCode, int modifiers) {
+        // 【模态独占】抬起也只给模态树（底下那一列连"抬起"都不该看见）。
+        if (modal != null) {
+            modal.tree().keyUp(keyCode, modifiers);
+            return true;
+        }
         if (trellisColumn().keyUp(keyCode, modifiers)) {
             return true;
         }
@@ -1580,6 +1939,12 @@ public final class PickupCardConfigScreen extends Screen {
     /** 敲字：同上，只发给焦点控件那一格（树的 CHAR 阶段）。 */
     @Override
     public boolean charTyped(char codePoint, int modifiers) {
+        // 【模态独占敲字】留给"对话框里有输入框"那一天；今天模态没有输入框，所以直接吃掉 ——
+        // 关键是**不能**漏到底下的配置列（那会让名字被敲进底下的文本框）。
+        if (modal != null) {
+            modal.tree().charTyped(codePoint);
+            return true;
+        }
         if (trellisColumn().charTyped(codePoint)) {
             return true;
         }

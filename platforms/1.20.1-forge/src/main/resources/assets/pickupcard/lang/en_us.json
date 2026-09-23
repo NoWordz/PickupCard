@@ -19,7 +19,10 @@
   "pickupcard.config.button.restore.short": "Reset",
   "pickupcard.config.restore.count": "Resets %s option(s) on this page; other pages untouched",
   "pickupcard.config.restore.anchorNote": "; the anchor has its own reset in the drag editor",
-  "pickupcard.config.restore.filter": "Clears all three lists — rules you added are deleted",
+  "pickupcard.config.restore.filter": "Clears all three lists (asks first) — the rules you added are removed",
+  "pickupcard.config.modal.restore.message": "Clear all three lists? Every rule you added will be deleted, and this cannot be undone.",
+  "pickupcard.config.modal.confirm": "Clear",
+  "pickupcard.config.modal.cancel": "Cancel",
 
   "pickupcard.config.page.general.name": "General",
   "pickupcard.config.page.general.hint": "Whether cards pop, what they show, and what counts as one item",
