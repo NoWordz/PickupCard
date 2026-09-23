@@ -7,7 +7,7 @@ import com.niuqu.pickupcard.render.nvg.ui.NvgPalette;
 import com.niuqu.pickupcard.render.nvg.ui.NvgUi;
 import com.niuqu.pickupcard.render.nvg.ui.PlaceholderCell;
 import com.niuqu.pickupcard.render.nvg.ui.TrellisColumn;
-import com.niuqu.pickupcard.render.nvg.ui.WidgetSlot;
+import dev.e33.trellis.ui.WidgetSlot;
 import dev.e33.trellis.geom.Rect;
 import dev.e33.trellis.tokens.Units;
 import dev.e33.trellis.ui.widget.Widget;
@@ -106,7 +106,7 @@ public final class CardGridScreen extends Screen {
         try (NvgUi ui = NvgUi.begin(gui, palette, mouseX, mouseY, now)) {
             if (ui != null) {
                 TrellisColumn.Frame surface = TrellisColumn.surface(ui.canvas(), palette,
-                        new McGlyphPainter(ui), now, guiScale());
+                        new McGlyphPainter(ui), guiScale());
                 // 【这一对 pushClip/popClip 不是可选的】Trellis 的 clipChildren 走的是
                 // Canvas.clip → nvgIntersectScissor，它只管 NanoVG 那批形状；而格子的字是
                 // 「先登记、close() 时统一交给原版批次」的（NvgUi 的延迟字形），登记时记的是
@@ -219,7 +219,10 @@ public final class CardGridScreen extends Screen {
         }
         int painted = 0;
         for (WidgetSlot slot : grid.cells()) {
-            if (slot.widget().paintedIn(now)) {
+            // 【单位必须与树一致（A-23）】从前控件的"帧号"是毫秒（Frame.now），而树 tick 收的是
+            // 纳秒 —— 搬进框架之后两者合一，只有树上那一份。所以这里问的也必须是它，
+            // 否则自检会把"画过的"报成"漏画"（第 62 轮实测：17 个报了 10 个）。
+            if (slot.widget().paintedIn(now * 1_000_000L)) {
                 painted++;
             }
         }

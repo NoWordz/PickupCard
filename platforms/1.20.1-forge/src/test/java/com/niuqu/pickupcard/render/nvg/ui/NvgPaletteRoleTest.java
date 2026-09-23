@@ -169,23 +169,27 @@ class NvgPaletteRoleTest {
     }
 
     /**
-     * <b>15 个 getter 必须各自读自己的字段</b>（A-18 评审要求的补测）。
+     * <b>16 个 getter 必须各自读自己的字段</b>（A-18 评审要求的补测）。
      *
      * <p>【为什么这一条必须有】getter 写串（{@code well()} 返回 {@code wellHover}）能编译、
      * 能过掉上面那些"字段存在 / 尺寸对"的断言、上真机才看出颜色不对 —— 而真机截图不会告诉你
      * 是哪一个角色错了。同一次评审里，"按字段名顺序抄深色盘"就是这么错位了五个颜色
      * （框架测试里那份替身），照样全绿。
      *
-     * <p>【为什么用反射比】手写 15 行 {@code assertEquals(p.well, p.well())} 是同一个错
+     * <p>【为什么用反射比】手写 16 行 {@code assertEquals(p.well, p.well())} 是同一个错
      * 再犯一次的机会（两边一起抄错就测不出来）。反射按字段名取值，与 getter 名一一对照 ——
      * 名字对不上时这条会红，而不是靠人记得。
+     *
+     * <p>【A-23 它真的红过一次】框架把 {@code focusRing()} 加进接口（组件搬进框架之后，
+     * {@code WidgetSlot} 得从角色里读环色），这条测试当场以"15 ≠ 16"的形态红 —— 就是它
+     * 写这句话时想达到的效果。
      */
     @Test
-    @DisplayName("WidgetPalette 的 15 个 getter 逐个读的是同名字段（写串了这里就红）")
+    @DisplayName("WidgetPalette 的 16 个 getter 逐个读的是同名字段（写串了这里就红）")
     void everyGetterReadsItsOwnField() throws Exception {
         NvgPalette palette = NvgPalette.dark(StyleModel.Accents.defaults(), Units.u(240f));
         Method[] getters = WidgetPalette.class.getDeclaredMethods();
-        assertEquals(15, getters.length, "接口上的角色数变了就回来看这条测试");
+        assertEquals(16, getters.length, "接口上的角色数变了就回来看这条测试");
         for (Method getter : getters) {
             Field field = NvgPalette.class.getDeclaredField(getter.getName());
             field.setAccessible(true);

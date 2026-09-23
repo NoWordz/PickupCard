@@ -14,13 +14,16 @@ import dev.e33.trellis.text.TextLayout;
 import dev.e33.trellis.text.TextMeasurer;
 import dev.e33.trellis.tokens.Tokens;
 import dev.e33.trellis.ui.Component;
+import dev.e33.trellis.ui.ComponentEnv;
 import dev.e33.trellis.ui.ScrollContainer;
 import dev.e33.trellis.ui.UiEvent;
 import dev.e33.trellis.ui.UiTree;
+import dev.e33.trellis.ui.WidgetSlot;
 import java.util.List;
 import dev.e33.trellis.ui.widget.GlyphPainter;
 import dev.e33.trellis.ui.widget.PaintCtx;
 import dev.e33.trellis.ui.widget.Widget;
+import dev.e33.trellis.ui.widget.WidgetPalette;
 
 /**
  * <b>配置列的组件树 —— 宿主与框架之间的适配器。</b>
@@ -48,12 +51,13 @@ import dev.e33.trellis.ui.widget.Widget;
  * {@link McFont} 把 MC 的度量灌进文本层（A-7），{@link #fitLabel} 把 Trellis 量出的
  * 位置与缩放交回给宿主去 {@code drawString}。
  *
- * <p>【{@link Frame} 的注入就是"组件边界"该有的形状 —— 现在是适配器在替框架做这件事】
+ * <p>【"组件边界拿宿主能力"那个缺口已经收掉了（A-23）】从前这一段是它的补丁：
  * {@code Component.drawContent(Canvas)} 只收得到一个画布，而画一个控件还要配色、要让宿主
- * 落笔写字、要知道"这是哪一帧"。框架还没有"组件边界上拿得到宿主能力"的机制，于是这里
- * 每帧把 {@link Frame} 灌进每一格（{@link #setFrame}）、画完清掉。正确的落点是下一层：
- * <b>要么 L4 的 {@code Canvas} 带一个"宿主字形"能力，要么 L2 出一个宿主字形接口</b> ——
- * 这样"组件拿宿主能力"就不必每个宿主自己发明一遍。在那之前，这个类就是那个缺口的补丁。
+ * 落笔写字、要知道"这是哪一帧"—— 于是这里每帧把 {@link Frame} 递归灌进每一格、画完再清掉。
+ * 现在那是框架的机制了（{@code dev.e33.trellis.ui.ComponentEnv} + {@code WidgetSlot}）：
+ * 宿主能力顺着绘制那一趟传下去，<b>那一段注入整段消失</b>，宿主只剩"把画布接进来"这一件本职。
+ * （当初记的两个候选落点是"L4 的 {@code Canvas} 带宿主字形能力"或"L2 出宿主字形接口"；
+ * 实际落点在 L6：{@code Canvas} 只解决字形那一半，而配色不是画布的事。）
  */
 public final class TrellisColumn {
 
@@ -227,10 +231,10 @@ public final class TrellisColumn {
      * 字形交回宿主（{@link GlyphPainter}：MC 的字是位图图集，喂不进 {@code Canvas.drawText}）。
      * 宿主那趟 {@code row.widget().draw(ui)} 已经删了。
      *
-     * <p>【"表面"必须灌进去】{@code drawContent} 只收得到一个 {@code Canvas}，而控件还要配色、
-     * 字形与帧号。所以帧信息由这里灌进每个 {@code WidgetSlot}（{@link Frame}），
-     * <b>用 try/finally 清掉</b>：不灌的话 {@code WidgetSlot} 当场抛 —— 静默的症状是
-     * "控件在、点得到、屏幕上一块空白"。
+     * <p>【宿主能力顺着绘制那一趟传了（A-23）】这一段从前是：递归把 {@link Frame} 灌进每一格
+     * （{@code setFrame}）、画完再清掉 —— 因为 {@code drawContent} 只收得到一个 {@code Canvas}。
+     * 现在配色与字形由 {@link ComponentEnv} 顺着 {@code UiTree.draw} → {@code Component.draw}
+     * 传到每个组件，{@code WidgetSlot} 在自己家里问 {@code env()} 拿：<b>那一整段注入消失了</b>。
      *
      * <p>【层序：控件本体没挪，悬停底挪进裁剪里了】控件本体画在宿主从前那趟控件循环的位置
      * （配置项的滚动裁剪里、标签标记之后、滚动条之前）—— 与旧路径一致。**悬停底变了**：
@@ -240,32 +244,43 @@ public final class TrellisColumn {
      * <p>表面由调用方给（一帧一个，见 {@link #surface}）：接宿主上下文这件事只做一次。
      */
     public static void paint(Frame frame, UiTree ui) {
-        setFrame(ui.root(), frame);
-        try {
-            ui.draw(frame.canvas());
-        } finally {
-            setFrame(ui.root(), null);
-        }
+        ui.draw(frame.canvas(), frame.env());
     }
 
     /**
-     * 这一帧的"表面"：画布 + 配色 + 字形缝 + 时刻。
+     * 这一帧的"表面"：画布 + 宿主能力（配色与字形缝）。
      *
-     * <p>【为什么要有它】{@code Component.drawContent(Canvas)} 的参数里只有画布，
-     * 而画一个滑条还要配色、要让宿主落笔写字、要记"这一帧画过我"。这些都是<b>这一帧</b>
-     * 的东西（配色随主题、{@code NvgUi} 每帧一个），所以由 {@link #paint} 每帧灌一次，
-     * 而不是挂在控件上。
+     * <p>【时刻为什么不在这里了】（A-23）从前它在这里多传了一份。
+     * ⚠️ <b>补正一句本喵当场写错的话</b>：那两个时刻<b>并不相等</b> —— 这里是<b>毫秒</b>
+     * （{@code System.currentTimeMillis()}），而树那条 {@code UiTree.tick} 收的是<b>纳秒</b>
+     * （宿主传 {@code now * 1_000_000L}）。所以那不是"同一个值传两处"，是"两个不同单位的
+     * 时刻各传一处"，比前者更糟。现在只剩树上那一份（{@code Component.nowNanos()}），
+     * 于是<b>控件的"帧号"单位跟着变成了纳秒</b> —— 谁问 {@code Widget.paintedIn(frame)}
+     * 就必须拿树上那个值（真机第 62 轮的自检报"17 个控件只画了 10 个"就是这个单位差）。
      */
-    public record Frame(Canvas canvas, NvgPalette palette, GlyphPainter glyphs, long now) {
+    public record Frame(Canvas canvas, ComponentEnv env) {
 
-        /** 给某一格几何建绘制上下文。几何从外面进来 —— 控件不存它。 */
-        public PaintCtx ctxFor(Rect box) {
-            return new PaintCtx(box, canvas, palette, glyphs, now);
+        /**
+         * 给<b>树外</b>控件的绘制上下文：标签列与切样例芯片那一族。
+         *
+         * <p>【谁真的在树外】全仓 {@code ctxFor} 只有 {@code PickupCardConfigScreen} 那两处 ——
+         * 配置屏的 4 个页签与 5 颗样例芯片，它们的几何由宿主的 {@code ConfigLayout} 给
+         * （{@code chipBoxes}），还不归树管。⚠️ <b>编辑场那两颗按钮不在这一列</b>：它们是以
+         * {@code WidgetSlot} 建进树的（见 {@code AnchorEditScreen}），整帧只走
+         * {@code TrellisColumn.paint}，从不调这里（本喵第一版 javadoc 把它们也写进来了，评审逮到）。
+         *
+         * <p>【为什么时刻要传进来】树里那一份时刻由树给（{@code Component.nowNanos()}，
+         * 来源是 {@code UiTree.tick}，<b>纳秒</b>），而树外的控件不在树里 —— 它们的排布者手里
+         * 就有这一帧的时刻，直接交过来。两边必须是同一个值：控件的"帧号"只有这一个来源
+         * （单位是纳秒，见 {@code PaintCtx.now}）。
+         */
+        public PaintCtx ctxFor(Rect box, long now) {
+            return new PaintCtx(box, canvas, env.palette(), env.glyphs(), now);
         }
     }
 
     /**
-     * 这一帧的"表面"：把宿主的画布接进来（<b>带上 GUI 倍数</b>），再配上配色与字形缝。
+     * 这一帧的"表面"：把宿主的画布接进来（<b>带上 GUI 倍数</b>），再配上宿主能力。
      *
      * <p>【为什么倍数必须交进去】见 {@link #attach}：不交它按 1 算，设备像素对齐会退化成
      * "对齐到整数逻辑坐标"（guiScale 3 下一条边最多挪 1.5 个设备像素）。
@@ -273,18 +288,9 @@ public final class TrellisColumn {
      * <p>【为什么一帧只建一个】接进宿主上下文这件事没有副作用、但没必要做第二遍：
      * 树内控件与树外控件画的是同一帧、同一个上下文。
      */
-    public static Frame surface(NvgCanvas host, NvgPalette palette, GlyphPainter glyphs,
-                                long now, float pixelRatio) {
-        return new Frame(attach(host, pixelRatio), palette, glyphs, now);
-    }
-
-    private static void setFrame(Component component, Frame frame) {
-        if (component instanceof WidgetSlot slot) {
-            slot.attachFrame(frame);
-        }
-        for (Component child : component.children()) {
-            setFrame(child, frame);
-        }
+    public static Frame surface(NvgCanvas host, WidgetPalette palette, GlyphPainter glyphs,
+                                float pixelRatio) {
+        return new Frame(attach(host, pixelRatio), new ComponentEnv(palette, glyphs));
     }
 
     // -----------------------------------------------------------------------

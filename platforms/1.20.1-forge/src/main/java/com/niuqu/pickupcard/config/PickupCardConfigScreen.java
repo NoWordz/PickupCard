@@ -129,7 +129,9 @@ public final class PickupCardConfigScreen extends Screen {
     public int paintedCount() {
         int painted = 0;
         for (Widget w : widgets()) {
-            if (w.paintedIn(now)) {
+            // 【单位必须与树一致（A-23）】控件的"帧号"现在只有树上那一份（纳秒），
+            // 见 render 里 ctxFor 那处与 CardGridScreen 同一条注释。
+            if (w.paintedIn(now * 1_000_000L)) {
                 painted++;
             }
         }
@@ -591,6 +593,13 @@ public final class PickupCardConfigScreen extends Screen {
                 ctx.strokeRoundRect(0f, 0f, w, h, p.radius(), NvgUi.fade(p.accent(), 0.5f));
             }
             float ty = (h - ctx.lineHeight()) / 2f;
+            // 【窄到装不下字就一个字都别画】（A-23 评审逮到）`maxWidth` 为负时宿主那条路会算出
+            // **负的缩放**（k = maxWidth / 字宽），画出来是**镜像字**，而且落在可见区里 ——
+            // 触发条件是这一格窄到 8px 以下（切换行不可见时芯片的宽被夹成 0，见 rebuild 里那条注释）。
+            // 夹取只消掉了崩溃，这一条才消掉"看得见但读不出来的东西"。
+            if (w <= 8f) {
+                return;     // 零宽的格子形状本来就不会画（PaintCtx 对 w<=0 提前返回），这里补上文字那一半
+            }
             int color = on ? p.text() : p.textDim();
             if (leftAligned) {
                 // 【缩字不穿列】页签标签左对齐，英文页名（"Placement & stacking"）比中文
@@ -681,8 +690,18 @@ public final class PickupCardConfigScreen extends Screen {
             chipWidths[i] = Math.max(row0.h(), this.font.width(label) + 10f);
             widthsTotal += chipWidths[i];
         }
-        float squeeze = Math.min(1f, (rowN.x() + rowN.w() - row0.x() - chipGap * (switchCount - 1))
-                / widthsTotal);
+        // 【下限 0 不是防御性编程，是实测的崩溃】A-23 真机第 62 轮炸在这里：
+        // `Rect 不能为负尺寸：-2.7058823x0.0 @(9.0,56.0)`。
+        // ⚠️ 根因（本喵第一版写错、评审复算后改正）：**切换行不可见时** `switchRect` 对每个 index
+        // 都返回 `(preview.x(), preview.y(), 0, 0)`（见 ConfigLayout），于是
+        // `rowN.x() + rowN.w() - row0.x()` 恒为 0、分子恒为 `-chipGap*(count-1) < 0` → squeeze 必负。
+        // 切换行不可见有两条路：`previewVisible == false`（窄画布）与 `preview.h()` 太矮；
+        // 本喵撞到的那一次窗口还是 early window 的 1×1，两条同时成立。
+        // （切换行**可见**时分子 = count·w ≥ 0，永不崩 —— 所以这不是"可用宽≈0"那一类问题。）
+        // 夹到 0 只消掉崩溃，不消掉根因：切换行不可见时这些芯片本来就不该被建出来 —— 见 plan.md
+        // A-23 的遗留（那一条同时管着"0 宽芯片仍会画字"）。
+        float squeeze = Math.max(0f, Math.min(1f,
+                (rowN.x() + rowN.w() - row0.x() - chipGap * (switchCount - 1)) / widthsTotal));
         float chipX = row0.x();
         for (int i = 0; i < switchCount; i++) {
             float w = chipWidths[i] * squeeze;
@@ -845,13 +864,13 @@ public final class PickupCardConfigScreen extends Screen {
                 // 树内控件与树外控件都拿它画自己（A-10 第二步）。倍数必须传：接进来的画布没有
                 // begin，不传它按 1 算，设备像素对齐会退化成"对齐到整数逻辑坐标"。
                 TrellisColumn.Frame surface = TrellisColumn.surface(ui.canvas(), palette,
-                        new McGlyphPainter(ui), now, guiScale());
+                        new McGlyphPainter(ui), guiScale());
                 drawChrome(ui);
                 drawTabAccent(ui);
                 // 【标签列必须自己画一遍】它不参与配置列的裁剪与换页淡入（换页时它不动）；
                 // 几何由排布者给（{@code chipBoxes}）。
                 for (Widget w : tabButtons) {
-                    w.draw(surface.ctxFor(chipBoxes.get(w)));
+                    w.draw(surface.ctxFor(chipBoxes.get(w), now * 1_000_000L));
                 }
                 // 配置项那一列：裁剪到视口里 —— 滚出去的标签标记与滚动条不许糊在别的列上。
                 // 【树内那一趟自己裁了（A-16）】ScrollContainer 的 clipChildren 把内容裁在容器盒子里；
@@ -868,7 +887,7 @@ public final class PickupCardConfigScreen extends Screen {
                 drawScrollBar(ui);
                 ui.popClip();
                 for (Widget w : sampleButtons) {
-                    w.draw(surface.ctxFor(chipBoxes.get(w)));
+                    w.draw(surface.ctxFor(chipBoxes.get(w), now * 1_000_000L));
                 }
             }
         }

@@ -13,14 +13,16 @@ import dev.e33.trellis.ui.widget.WidgetPalette;
  * 本轮（2026-09-22 用户拍板）刻意用占位格避开它：这一轮要逼出来的是<b>布局与树</b>的缺件，
  * 不是渲染层的。真卡面留给下一轮。
  *
- * <p>【为什么继承 {@link Widget} 而不是 {@code Component}】两条，缺一不可：
+ * <p>【为什么继承 {@link Widget} 而不是 {@code Component}】
  * <ol>
- *   <li>格子里的字要跟控件一起、在<b>同一个盒子里</b>登记绘制。{@code Component} 拿不到
- *       "这一帧的宿主能力"：{@code TrellisColumn.setFrame} 的注入只认 {@code instanceof WidgetSlot}，
- *       一个自定义 {@code Component} 想要配色与字形缝，只能自己再存一份、每帧再灌一次 ——
- *       那就是把 {@code attachFrame} 抄第二遍。</li>
  *   <li>它得是一个真正被树托着的控件，才能白拿焦点环、可聚焦、悬停、按下、键转交
  *       （见 {@code WidgetSlot} 的类注释）。</li>
+ *   <li>⚠️ <b>原来还有第 ① 条理由，它已经作废了（A-23）</b>：原文是"{@code Component} 拿不到
+ *       这一帧的宿主能力（{@code TrellisColumn.setFrame} 的注入只认 {@code instanceof WidgetSlot}），
+ *       自定义组件只能自己再灌一遍"。现在宿主能力是框架的机制了
+ *       （{@code ComponentEnv}：{@code Component.env()} 拿得到配色与字形缝），
+ *       所以"只能用 Widget"不再是被迫的。<b>决定保留</b>：上一条理由本身够，而且将来给格子接
+ *       真实控件时形状不用变。</li>
  * </ol>
  * 于是格子是 {@code Widget}，由 {@link WidgetSlot} 托进树。
  *

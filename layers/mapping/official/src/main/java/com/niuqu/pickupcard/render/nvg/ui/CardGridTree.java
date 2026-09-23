@@ -11,6 +11,7 @@ import dev.e33.trellis.tokens.Tokens;
 import dev.e33.trellis.ui.Component;
 import dev.e33.trellis.ui.ScrollContainer;
 import dev.e33.trellis.ui.UiTree;
+import dev.e33.trellis.ui.WidgetSlot;
 import dev.e33.trellis.ui.widget.Widget;
 
 import java.util.ArrayList;

@@ -237,6 +237,18 @@ public final class NvgPalette implements WidgetPalette {
         return knobIdle;
     }
 
+    /**
+     * 焦点环的颜色 —— 角色 {@code Color.FOCUS_RING}。
+     *
+     * <p>【为什么 A-23 才补进接口】它一直是这个类的字段（A-15 的焦点环在用），但框架那侧的
+     * 角色清单里没有它 —— 于是 {@code WidgetSlot} 只能直接读宿主这一份。那个类搬进框架之后
+     * 这条路断了（框架不认识 {@code NvgPalette}），所以补成角色。<b>值一个字没改。</b>
+     */
+    @Override
+    public int focusRing() {
+        return focusRing;
+    }
+
     @Override
     public float radius() {
         return radius;

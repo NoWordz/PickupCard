@@ -13,7 +13,7 @@ import com.niuqu.pickupcard.render.nvg.NvgCardPainter;
 import dev.e33.trellis.ui.widget.Button;
 import com.niuqu.pickupcard.render.nvg.ui.NvgPalette;
 import com.niuqu.pickupcard.render.nvg.ui.NvgUi;
-import com.niuqu.pickupcard.render.nvg.ui.WidgetSlot;
+import dev.e33.trellis.ui.WidgetSlot;
 import com.niuqu.pickupcard.render.nvg.ui.McGlyphPainter;
 import com.niuqu.pickupcard.render.nvg.ui.TrellisColumn;
 import dev.e33.trellis.geom.Rect;
@@ -366,7 +366,7 @@ public final class AnchorEditScreen extends Screen {
         try (NvgUi ui = NvgUi.begin(gui, palette, mouseX, mouseY, now)) {
             if (ui != null) {
                 TrellisColumn.Frame surface = TrellisColumn.surface(ui.canvas(), palette,
-                        new McGlyphPainter(ui), now, guiScale());
+                        new McGlyphPainter(ui), guiScale());
                 // ① 树：蒙层 → 两行字的盒子 → 按钮行（后画的盖前面的）
                 TrellisColumn.paint(surface, tree);
                 // ② 宿主 decor：括号与锚线（任意坐标、业务算的 → 见 buildTree 的说明）

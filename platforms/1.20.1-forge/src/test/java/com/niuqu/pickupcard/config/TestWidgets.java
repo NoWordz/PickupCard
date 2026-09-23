@@ -30,6 +30,98 @@ final class TestWidgets {
         }
     }
 
+    /**
+     * 把"收到过什么"<b>全部</b>记下来（A-23 组件边界的离线网）。
+     *
+     * <p>【为什么要一个记这么全的替身】{@code WidgetSlot} 那道桥今天<b>零离线覆盖</b> ——
+     * 焦点环、按下/抬起、键转交、绘制盒子的身份，全都只在真机上验过。搬它之前先有一张网，
+     * 否则搬坏了只有肉眼能发现（坑 8：编辑场两颗按钮"有焦点环、点不动"，而三轮真机全绿）。
+     *
+     * <p>{@link #paintedBox} 存的是<b>对象</b>，断言时用 {@code assertSame} —— 判据 1 要的是
+     * "同一个 {@code Rect}"，不是"两个相等的"。
+     */
+    static final class Probe extends Widget {
+        Rect paintedBox;
+        long paintedNow = -1L;
+        int paints;
+
+        Rect pressBox;
+        double pressX;
+        double pressY;
+        int presses;
+        int releases;
+        int activates;
+        boolean lastActivate;
+
+        int keyCode = Integer.MIN_VALUE;
+        int keyMods;
+        int keys;
+        char typed;
+
+        boolean hasFocus;
+        int focusChanges;
+
+        Probe() {
+            super("probe");
+        }
+
+        /** 这一格现在"正被按着"吗（基类那个字段是 protected，这里转出来给断言用）。 */
+        boolean held() {
+            return pressed;
+        }
+
+        @Override
+        public boolean press(Rect box, double mouseX, double mouseY, int button) {
+            pressBox = box;
+            pressX = mouseX;
+            pressY = mouseY;
+            boolean taken = super.press(box, mouseX, mouseY, button);
+            if (taken) {
+                presses++;
+            }
+            return taken;
+        }
+
+        @Override
+        public void release(Rect box, double mouseX, double mouseY, boolean activate) {
+            releases++;
+            lastActivate = activate;
+            super.release(box, mouseX, mouseY, activate);
+        }
+
+        @Override
+        protected void onActivate() {
+            activates++;
+        }
+
+        @Override
+        public boolean keyPressed(int code, int modifiers) {
+            keyCode = code;
+            keyMods = modifiers;
+            keys++;
+            return true;
+        }
+
+        @Override
+        public boolean charTyped(char c) {
+            typed = c;
+            return true;
+        }
+
+        @Override
+        protected void onFocusChanged(boolean value) {
+            hasFocus = value;
+            focusChanges++;
+        }
+
+        @Override
+        protected void paint(PaintCtx ctx) {
+            paintedBox = ctx.box();
+            paintedNow = ctx.now();
+            paints++;
+        }
+    }
+
     /** 记下收到的输入（按下 / 松开 / 激活 / 悬停）。 */
     static final class Recorder extends Widget {
         int presses;

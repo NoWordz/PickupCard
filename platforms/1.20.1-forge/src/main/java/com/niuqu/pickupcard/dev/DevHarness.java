@@ -220,8 +220,9 @@ public final class DevHarness {
         private static final boolean HUD_ONLY = "hud".equalsIgnoreCase(MODE);
         private static int hudTicks;
         private static boolean hudInjected;
-        /** 缩放只应用一次（每 tick 改会让窗口反复重建）。 */
-        private static boolean scaleApplied;
+        // 【A-23 撤掉了 scaleApplied 这个一次性开关】它想防的是"每 tick 改缩放会让窗口反复重建"，
+        // 但那个后果真正来自**无条件重设**；现在的判据是"已经等于目标值就返回"，
+        // 所以只在真的漂了那一次才重设（见 applyGuiScale 的注释与第 64 轮的实测）。
 
         /** {@code -PharnessAuto=config}：打开配置界面 → 截图 → 退出。界面能不能画出来要能被验。 */
         private static final boolean CONFIG_ONLY = "config".equalsIgnoreCase(MODE);
@@ -236,41 +237,64 @@ public final class DevHarness {
 
         /** 把请求的 GUI 缩放应用上去（只做一次），并把画布尺寸打进日志。 */
         private static void applyGuiScale(Minecraft mc) {
-            if (scaleApplied || GUI_SCALE.equalsIgnoreCase("off")) {
+            if (GUI_SCALE.equalsIgnoreCase("off")) {
                 return;
             }
             // 【为什么必须等进世界、且必须是自家的界面】在加载界面上改缩放 + resize 那个界面，
             // 会把加载流程停在半路（实测：卡在加载屏 26 秒、世界根本没加载出来）。
             // 自家界面允许：配置模式的窗口很短（世界里 + 无界面只有 1 tick），那时才轮得到它。
-            // 网格那一屏也要放行 —— 不放行的话缩放函数直接 return、scaleApplied 永远 false，
-            // 于是 -PharnessGuiScale 四档全跑在同一个画布上（列数退让的证据根本产不出来，
-            // 而日志里连一行警告都没有）。这一条是 A-19 排方案时当场读源码逮到的。
+            // 网格那一屏也要放行 —— 不放行的话缩放函数直接 return，于是 -PharnessGuiScale 四档
+            // 全跑在同一个画布上（列数退让的证据根本产不出来，而日志里连一行警告都没有）。
+            // 这一条是 A-19 排方案时当场读源码逮到的。
             boolean ourScreen = mc.screen == null
                     || mc.screen instanceof PickupCardConfigScreen
                     || mc.screen instanceof CardGridScreen;
             if (mc.level == null || mc.getOverlay() != null || !ourScreen) {
                 return;
             }
-            scaleApplied = true;
+            // 【为什么判据是"现在是不是目标值"，而不是"设过一次没有"】（A-23 实测）
+            // 从前这里是一次性开关：设完就不再管。可是窗口在启动早期还会被系统改尺寸，那一刻
+            // 游戏按 options.txt 的**自动档**（guiScale=0）重算缩放 —— 覆盖值被冲掉：
+            // 实测同一轮里 12:49:46 还是 guiScale=1.0（读数与记录逐字相同），一秒钟后变成 6.0，
+            // **前后两个读数落在两个不同的画布上**，后半段全废，而日志里只有一行读数在变。
+            // 现在每 tick 核一次：已经对了就什么都不做（不白 resize），漂了就设回去。
+            //
+            // ⚠️ 说准这条修复的证据边界：**"设回去"那一支至今没被真机走到过** —— 修完复跑
+            // （第 65 轮）漂移没再现，读数全程 1.0。实测到的只有两件：漂移**真的发生过**
+            // （第 64 轮那两行读数落在两个画布上），以及守卫**不抖**（六轮日志里
+            // "GUI 缩放定死为"各只出现一次，之后一直是目标值）。
+            int want;
             try {
-                int want = Integer.parseInt(GUI_SCALE.trim());
-                // 【为什么直接写 Window，而不是 options.guiScale()】原版那个选项是
-                // ClampingLazyMaxIntRange：上限 = calculateScale(0)，也就是**自动档本身** ——
-                // 玩家侧根本调不出比自动档更小的画布（1280×720 的极限就是 427×240）。
-                // 所以 options.txt 里写 guiScale 也没用（那是这条悬案的答案）。
-                // dev 要验"画布很小"的分支，只能直接写窗口的缩放值。
-                mc.getWindow().setGuiScale(want);
-                if (mc.screen != null) {
-                    mc.screen.resize(mc, mc.getWindow().getGuiScaledWidth(),
-                            mc.getWindow().getGuiScaledHeight());
-                }
-                PickupCard.LOGGER.info("[harness-auto] GUI 缩放定死为 {}：画布 {}x{}",
-                        mc.getWindow().getGuiScale(), mc.getWindow().getGuiScaledWidth(),
-                        mc.getWindow().getGuiScaledHeight());
+                want = Integer.parseInt(GUI_SCALE.trim());
             } catch (NumberFormatException e) {
-                PickupCard.LOGGER.warn("[harness-auto] harnessGuiScale 给了个不是整数的值：{}", GUI_SCALE);
+                // 只说一次：每 tick 刷同一行会把日志淹掉（配置写错时看见一次就够）
+                if (!scaleWarned) {
+                    scaleWarned = true;
+                    PickupCard.LOGGER.warn("[harness-auto] harnessGuiScale 给了个不是整数的值：{}",
+                            GUI_SCALE);
+                }
+                return;
             }
+            if (mc.getWindow().getGuiScale() == want) {
+                return;
+            }
+            // 【为什么直接写 Window，而不是 options.guiScale()】原版那个选项是
+            // ClampingLazyMaxIntRange：上限 = calculateScale(0)，也就是**自动档本身** ——
+            // 玩家侧根本调不出比自动档更小的画布（1280×720 的极限就是 427×240）。
+            // 所以 options.txt 里写 guiScale 也没用（那是这条悬案的答案）。
+            // dev 要验"画布很小"的分支，只能直接写窗口的缩放值。
+            mc.getWindow().setGuiScale(want);
+            if (mc.screen != null) {
+                mc.screen.resize(mc, mc.getWindow().getGuiScaledWidth(),
+                        mc.getWindow().getGuiScaledHeight());
+            }
+            PickupCard.LOGGER.info("[harness-auto] GUI 缩放定死为 {}：画布 {}x{}",
+                    mc.getWindow().getGuiScale(), mc.getWindow().getGuiScaledWidth(),
+                    mc.getWindow().getGuiScaledHeight());
         }
+
+        /** {@code -PharnessGuiScale} 不是整数时只警告一次（否则每 tick 刷屏）。 */
+        private static boolean scaleWarned;
 
         static void tick(Minecraft mc) {
             if (!enabled()) return;
