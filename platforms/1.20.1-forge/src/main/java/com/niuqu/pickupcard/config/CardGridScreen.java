@@ -127,8 +127,8 @@ public final class CardGridScreen extends Screen {
                 ui.text(I18n.get("pickupcard.grid.title"), title.x(), title.y(), palette.text);
                 Rect hint = grid.hintBox().bounds();
                 ui.textFitted(I18n.get("pickupcard.grid.hint", grid.metrics().cols(),
-                                grid.metrics().rows(), (int) grid.metrics().cellWidth(),
-                                (int) grid.metrics().cellHeight()),
+                                grid.metrics().rows(), Math.round(grid.cellWidth()),
+                                Math.round(grid.cellHeight())),
                         hint.x(), hint.y(), palette.textDim, hint.width());
             }
         }

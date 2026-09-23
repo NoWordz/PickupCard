@@ -33,9 +33,21 @@ import java.util.List;
  * ├─ ScrollContainer（列、STRETCH、高 = fixed(0) + grow(1)、notchStep = 格高 + 缝）
  * │   └ 内容盒（列、STRETCH、gap = 缝、上下留白）
  * │       └ 行盒（横排、gap = 缝）× 行数
- * │           └ WidgetSlot（每格一个，宽高 = GridMath 给的 fixed）
+ * │           └ WidgetSlot（每格一个，宽 = Sizing.track(cols)、高 = fixed(格高)）
  * └─ 提示盒（高 = ROW_H）
  * </pre>
+ *
+ * <p>【格子宽由 L1 解析，不由调用方算】（A-22）{@code Sizing.track(cols)} = "我是这一行 cols
+ * 等分里的一份"，缝由父容器扣。它替掉了从前的 {@code Sizing.fixed(GridMath.cellWidth())} ——
+ * 那是调用方自己算成像素再传进来的数，正是 {@code Sizing.fraction} 的立案理由点名要根除的病。
+ * 好处不只是"少一处计算"：旧的 floor 口径在 640 / 426.7 两档右边各白丢 0.33 / 0.23px。
+ *
+ * <p>【因此 STRETCH 从"好看"升成了承重】{@code track} 的分母是<b>父容器给了多少</b>，所以行盒
+ * 必须有一个确定的宽度（这里靠内容盒与行盒上的 {@code Align.STRETCH} 一路传下来）。少了它，
+ * 末行那两个格子会按"自己那一行的自然宽"去等分，只有满行格子的一半宽 —— 就是 A-19 那条症状。
+ * 这一条由 {@code CardGridTreeTest} 的"末行格子与满行等宽"钉着（去掉 STRETCH 必须变红）。
+ * ⚠️ 从前那条"内容盒宽 = 视口宽 − 2×pad"在 A-22 之后<b>已经丧失判别力</b>：轨道行的自然宽
+ * 本身就是可用宽，去掉 STRETCH 它照样绿。判别力挪到了末行那条上。
  *
  * <p>【那处反直觉但必需的写法】滚动容器用 {@code Sizing.fixed(0f) + withGrow(1f)}。
  * <b>单独用 {@code withGrow(1f)} 是无效的</b>：容器的自然高 = 内容全高 →
@@ -94,6 +106,25 @@ public final class CardGridTree {
         /** 每一格的槽，<b>行优先</b>（第 i 格 = 第 i/cols 行、第 i%cols 列）。 */
         public List<WidgetSlot> cells() {
             return cells;
+        }
+
+        /**
+         * 一格的实宽 —— <b>读第一格自己的矩形</b>，不重算一遍。
+         * <p>
+         * 【为什么读数要读矩形】（判据 1）绘制、命中、读数读同一个 {@code Rect}，所以
+         * "读数与真实几何分家"这类病自己就会现形。从前这个数是从 {@code GridMath.cellWidth()}
+         * 重算的（A-22 之后那个数已经不存在了），而重算的值和布局真正给的可以悄悄不一致 ——
+         * 网格的"右边没对齐"就是这么来的。
+         * <p>
+         * 没有格子时是 0（空网格是合法的：{@code itemCount <= 0}）。
+         */
+        public float cellWidth() {
+            return cells.isEmpty() ? 0f : cells.get(0).bounds().width();
+        }
+
+        /** 一格的实高，同上读矩形（A-22 之后格子宽由 L1 解析，高仍是调用方给的 fixed）。 */
+        public float cellHeight() {
+            return cells.isEmpty() ? 0f : cells.get(0).bounds().height();
         }
 
         public GridMath.Metrics metrics() {
@@ -160,7 +191,11 @@ public final class CardGridTree {
                     break;
                 }
                 WidgetSlot slot = rowBox.add(new WidgetSlot(items.get(index), Style.row()
-                        .withWidth(Sizing.fixed(metrics.cellWidth()))
+                        // 【格子宽由 L1 解析，不由调用方算】（A-22）track(cols) = "我是这一行
+                        // cols 等分里的一份"，缝由父容器扣。末行只有 2 个格子时，它们照样各拿
+                        // "四等分里的一份"（n 是显式传的，不是数兄弟数出来的），右边自然留空 ——
+                        // 从前用 grow 会让末行格子宽一倍，用 fixed 则要求调用方自己算 cellW。
+                        .withWidth(Sizing.track(metrics.cols()))
                         .withHeight(Sizing.fixed(metrics.cellHeight())), palette));
                 slots.add(slot);
             }
@@ -231,12 +266,19 @@ public final class CardGridTree {
     // 读数：harness 与离线测试读的是同一批字符串（于是"测试绿"与"真机绿"同源）
     // ------------------------------------------------------------------
 
-    /** 定妆读数：列数 / 每格多大 / 内容多大 / 视口多大 / 行数 / 格子数。 */
+    /**
+     * 定妆读数：列数 / 每格多大 / 内容多大 / 视口多大 / 行数 / 格子数。
+     * <p>
+     * 【每格宽读的是真矩形，而且印一位小数】（A-22）读真矩形是判据 1（与绘制、命中同源）；
+     * 印小数是因为格子宽从"调用方 floor 过的整数"换成了"L1 的轨道槽宽"—— 640 与 426.7 两档
+     * 不再是整数（207.3 / 137.2），印成整数正好会把这一轮要看的那个变化盖掉。
+     * guiScale 1 / 4 两档是整除的，读数与 A-19 的记录逐位相同。
+     */
     public static String dump(Grid g) {
         GridMath.Metrics m = g.metrics();
         Rect view = g.viewport();
-        return String.format("网格读数: 列数=%d 每格=%dx%d 内容=%.0fx%.0f 视口=%.0fx%.0f 行数=%d 格子=%d",
-                m.cols(), (int) m.cellWidth(), (int) m.cellHeight(),
+        return String.format("网格读数: 列数=%d 每格=%.1fx%.0f 内容=%.0fx%.0f 视口=%.0fx%.0f 行数=%d 格子=%d",
+                m.cols(), g.cellWidth(), g.cellHeight(),
                 g.scroller().contentWidth(), g.scroller().contentHeight(),
                 view.width(), view.height(), m.rows(), g.cells().size());
     }
@@ -268,12 +310,11 @@ public final class CardGridTree {
 
     /** 滚动的命中读数：滚出去的那一格应当点不到（由"祖先矩形必须包含该点"免费给出）。 */
     public static String scrollHitDump(Grid g) {
-        GridMath.Metrics m = g.metrics();
         Rect view = g.viewport();
-        float cx = view.x() + m.cellWidth() / 2f;
-        float aboveY = view.y() - m.cellHeight() / 2f;
+        float cx = view.x() + g.cellWidth() / 2f;
+        float aboveY = view.y() - g.cellHeight() / 2f;
         boolean aboveHit = g.tree().hitTest(cx, aboveY) != null;
-        float insideY = view.y() + m.cellHeight() / 2f;
+        float insideY = view.y() + g.cellHeight() / 2f;
         boolean insideHit = g.tree().hitTest(cx, insideY) != null;
         return String.format("网格滚动命中: 偏移=%.0f 视口内命中=%s 视口上方误命中=%d",
                 g.scroller().offsetY(), insideHit, aboveHit ? 1 : 0);

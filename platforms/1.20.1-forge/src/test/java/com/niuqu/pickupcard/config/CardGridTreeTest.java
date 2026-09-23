@@ -30,6 +30,12 @@ import java.util.List;
  * {@code free <= 0} 时直接返回 → 容器被摆成内容那么高、冲出屏幕，且 {@code maxOffsetY} 恒为 0
  * （<b>滚不动，还不报错</b>）。这条测试就是钉住它，而且它必须能<b>区分</b>两种结果 ——
  * 所以断言的是"等于剩余高"且"不等于内容高"。
+ *
+ * <p>【A-22 之后多了一条承重的：{@link #theRaggedLastRowKeepsTheFullRowWidth()}】格子宽从
+ * {@code Sizing.fixed(调用方算的 cellW)} 换成了 {@code Sizing.track(cols)}（缝由父容器扣），
+ * 于是 {@code Align.STRETCH} 从"好看"升成了<b>承重</b>：轨道等分的分母就是父容器给的宽。
+ * 因此"内容盒被拉满"那条<b>丧失判别力</b>了（轨道行的自然宽本身就是可用宽），
+ * 判别力搬到了末行那条上 —— 去掉 STRETCH，末行格子会只剩一半宽。
  */
 class CardGridTreeTest {
 
@@ -41,6 +47,24 @@ class CardGridTreeTest {
     private static final float GUI_SCALE = 1f;
     private static final float U = Tokens.Unit.BASE;
     private static final NvgPalette TEST_PALETTE = NvgPalette.dark(StyleModel.Accents.defaults(), U);
+
+    /**
+     * 四档真实画布：视口宽高、u、guiScale、列数、<b>A-19 记的旧值</b>（调用方 floor 到整数）、
+     * <b>A-22 的槽宽真值</b>（L1 的轨道槽宽，吸附前）。
+     * <p>前四档就是 harness 的 {@code -PharnessGuiScale=1..4}；旧值就是 A-19 真机读数里的
+     * {@code 314 / 207 / 137 / 154}，留着当基准钉差异 —— 新口径只该"把旧口径丢掉的余数还回来"，
+     * 不该出现别的变化。
+     */
+    private record Tier(float width, float height, float u, float guiScale, int cols,
+                        float oldFloor, float slot) {
+    }
+
+    private static final Tier[] TIERS = {
+            new Tier(1280f, 720f, 2.0f, 1f, 4, 314f, 314.0f),
+            new Tier(640f, 360f, 1.8f, 2f, 3, 207f, 207.33333f),
+            new Tier(426.7f, 240f, 1.5f, 3f, 3, 137f, 137.23333f),
+            new Tier(320f, 180f, 1.5f, 4f, 2, 154f, 154.0f),
+    };
 
     /** 一格都没有、也不画东西的替身（与 {@code TrellisScrollHitTest} 同款）。 */
     private static List<Widget> inert(int count) {
@@ -95,23 +119,84 @@ class CardGridTreeTest {
     }
 
     @Test
-    @DisplayName("内容盒横向铺满：宽 = 视口宽 − 2×左右内边距（STRETCH 没丢）")
+    @DisplayName("内容盒横向铺满：宽 = 视口宽 − 2×左右内边距（内边距只减一次）")
     void contentFillsTheViewportWidthMinusPadding() {
-        // 【为什么取 1281 而不是 1280】1280 那一档每格宽恰好整除（1256 / 4 = 314），
-        // 行宽 = 4×314 + 3×4 = 1268 = 内容宽 —— 于是**去掉内容盒的 STRETCH 也照样绿**
-        // （它的自然宽正好也是 1268），这条就成了恒真断言。1281 是有余数的档，
-        // 才能把"被拉满"和"按内容定宽"分开。这一条是评审指出来的。
+        // 【这条在 A-22 之后不再能证明 STRETCH】轨道行的自然宽本身就是可用宽，所以去掉内容盒的
+        // STRETCH 它照样绿 —— 从前 1280 那档会因此变成恒真，本喵当时特意换成了 1281；
+        // 现在换哪一档都一样。留着它是为了钉"内边距只减一次"（那个错会让格子左缘比标题多一格），
+        // STRETCH 的判别力在下面 theRaggedLastRowKeepsTheFullRowWidth 那条。
         CardGridTree.Grid g = grid(24, 1281f, CANVAS_H, U);
         float pad = Tokens.Space.STEP_3 * U;
-        float gap = Tokens.Space.STEP_2 * U;
         Rect content = g.scroller().children().get(0).bounds();
-        GridMath.Metrics m = g.metrics();
 
         assertEquals(1281f - 2f * pad, content.width(), EPS,
-                "内容盒没被 STRETCH 拉满 —— 这个错很阴：格子宽是按内容宽算的，"
-                        + "所以画面看起来「差不多对」，只有对账才现形");
-        assertTrue(m.cellWidth() * m.cols() + gap * (m.cols() - 1) < content.width(),
-                "这一档必须留下余数，否则这条测试区分不出 STRETCH（见上面的说明）");
+                "内容盒横向没铺满 —— 内边距被减了两次？");
+    }
+
+    @Test
+    @DisplayName("★ 末行格子与满行等宽（A-22 之后 STRETCH 是承重的）")
+    void theRaggedLastRowKeepsTheFullRowWidth() {
+        CardGridTree.Grid g = grid(22);       // 4 列 → 5 行满 + 末行 2 格
+        assertEquals(4, g.metrics().cols(), "这一档应当解出 4 列");
+        float full = g.cells().get(0).bounds().width();
+        Rect last = g.cells().get(g.cells().size() - 1).bounds();
+        Rect content = g.scroller().children().get(0).bounds();
+
+        assertEquals(full, last.width(), EPS,
+                "末行格子的宽与满行不同 —— 若这里是满行的一半，说明行盒没拿到一个确定的宽度"
+                        + "（轨道等分的分母就是它，而轨道只认「父容器给了多少」）");
+        assertTrue(last.right() < content.right() - 1f,
+                "末行只有 2 格，余数该留在右边（行用 Justify.START），不该被摊进缝里");
+    }
+
+    @Test
+    @DisplayName("★ 四档真实画布：格子实宽 = L1 的轨道槽宽（与 A-19 的旧值钉差异）")
+    void cellWidthComesFromTheFrameworkTrack() {
+        // 【为什么这里要关掉吸附】不关的话量到的是"槽宽 + 四边各自吸附"两件事叠在一起的结果
+        // （实测 guiScale 2 那档会得到 208.0 而不是槽宽 207.333）—— 隔离变量，坑 17 的口径。
+        // 吸附之后真机读数是多少，由下面 theRealMachineReadoutIsTheSnappedWidth 那条管。
+        for (Tier t : TIERS) {
+            CardGridTree.Grid g = grid(24, t.width(), t.height(), t.u());
+            CardGridTree.layout(g, t.width(), t.height(), 0f);
+            assertEquals(t.cols(), g.metrics().cols(),
+                    "画布 " + t.width() + " 宽（u=" + t.u() + "）的列数不对");
+            float real = g.cellWidth();
+
+            assertEquals(t.slot(), real, 0.01f,
+                    "画布 " + t.width() + " 宽（u=" + t.u() + "）的格子实宽与轨道槽宽不符");
+            assertTrue(real >= t.oldFloor(),
+                    "新口径只该把旧 floor 丢掉的余数还回来，不该更小：" + real + " vs " + t.oldFloor());
+            assertTrue(real - t.oldFloor() < 1f,
+                    "旧口径丢掉的余数不会到一个整像素：" + real + " vs " + t.oldFloor());
+            if (t.oldFloor() == t.slot()) {
+                assertEquals(t.oldFloor(), real, EPS,
+                        "这一档除得尽，槽宽该与 A-19 的记录逐位相同");
+            }
+        }
+    }
+
+    @Test
+    @DisplayName("真机读数就是【吸附之后】的值：四档逐档等于实测读数")
+    void theRealMachineReadoutIsTheSnappedWidth() {
+        // 【为什么钉的是这四个数】它们就是 harness 日志里「每格=」那一段的真值，
+        // A-22 真机实测（2026-09-23，run_grid1..4.log）逐档吻合。
+        // 钉死它比钉"差值不超过一个步长"强得多 —— 后者在"吸附根本没生效"时也是绿的
+        // （0 ≤ 步长 恒真，独立评审实测）。吸附的机制由隔壁那条（关掉吸附量槽宽）
+        // 与框架的 SnappingTest 管，这里只管"真机上读出来是几"。
+        float[] snapped = {314.0f, 207.0f, 137.0f, 154.0f};
+        for (int i = 0; i < TIERS.length; i++) {
+            Tier t = TIERS[i];
+            CardGridTree.Grid g = grid(24, t.width(), t.height(), t.u());
+            float step = 1f / t.guiScale();
+            CardGridTree.layout(g, t.width(), t.height(), step);
+            float real = g.cellWidth();
+
+            assertEquals(snapped[i], real, EPS,
+                    "画布 " + t.width() + "（guiScale " + t.guiScale() + "）的吸附后实宽与真机读数"
+                            + "不符；槽宽 " + t.slot() + "、步长 " + step);
+            assertTrue(Math.abs(real - t.slot()) <= step + EPS,
+                    "包络：吸附只让每条边挪半格以内（实宽 " + real + "、槽宽 " + t.slot() + "）");
+        }
     }
 
     @Test
@@ -121,9 +206,10 @@ class CardGridTreeTest {
         int cols = g.metrics().cols();
         assertEquals(4, cols, "这一档应当解出 4 列");
 
+        float expected = g.cells().get(0).bounds().width();
         for (int i = 0; i < g.cells().size(); i++) {
             Rect box = g.cells().get(i).bounds();
-            assertEquals(g.metrics().cellWidth(), box.width(), EPS, "第 " + i + " 格宽不等");
+            assertEquals(expected, box.width(), EPS, "第 " + i + " 格宽不等");
             assertEquals(g.metrics().cellHeight(), box.height(), EPS, "第 " + i + " 格高不等");
             if (i % cols == 0) {
                 assertEquals(g.cells().get(0).bounds().x(), box.x(), EPS,
@@ -156,7 +242,7 @@ class CardGridTreeTest {
     }
 
     @Test
-    @DisplayName("格子矩形与 GridMath 手算逐位一致（布局给了我们声明的那个数，没被夹）")
+    @DisplayName("格子矩形与手算逐位一致（布局给了我们声明的那个数，没被夹）")
     void cellBoundsMatchTheDeclaredGeometry() {
         CardGridTree.Grid g = grid(24);
         GridMath.Metrics m = g.metrics();
@@ -167,9 +253,10 @@ class CardGridTreeTest {
         float rowH = Tokens.Size.ROW_H * U;
         assertEquals(pad, first.x(), EPS, "首格左缘");
         assertEquals(pad + rowH + gap, first.y(), EPS, "首格上缘（标题之下、内容上留白之后）");
-        // 第二格：右移一格宽 + 一条缝
+        // 第二格：右移一格宽 + 一条缝（格宽读第一格自己的矩形，不重算）
         Rect second = g.cells().get(1).bounds();
-        assertEquals(first.x() + m.cellWidth() + gap, second.x(), EPS, "第二格没按「格宽 + 缝」右移");
+        assertEquals(first.x() + first.width() + gap, second.x(), EPS,
+                "第二格没按「格宽 + 缝」右移");
         // 第二行首格：下移一格高 + 一条缝
         Rect secondRow = g.cells().get(m.cols()).bounds();
         assertEquals(first.y() + m.cellHeight() + gap, secondRow.y(), EPS, "第二行没按「格高 + 缝」下移");
@@ -211,12 +298,13 @@ class CardGridTreeTest {
         relayout(g);
 
         Rect view = g.viewport();
-        float cx = view.x() + g.metrics().cellWidth() / 2f;
+        Rect first = g.cells().get(0).bounds();
+        float cx = first.x() + first.width() / 2f;
         // 视口上方半格处：那里有一格（它的矩形在树里），但已经滚出去了
-        assertNull(g.tree().hitTest(cx, view.y() - g.metrics().cellHeight() / 2f),
+        assertNull(g.tree().hitTest(cx, view.y() - g.cellHeight() / 2f),
                 "视口上方的点命中了已经滚出去的格子 —— 那些格子根本看不见");
         // 视口内第一行仍然点得到
-        assertNotNull(g.tree().hitTest(cx, view.y() + g.metrics().cellHeight() / 2f),
+        assertNotNull(g.tree().hitTest(cx, view.y() + g.cellHeight() / 2f),
                 "视口里看得见的格子却点不到");
     }
 
@@ -302,7 +390,8 @@ class CardGridTreeTest {
         CardGridTree.Grid g = grid(24);
         String dump = CardGridTree.dump(g);
         assertTrue(dump.contains("列数=4"), "读数里没有列数： " + dump);
-        assertTrue(dump.contains("每格=314x180"), "每格尺寸与方案表不符： " + dump);
+        // A-22 之后每格宽印一位小数、读的是格子的真矩形；这一档除得尽，与 A-19 记录同值
+        assertTrue(dump.contains("每格=314.0x180"), "每格尺寸与记录不符： " + dump);
         assertTrue(dump.contains("格子=24"), "格子数不对： " + dump);
     }
 

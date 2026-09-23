@@ -19,6 +19,14 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * <p>
  * 【为什么要连续扫】{@link StackLayoutTest} 那边是逐档钉的（档位少、语义单一）。这里多一层：
  * 列数是<b>阶梯函数</b>，逐档钉只能证"这几点是对的"，扫一遍才能证"阶梯本身没有反向的那一级"。
+ * <p>
+ * 【"每格多宽"已经不在这里测了】（A-22）那个数从 {@code GridMath} 搬去了 L1 的
+ * {@code Sizing.track(cols)}，所以：<b>整行恰好填满</b>与<b>末行格子与满行等宽</b>由框架的
+ * {@code TrackLayoutTest} 钉（那边有判别力的对照：老路 {@code fraction} 会溢 12px、
+ * 老路 {@code grow} 会给一倍宽）；<b>真机上那个数</b>由 {@code CardGridTreeTest} 按格子的真矩形钉。
+ * 本文件只管<b>退让本身</b>：几列、单调、区间，以及"格子至少和它自己一样宽"这条判据。
+ * 从前那两条测 {@code cellWidth} 的（"放得下的最大整数"、"整行永不溢出"）随那个数一起退休 ——
+ * 前者测的是已经不存在的取整，后者在新口径下<b>恒真</b>（公式本身就等于内容宽）。
  */
 class GridMathTest {
 
@@ -32,24 +40,40 @@ class GridMathTest {
     private static final float GAP_UNITS = 2f;
     private static final float PADDING_UNITS = 3f;
 
-    /** 一档画布：视口宽（逻辑 px）、u、期望列数、期望每格宽、这一档是不是被下限钳住的。 */
-    private record Tier(float viewportWidth, float u, int cols, float cellWidth, boolean clamped) {
+    /** 一档画布：视口宽（逻辑 px）、u、期望列数、这一档是不是被下限钳住的。 */
+    private record Tier(float viewportWidth, float u, int cols, boolean clamped) {
     }
 
     /**
      * 五档真实画布。前四档对应 harness 的 {@code -PharnessGuiScale=1..4}，第五档是最小常见画布
      * （1280×720 @ guiScale 5），用来钉"钳到下限"那一条。
+     * <p>每格多宽不在这张表里 —— 它由 {@code CardGridTreeTest} 按真矩形钉（见类注释）。
      */
     private static final Tier[] TIERS = {
-            new Tier(1280.0f, 2.0f, 4, 314f, false),      // guiScale 1
-            new Tier(640.0f, 1.8f, 3, 207f, false),       // guiScale 2
-            new Tier(426.7f, 1.5f, 3, 137f, false),       // guiScale 3
-            new Tier(320.0f, 1.5f, 2, 154f, false),       // guiScale 4
-            new Tier(256.0f, 1.5f, 2, 122f, true),        // guiScale 5：floor 只给 1 列，被夹到下限 2
+            new Tier(1280.0f, 2.0f, 4, false),      // guiScale 1
+            new Tier(640.0f, 1.8f, 3, false),       // guiScale 2
+            new Tier(426.7f, 1.5f, 3, false),       // guiScale 3
+            new Tier(320.0f, 1.5f, 2, false),       // guiScale 4
+            new Tier(256.0f, 1.5f, 2, true),        // guiScale 5：floor 只给 1 列，被夹到下限 2
     };
 
     private static GridMath.Spec spec(float u) {
         return GridMath.Spec.of(CELL_H_UNITS * u, GAP_UNITS * u, PADDING_UNITS * u);
+    }
+
+    /**
+     * 退让判据要用的"每格会有多宽"。
+     * <p>
+     * 【为什么这里重算一遍】A-22 之后 {@code GridMath} 不再出这个数（格子宽由 L1 解析），
+     * 但"退让的判据 = <b>格子至少和它自己一样宽</b>"仍然是 {@link GridMath#columnsFor} 的性质：
+     * 它选出的列数必须让每格不小于格高。所以按同一条公式（扣掉 cols − 1 条缝再等分，
+     * <b>不取整</b>）重算，专门用来表达那条判据 —— 这也是 A-22 之后它变精确了的那个数。
+     */
+    private static float slotWidth(GridMath.Metrics m, GridMath.Spec s) {
+        if (m.cols() <= 0) {
+            return 0f;
+        }
+        return (m.contentWidth() - s.gap() * (m.cols() - 1)) / m.cols();
     }
 
     @Nested
@@ -63,22 +87,22 @@ class GridMathTest {
                 GridMath.Metrics m = GridMath.solve(24, t.viewportWidth(), spec(t.u()));
                 assertEquals(t.cols(), m.cols(),
                         "画布 " + t.viewportWidth() + " 宽（u=" + t.u() + "）的列数不对");
-                assertEquals(t.cellWidth(), m.cellWidth(), EPS,
-                        "画布 " + t.viewportWidth() + " 宽（u=" + t.u() + "）的每格宽不对");
             }
         }
 
         @Test
-        @DisplayName("退让只在必要时发生：没钳到下限的档，每格宽都不小于格高")
+        @DisplayName("退让只在必要时发生：没钳到下限的档，每格都不小于格高")
         void retreatsOnlyWhenItMust() {
             for (Tier t : TIERS) {
                 if (t.clamped()) {
                     continue;
                 }
-                GridMath.Metrics m = GridMath.solve(24, t.viewportWidth(), spec(t.u()));
-                assertTrue(m.cellWidth() >= m.cellHeight(),
+                GridMath.Spec s = spec(t.u());
+                GridMath.Metrics m = GridMath.solve(24, t.viewportWidth(), s);
+                float slot = slotWidth(m, s);
+                assertTrue(slot >= m.cellHeight(),
                         "画布 " + t.viewportWidth() + " 宽：还有 " + m.cols() + " 列可选，"
-                                + "每格却已经被压到 " + m.cellWidth() + " 宽（低于格高 "
+                                + "每格却已经被压到 " + slot + " 宽（低于格高 "
                                 + m.cellHeight() + "）—— 该少一列，不该缩格子");
             }
         }
@@ -86,9 +110,10 @@ class GridMathTest {
         @Test
         @DisplayName("钳到下限那一档：宁可溢出，也不掉到 1 列")
         void clampsAtTheFloorRatherThanDroppingToASingleColumn() {
-            GridMath.Metrics m = GridMath.solve(24, 256f, spec(1.5f));
+            GridMath.Spec s = spec(1.5f);
+            GridMath.Metrics m = GridMath.solve(24, 256f, s);
             assertEquals(GridMath.MIN_COLS, m.cols(), "窄到下限时必须夹住，不能只给 1 列（那就不是网格了）");
-            assertTrue(m.cellWidth() < m.cellHeight(),
+            assertTrue(slotWidth(m, s) < m.cellHeight(),
                     "这一档就是被钳住的形状：格子确实比格高窄 —— 这是刻意的，不是 bug");
         }
 
@@ -122,39 +147,8 @@ class GridMathTest {
     }
 
     @Nested
-    @DisplayName("格子宽与内容宽")
-    class Widths {
-
-        @Test
-        @DisplayName("整行永不溢出：每格宽 × 列数 + 列缝 ≤ 内容宽")
-        void aRowNeverOverflows() {
-            for (float w = 150f; w <= 1280f; w += 0.5f) {
-                for (float u : new float[]{1.5f, 1.8f, 2.0f}) {
-                    GridMath.Spec s = spec(u);
-                    GridMath.Metrics m = GridMath.solve(24, w, s);
-                    float used = m.cellWidth() * m.cols() + s.gap() * (m.cols() - 1);
-                    assertTrue(used <= m.contentWidth() + EPS,
-                            "画布 " + w + " 宽（u=" + u + "）：一行占了 " + used
-                                    + "，超过内容宽 " + m.contentWidth());
-                }
-            }
-        }
-
-        @Test
-        @DisplayName("每格宽是「放得下的最大整数」：再加 1px 就溢出")
-        void cellWidthIsTheLargestIntegerThatFits() {
-            for (float w = 150f; w <= 1280f; w += 0.5f) {
-                GridMath.Spec s = spec(1.5f);
-                GridMath.Metrics m = GridMath.solve(24, w, s);
-                if (m.cellWidth() <= 0f) {
-                    continue;
-                }
-                float wider = (m.cellWidth() + 1f) * m.cols() + s.gap() * (m.cols() - 1);
-                assertTrue(wider > m.contentWidth() - EPS,
-                        "画布 " + w + " 宽：每格 " + m.cellWidth() + " 宽，再加 1px（" + wider
-                                + "）仍然装得进 " + m.contentWidth() + " —— 说明算小了");
-            }
-        }
+    @DisplayName("内容盒")
+    class ContentBox {
 
         @Test
         @DisplayName("内容宽 = 视口宽 − 2×左右内边距（内边距只减一次）")
@@ -166,21 +160,23 @@ class GridMathTest {
         }
 
         @Test
-        @DisplayName("差不到 1e-4 就该认成整除：floor 的容差真的在起作用")
-        void floorDoesNotLoseAPixelWhenTheDivisionIsJustUnderAnInteger() {
-            // 【为什么不用 400 / 4】那在 IEEE754 里是精确的 100.0，把 GridMath 的
-            // FLOOR_EPSILON 整条删掉它照样绿 —— 是个恒真断言（评审指出的）。
+        @DisplayName("差不到 1e-4 就该认成整除：容差真的在起作用（少算一列的那种）")
+        void floorDoesNotLoseAColumnWhenTheDivisionIsJustUnderAnInteger() {
+            // 【为什么不用 300 / 3】那在 IEEE754 里是精确的 100.0，把 FLOOR_EPSILON 整条删掉
+            // 它照样绿 —— 是个恒真断言（评审指出的）。
             // 【为什么也不用 299.99999f】它离 300 只有 1e-5，**小于 float 在 300 附近的
             // 半个间距（约 1.5e-5）**，于是直接舍入成 300.0f —— 又变成恒真。
             // （本喵第一版就是这么写错的，靠一次变异测试才发现。）
             // 要用 299.9999f：1e-4 大于半间距，会被舍到 300 − 3.05e-5 = 299.99997，
-            // 于是 299.99997 / 3 = 99.9999898 —— 不加容差 floor 成 99（整行少 3px），
-            // 而且列数那一趟也会掉到 2。加了容差才是 3 列各 100。
+            // 于是 (299.99997 + 0) / 100 = 2.9999997 —— 不加容差 floor 成 2 列，
+            // 加了才是 3 列。
+            //
+            // 【A-22 之后这条只钉列数】从前它还要钉格子宽（99.9999898 该被认成 100），
+            // 那个数已经搬去 L1（见类注释），取整这一半跟着退休。列数这一半照样有判别力：
+            // 把 FLOOR_EPSILON 改成 0f，它必须变红。
             GridMath.Spec s = new GridMath.Spec(100f, 0f, 0f, 2, 4);
             GridMath.Metrics m = GridMath.solve(6, 299.9999f, s);
             assertEquals(3, m.cols(), "这一档应当解出 3 列（不带容差会掉成 2 列）");
-            assertEquals(100f, m.cellWidth(), EPS,
-                    "99.9999898 该被容差认成整除（100），而不是掉成 99");
         }
     }
 
@@ -253,11 +249,10 @@ class GridMathTest {
         }
 
         @Test
-        @DisplayName("视口窄到装不下任何一列时，给下限列数并且每格宽不为负")
+        @DisplayName("视口窄到装不下任何一列时，给下限列数，内容宽不为负")
         void degenerateViewportDoesNotProduceNegativeWidths() {
             GridMath.Metrics m = GridMath.solve(10, 4f, spec(1.5f));
             assertEquals(GridMath.MIN_COLS, m.cols());
-            assertEquals(0f, m.cellWidth(), EPS, "格子宽不能是负的");
             assertTrue(m.contentWidth() >= 0f, "内容宽不能是负的");
         }
     }

@@ -1,13 +1,21 @@
 package com.niuqu.pickupcard.layout;
 
 /**
- * 卡片网格的纯几何：<b>列数随可用宽度退让</b>（四列 → 三列 → 两列），格子尺寸由列数反推。
+ * 卡片网格的纯几何：<b>列数随可用宽度退让</b>（四列 → 三列 → 两列），以及内容盒与内容高。
  * <p>
  * 【为什么退让归这里，不归 Trellis 的布局层】"分几列"是<b>结构决定</b>，和"格子多大"是两件事。
  * Trellis 的 L1 只算坐标、不认识条件表达（{@code layout/package-info.java} 明确写了不做 shrink /
  * margin / wrap），而结构决定按该仓库自己的口径就该由调用方算 —— 原话见
  * {@code ConfigScreenParityTest}："结构决定（断点 / 退让顺序）必须由调用方算……但尺寸本身仍然
- * 交给 {@code Sizing}"。所以这里算出 <b>意图</b>（几列、每格多大），坐标仍然全部由 L1 落成 Rect。
+ * 交给 {@code Sizing}"。所以这里只算出<b>几列、几行、内容多高</b>。
+ * <p>
+ * 【<b>每格多宽已经不在这里了</b>（A-22）】从前这里用 {@code cellWidth()} 算格子宽
+ * （{@code (内容宽 − 缝×(cols−1)) / cols} 再 floor），调用方拿这个数去写 {@code Sizing.fixed}。
+ * 那正是 {@code Sizing.fraction} 的立案理由里点名要根除的病 ——"表达不出来的时候，调用方只能
+ * 自己算成像素再传进来，于是那段 clamp 就跑到了布局层外面"。所以 Trellis 加了
+ * {@code Sizing.track(cols)}（= CSS Grid 的 {@code repeat(n, 1fr)}，缝由父容器扣），
+ * 格子宽由 <b>L1</b> 解析，这里不再出这个数。floor 也一并去掉了：旧口径在 640/426.7 两档
+ * 右边各白丢 0.33 / 0.23px，而设备像素对齐本来由布局的事后一遍负责。
  * <p>
  * 【为什么单独成一个类】和 {@link StackLayout} 同一条理由：排布是"几张、屏幕多大"进去、
  * "每格在哪"出来的纯函数，不认识 {@code GuiGraphics}、不认识字体、不认识 Forge，也不认识
@@ -34,9 +42,13 @@ public final class GridMath {
     /**
      * floor 之前加的极小容差。
      * <p>
-     * 【为什么需要它】{@code usable / cols} 在本该整除时可能落在 {@code x.9999997}（浮点表示），
-     * 直接 floor 就平白少掉一个像素 —— 四列时整行少 4px，看着像"右边没对齐"，
+     * 【为什么需要它】这个除法在本该整除时可能落在 {@code x.9999997}（浮点表示），
+     * 直接 floor 就<b>少算一列</b>：四列掉成三列，整行少放一张卡，看着像"右边挤了"，
      * 而那是一个纯粹由浮点造成的、无法从代码上读出来的错。
+     * <p>
+     * 【A-22 之后只作用于列数那一趟】从前它还给格子宽兜底（四列时整行少 4px）；格子宽搬去
+     * {@code Sizing.track} 之后，这里是唯一的用处 —— 判据见 {@code GridMathTest} 里
+     * 那条"差不到 1e-4 就该认成整除"的测试（把常量改成 0 它必须变红）。
      */
     private static final float FLOOR_EPSILON = 1e-4f;
 
@@ -75,14 +87,19 @@ public final class GridMath {
 
     /**
      * 解出来的网格几何。
+     * <p>
+     * <b>这里没有"每格多宽"</b>—— 那由 L1 的 {@code Sizing.track(cols)} 解析（见类注释）。
+     * 想知道实际多宽，读格子的 {@code bounds()}（判据 1：绘制、命中、读数读同一个对象）。
      *
      * @param cols          列数
      * @param rows          行数（{@code ceil(itemCount / cols)}；没有项目时为 0）
-     * @param cellWidth     每格逻辑宽（已向下取整到整数逻辑像素）
+     * @param cellHeight    每格逻辑高（宽度不在这里，见上）
+     * @param gap           行缝 = 列缝
+     * @param padding       页面左右内边距
      * @param contentWidth  内容盒宽（= 视口宽 − 2×padding），供调用方与布局对账
      * @param contentHeight 内容盒高（行高 + 行缝，末行之后不留缝；没有项目时为 0）
      */
-    public record Metrics(int cols, int rows, float cellWidth, float cellHeight, float gap,
+    public record Metrics(int cols, int rows, float cellHeight, float gap,
                           float padding, float contentWidth, float contentHeight) {
 
         /** 一个格子都没有（{@code itemCount <= 0}）。 */
@@ -95,7 +112,7 @@ public final class GridMath {
     }
 
     /**
-     * 解一次：几个项目、视口多宽 → 几列、几行、每格多大、内容多高。
+     * 解一次：几个项目、视口多宽 → 几列、几行、内容多高。
      *
      * @param itemCount     项目个数（&lt;= 0 时 {@link Metrics#isEmpty()} 为真）
      * @param viewportWidth 网格可见区的逻辑宽（滚动容器自己的宽，不含 padding）
@@ -104,12 +121,11 @@ public final class GridMath {
     public static Metrics solve(int itemCount, float viewportWidth, Spec spec) {
         int cols = columnsFor(viewportWidth, spec);
         float contentWidth = innerWidth(viewportWidth, spec);
-        float cellWidth = cellWidth(contentWidth, cols, spec.gap());
         int rows = itemCount <= 0 ? 0 : (itemCount + cols - 1) / cols;
         float contentHeight = rows == 0
                 ? 0f
                 : rows * spec.cellHeight() + (rows - 1) * spec.gap();
-        return new Metrics(cols, rows, cellWidth, spec.cellHeight(), spec.gap(),
+        return new Metrics(cols, rows, spec.cellHeight(), spec.gap(),
                 spec.padding(), Math.max(0f, contentWidth), contentHeight);
     }
 
@@ -142,22 +158,5 @@ public final class GridMath {
      */
     public static float innerWidth(float viewportWidth, Spec spec) {
         return viewportWidth - 2f * spec.padding();
-    }
-
-    /**
-     * 每格逻辑宽：把内容宽扣掉所有列缝，剩下的按列数等分，再向下取整。
-     * <p>
-     * 取整留下的余数<b>留在右边</b>（行用 {@code Justify.START}），不摊进缝里 ——
-     * 摊进去会让末行的格子间距和别行不一样，看着像没对齐。
-     */
-    private static float cellWidth(float contentWidth, int cols, float gap) {
-        if (cols <= 0 || contentWidth <= 0f) {
-            return 0f;
-        }
-        float usable = contentWidth - gap * (cols - 1);
-        if (usable <= 0f) {
-            return 0f;
-        }
-        return (float) Math.floor(usable / cols + FLOOR_EPSILON);
     }
 }
