@@ -108,21 +108,32 @@ public final class FadingItemBuffers implements MultiBufferSource {
             BakedModel model = renderer.getModel(stack, mc.level, null, 0);
             PoseStack pose = gui.pose();
             pose.pushPose();
-            // —— 从这里起与 GuiGraphics.renderItem 逐字对齐 ——
-            pose.translate(centerX, centerY, 150f);
-            // y 翻转矩阵只读不存（mulPoseMatrix 把值乘进 pose 栈），共享一份免每帧分配
-            pose.mulPoseMatrix(FLIP_Y);
-            float scale = iconSize / CardMetrics.ICON_PX;
-            pose.scale(16.0F * scale, 16.0F * scale, 16.0F * scale);
-            boolean flatLight = !model.usesBlockLight();
-            if (flatLight) {
-                Lighting.setupForFlatItems();
+            boolean flatLight;
+            try {
+                // —— 从这里起与 GuiGraphics.renderItem 逐字对齐 ——
+                pose.translate(centerX, centerY, 150f);
+                // y 翻转矩阵只读不存（mulPoseMatrix 把值乘进 pose 栈），共享一份免每帧分配
+                pose.mulPoseMatrix(FLIP_Y);
+                float scale = iconSize / CardMetrics.ICON_PX;
+                pose.scale(16.0F * scale, 16.0F * scale, 16.0F * scale);
+                flatLight = !model.usesBlockLight();
+                if (flatLight) {
+                    Lighting.setupForFlatItems();
+                }
+                renderer.render(stack, ItemDisplayContext.GUI, false, pose,
+                        fading ? INSTANCE : mc.renderBuffers().bufferSource(),
+                        LightTexture.FULL_BRIGHT, OverlayTexture.NO_OVERLAY, model);
+            } finally {
+                // 【为什么必须是 finally】A-25 的评审逮到：这里原来是直着写的 `pose.popPose()`，
+                // 而 `render` 抛异常时会被下面的 `catch (Exception)` 吞掉 ——
+                // **pop 就被整条跳过，姿态栈每帧泄漏一层、还带着 translate/scale**，
+                // 之后画的东西从此偏移，而且什么都不报。A-24 之前只有卡面那几颗图标走这条路径；
+                // A-25 把 24 个格子的图标放进同一批，污染面从"一张卡"变成"整屏格子"。
+                pose.popPose();
             }
-            renderer.render(stack, ItemDisplayContext.GUI, false, pose,
-                    fading ? INSTANCE : mc.renderBuffers().bufferSource(),
-                    LightTexture.FULL_BRIGHT, OverlayTexture.NO_OVERLAY, model);
-            pose.popPose();
             // 原版 renderItem 在恢复光照前 flush（uniform 在 draw 时才吃）—— 同序。
+            // ⚠️ 光照的还原仍留在 flush **之后**，所以 render 抛异常那一支不会被还原
+            // （既有行为，本轮不动：把它挪进 finally 会打乱上面那条顺序）。
             BatchStats.countFlush();
             mc.renderBuffers().bufferSource().endBatch();
             if (flatLight) {

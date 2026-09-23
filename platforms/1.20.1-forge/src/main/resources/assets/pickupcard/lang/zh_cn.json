@@ -171,8 +171,6 @@
 
   "pickupcard.grid.title": "卡片一览 · 网格",
   "pickupcard.grid.hint": "%s 列 × %s 行 · 每格 %s×%s · 方向键移动焦点",
-  "pickupcard.grid.cell": "卡 %s",
-
   "pickupcard.hud.count": "提示 %s 条",
   "pickupcard.hud.hint": "G 配置"
 }

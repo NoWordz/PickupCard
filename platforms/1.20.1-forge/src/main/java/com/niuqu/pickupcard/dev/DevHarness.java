@@ -739,7 +739,13 @@ public final class DevHarness {
          *
          * <p>【为什么每一步都留读数】这一轮的主要产出是「哪里真的缺」的证据，不是界面本身。
          * 三条关键读数：<b>列数</b>（退让）、<b>方向键落点</b>（二维，不是序号 +1）、
-         * <b>焦点出视口时的容器偏移</b>（{@code scrollIntoView} 尚不存在的证据）。
+         * <b>焦点出视口时的容器偏移</b>。
+         *
+         * <p>⚠️【第三条的含义 A-21 之后反了】（A-25 的评审指出，本喵改正）原文写的是
+         * 「{@code scrollIntoView} <b>尚不存在</b>的证据」—— 现在框架有
+         * {@code UiTree.revealFocus()} 了，读数从"偏移=0（缺件的证据）"变成
+         * "<b>偏移=432（功能生效的证据）</b>"。同一个读数换了含义，写在这里免得下一个人
+         * 照着"尚不存在"去推。
          */
         static void tickGrid(Minecraft mc) {
             if (mc.level == null || mc.getOverlay() != null) {
@@ -816,15 +822,22 @@ public final class DevHarness {
                 return;
             }
             if (gridTicks == WARMUP_TICKS + 40) {
-                // 【为什么单独来这一下】整格滚动（184）恰好躲开"格子文字糊到标题上"那一段
-                // （约 89–123），所以上面那几张产物拍不到裁剪漏掉文字的形态。100 落在那段里，
-                // 这一张才是"文字有没有跟着形状一起被裁"的产物证据。
+                // 【为什么单独来这一下】整格滚动（184）恰好躲开最上面那一格跨过视口上缘的那一段，
+                // 所以上面那几张产物拍不到"滚出去的东西有没有被裁"。100 落在那一格里，
+                // 这一张才是裁剪的产物证据。
+                //
+                // ⚠️【口径 A-25 变了】A-19 时这一格要验的是**文字**（名字在格心，偏移 100 时
+                // 落在视口上方）。A-25 把名字挪到了格底（{@code CardFaceCell}），所以偏移 100
+                // 时**名字已经在视口内**——这一张现在验的是**物品图标**被裁（图标还在格心，
+                // 落在视口上方约 16px）。**文字裁剪这一条，本轮之后没有截图直接验到。**
                 screen.scrollToForHarness(100f);
                 return;
             }
             if (gridTicks >= WARMUP_TICKS + 42) {
                 capture(mc, "clip-probe");
-                PickupCard.LOGGER.info("[harness-auto] 裁剪探针: 偏移=100（文字该被裁在视口里）");
+                PickupCard.LOGGER.info("[harness-auto] 裁剪探针: 偏移=100 —— 第 0 行的**物品图标**"
+                        + "该被视口裁掉、标题带不许有墨迹（A-25 起口径；名字已挪到格底，"
+                        + "这一张**不再**验文字裁剪）");
                 PickupCard.LOGGER.info("[harness-auto] 网格模式收工，退出客户端");
                 mc.stop();
             }

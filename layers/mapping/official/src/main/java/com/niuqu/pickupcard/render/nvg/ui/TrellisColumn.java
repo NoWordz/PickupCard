@@ -20,6 +20,7 @@ import dev.e33.trellis.ui.UiEvent;
 import dev.e33.trellis.ui.UiTree;
 import dev.e33.trellis.ui.WidgetSlot;
 import java.util.List;
+import dev.e33.trellis.ui.widget.BoxPainter;
 import dev.e33.trellis.ui.widget.GlyphPainter;
 import dev.e33.trellis.ui.widget.PaintCtx;
 import dev.e33.trellis.ui.widget.Widget;
@@ -275,7 +276,7 @@ public final class TrellisColumn {
          * （单位是纳秒，见 {@code PaintCtx.now}）。
          */
         public PaintCtx ctxFor(Rect box, long now) {
-            return new PaintCtx(box, canvas, env.palette(), env.glyphs(), now);
+            return new PaintCtx(box, canvas, env.palette(), env.glyphs(), env.boxes(), now);
         }
     }
 
@@ -290,7 +291,23 @@ public final class TrellisColumn {
      */
     public static Frame surface(NvgCanvas host, WidgetPalette palette, GlyphPainter glyphs,
                                 float pixelRatio) {
-        return new Frame(attach(host, pixelRatio), new ComponentEnv(palette, glyphs));
+        return surface(host, palette, glyphs, BoxPainter.UNWIRED, pixelRatio);
+    }
+
+    /**
+     * 同上，但<b>接了「宿主自绘盒」那条缝</b>（A-25）。
+     *
+     * <p>【为什么是重载而不是改签名】全仓有四个 {@code surface(...)} 调用点（配置屏 / 编辑场 /
+     * 网格 / HUD 面板），而<b>只有网格要画宿主的东西</b>（真卡面）。改签名等于让其余三个
+     * 各交一个 {@code UNWIRED} —— 那是把"这一屏不画宿主的东西"这件事抄三遍。
+     * 重载让那三处一个字都不用动，接缝的那一处是显式的。
+     *
+     * <p>【没接缝的表面上有人要这项能力会怎样】拿到的是 {@link BoxPainter#UNWIRED}，
+     * 调用它<b>会抛</b>并说清是接线问题 —— 不静默画空（病最恨的那类症状）。
+     */
+    public static Frame surface(NvgCanvas host, WidgetPalette palette, GlyphPainter glyphs,
+                                BoxPainter boxes, float pixelRatio) {
+        return new Frame(attach(host, pixelRatio), new ComponentEnv(palette, glyphs, boxes));
     }
 
     // -----------------------------------------------------------------------

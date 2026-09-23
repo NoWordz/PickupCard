@@ -1,11 +1,12 @@
 package com.niuqu.pickupcard.config;
 
 import com.niuqu.pickupcard.render.CardStage;
+import com.niuqu.pickupcard.render.nvg.ui.CardFaceCell;
 import com.niuqu.pickupcard.render.nvg.ui.CardGridTree;
+import com.niuqu.pickupcard.render.nvg.ui.McBoxPainter;
 import com.niuqu.pickupcard.render.nvg.ui.McGlyphPainter;
 import com.niuqu.pickupcard.render.nvg.ui.NvgPalette;
 import com.niuqu.pickupcard.render.nvg.ui.NvgUi;
-import com.niuqu.pickupcard.render.nvg.ui.PlaceholderCell;
 import com.niuqu.pickupcard.render.nvg.ui.TrellisColumn;
 import dev.e33.trellis.ui.WidgetSlot;
 import dev.e33.trellis.geom.Rect;
@@ -15,6 +16,8 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.resources.language.I18n;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Items;
 import org.lwjgl.glfw.GLFW;
 
 import java.util.ArrayList;
@@ -31,15 +34,30 @@ import java.util.List;
  * <p>【这一屏只做三件事】把输入推给树、每帧驱动一次、把字画上屏。几何、列数退让、方向键导航
  * 全在 {@link CardGridTree}（静态、离线可测）里 —— 本屏<b>没有</b>自己算过任何一个坐标。
  *
- * <p>【刻意没做的两件】① 格子里是<b>占位格</b>（{@link PlaceholderCell}），不是真卡面：
- * 真卡面要碰 L4 位图那道缺口，会把这一轮从"验形态"漂成"造 L4"；② 焦点走出视口时
- * <b>不自动滚动</b>（框架没有 {@code scrollIntoView}）—— 本轮把它做成 harness 的一条探针读数，
- * 先拿数字再定形状。
+ * <p>【那两件"刻意没做"后来的下场】① <s>格子里是占位格，不是真卡面</s> —— <b>A-25 做掉了</b>：
+ * 现在每格是 {@link CardFaceCell}，物品经框架的「宿主自绘盒」缝（{@code BoxPainter}）
+ * 由宿主现渲，L4 不需要自己会画位图。② <s>焦点走出视口时不自动滚动</s> ——
+ * <b>A-21 做掉了</b>（{@code scrollIntoView}）。两条都留着原文划掉，免得下一个人
+ * 读着旧结论去推新问题。
  */
 public final class CardGridScreen extends Screen {
 
-    /** 占位项目数（真卡面落地后换成玩家的卡列表）。24 = guiScale 1 下正好 6 行 × 4 列。 */
-    private static final int PLACEHOLDER_ITEMS = 24;
+    /** 样例项目数（玩家的卡列表接上来之前，这一屏显示这一组）。24 = guiScale 1 下正好 6 行 × 4 列。 */
+    private static final int SAMPLE_ITEMS = 24;
+
+    /**
+     * 样例物品 —— 每格从这一组里轮着取。
+     *
+     * <p>【为什么是这几个】harness 的 HUD 样例（{@code CardFixtures}）用的就是它们，
+     * 两屏显示同一批东西，"这屏的图标没出来"和"那屏没出来"才对着看得起来。
+     * 用 {@code List} 而不是数组：省一个 {@code Item[]} 的 import，而这里只需要顺序与长度。
+     */
+    private static final List<ItemStack> SAMPLES = List.of(
+            new ItemStack(Items.COMMAND_BLOCK),
+            new ItemStack(Items.STONE),
+            new ItemStack(Items.ELYTRA),
+            new ItemStack(Items.BEACON),
+            new ItemStack(Items.DRAGON_EGG));
 
     private final Screen parent;
 
@@ -69,9 +87,13 @@ public final class CardGridScreen extends Screen {
     protected void init() {
         u = Units.u(this.height);
         palette = NvgPalette.of(CardStage.INSTANCE.previewStyle(), u);
-        List<Widget> items = new ArrayList<>(PLACEHOLDER_ITEMS);
-        for (int i = 0; i < PLACEHOLDER_ITEMS; i++) {
-            items.add(new PlaceholderCell("grid-cell-" + i, I18n.get("pickupcard.grid.cell", i + 1)));
+        // 【A-25：占位格换成真卡面】每格一颗真 MC 物品，由宿主经框架的「宿主自绘盒」缝现渲。
+        // 图标大小取宿主卡片样式的 iconSize —— "卡片上图标多大"是宿主的事，框架不需要知道。
+        float iconSize = CardStage.INSTANCE.previewStyle().iconSize();
+        List<Widget> items = new ArrayList<>(SAMPLE_ITEMS);
+        for (int i = 0; i < SAMPLE_ITEMS; i++) {
+            items.add(new CardFaceCell("grid-cell-" + i,
+                    new ItemStack(SAMPLES.get(i % SAMPLES.size()).getItem()), iconSize));
         }
         // 假指针归零：resize 会走 init() → 树/格子/u/调色板全重建，但那个坐标留在旧画布上。
         // 不清的话之后真实鼠标会被永久忽略，悬停指在旧位置（只有 dev 会碰到，但清了才自洽）。
@@ -105,8 +127,11 @@ public final class CardGridScreen extends Screen {
 
         try (NvgUi ui = NvgUi.begin(gui, palette, mouseX, mouseY, now)) {
             if (ui != null) {
+                // 【A-25：把「宿主自绘盒」的缝接上】不接的话，格子的真卡面拿到的是
+                // `BoxPainter.UNWIRED`，**调用时当场抛** —— 那是刻意的：接线错了要响，
+                // 不要静默画空（"画过了"和"没画"在输出上长得一样，是本仓最恨的那类症状）。
                 TrellisColumn.Frame surface = TrellisColumn.surface(ui.canvas(), palette,
-                        new McGlyphPainter(ui), guiScale());
+                        new McGlyphPainter(ui), new McBoxPainter(ui, gui), guiScale());
                 // 【这一对 pushClip/popClip 不是可选的】Trellis 的 clipChildren 走的是
                 // Canvas.clip → nvgIntersectScissor，它只管 NanoVG 那批形状；而格子的字是
                 // 「先登记、close() 时统一交给原版批次」的（NvgUi 的延迟字形），登记时记的是

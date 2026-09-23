@@ -61,20 +61,28 @@ public final class NvgUi implements AutoCloseable {
         return canvas;
     }
     private final MemoryStack stack;
-    /** 登记的一条文字：内容 + **登记时所在的裁剪框**。 */
-    private record Text(Runnable draw, Clip clip) {
+    /**
+     * 登记到帧尾的一条绘制：<b>做什么</b> + <b>登记时所在的裁剪框</b>。
+     *
+     * <p>【名字为什么不叫 {@code Text}】A-24 之前这里只装文字，所以就叫 {@code Text}；
+     * A-25 起宿主的<b>自绘盒</b>（MC 物品那一类，见 {@code BoxPainter}）也走这条队列 ——
+     * 两类东西"帧尾提交"的需求是同一个，分两条队列只会把 {@link Clip} 那套分组逻辑抄第二遍。
+     * 名字跟着事实改掉，免得下一个人读着 {@code texts} 却看见物品被塞进来。
+     */
+    private record Deferred(Runnable draw, Clip clip) {
     }
 
     /**
      * 一个裁剪框（屏幕逻辑坐标）。
      * <p>
-     * 【为什么文字也要记它】形状在 NanoVG 的帧里当场画掉，文字是 {@link #close()} 里才提交的 ——
-     * 提交时当前裁剪早就变了。不记住登记时那个框，滚出视口的行会在裁剪失效之后才画出来。
+     * 【为什么延迟提交的东西都要记它】形状在 NanoVG 的帧里当场画掉，而登记的绘制是
+     * {@link #close()} 里才提交的 —— 提交时当前裁剪早就变了。不记住登记时那个框，
+     * 滚出视口的行会在裁剪失效之后才画出来（文字与自绘盒同病）。
      */
     record Clip(float x, float y, float w, float h) {
     }
 
-    private final List<Text> texts = new ArrayList<>();
+    private final List<Deferred> deferred = new ArrayList<>();
 
     /** 当前的裁剪框（null = 没裁）；形状那一套由 NanoVG 的 save/restore 管。 */
     private Clip clip;
@@ -282,9 +290,20 @@ public final class NvgUi implements AutoCloseable {
                 Math.round(y), fade(argb, alpha), true));
     }
 
-    /** 登记一条文字，连同它此刻所在的裁剪框。 */
-    private void register(Runnable draw) {
-        texts.add(new Text(draw, clip));
+    /**
+     * 把一段绘制<b>登记到帧尾</b>，连同它此刻所在的裁剪框。
+     *
+     * <p>【为什么要延迟】{@link #close()} 里先 {@code canvas.end()} 收掉 NanoVG 那一帧，
+     * 之后才按裁剪框分组提交这些登记项。原版批次（MC 的字，以及宿主自绘盒里的物品渲染）
+     * 必须在 NanoVG 帧<b>结束之后</b>跑 —— 宿主的 {@code NvgCardPainter} 就是这个顺序
+     * （先画外壳，{@code nvg.end()} 之后再走原版批次）。
+     *
+     * <p>【为什么是 public】本来只有本类的几个 {@code text*} 在用；A-25 起宿主自绘盒
+     * （{@code BoxPainter} 的实现）也从外面登记。**登记进来就自动带上当时的裁剪框** ——
+     * 这是它比"自己找个时机画"强的地方（坑 12：延迟绘制不记裁剪框，就会画在裁剪失效之后）。
+     */
+    public void register(Runnable draw) {
+        deferred.add(new Deferred(draw, clip));
     }
 
     // ------------------------------------------------------------------
@@ -380,23 +399,30 @@ public final class NvgUi implements AutoCloseable {
         // 文字按"登记时的裁剪框"分组提交：换框前先把上一段的批次冲掉，否则裁剪会被套到
         // 先登记的那些行上（原版的 enableScissor 只影响之后提交的东西）
         Clip active = null;
-        for (Text t : texts) {
-            Clip want = t.clip();
-            boolean same = want == null ? active == null : want.equals(active);
-            if (!same) {
-                if (active != null) {
-                    gui.disableScissor();
+        try {
+            for (Deferred d : deferred) {
+                Clip want = d.clip();
+                boolean same = want == null ? active == null : want.equals(active);
+                if (!same) {
+                    if (active != null) {
+                        gui.disableScissor();
+                    }
+                    active = want;
+                    if (active != null) {
+                        gui.enableScissor(Math.round(active.x()), Math.round(active.y()),
+                                Math.round(active.x() + active.w()),
+                                Math.round(active.y() + active.h()));
+                    }
                 }
-                active = want;
-                if (active != null) {
-                    gui.enableScissor(Math.round(active.x()), Math.round(active.y()),
-                            Math.round(active.x() + active.w()), Math.round(active.y() + active.h()));
-                }
+                d.draw().run();
             }
-            t.draw().run();
-        }
-        if (active != null) {
-            gui.disableScissor();
+        } finally {
+            // 【为什么是 finally】任何一条登记项抛异常，都要把 scissor 关掉再往上抛 ——
+            // 开着留到本帧余下的所有原版绘制上，症状是"后面画的东西整片被裁"，
+            // 而且离抛出点很远，查起来要命（A-25 的评审顺手指出这条）。
+            if (active != null) {
+                gui.disableScissor();
+            }
         }
     }
 

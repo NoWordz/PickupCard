@@ -171,8 +171,6 @@
 
   "pickupcard.grid.title": "Card overview · grid",
   "pickupcard.grid.hint": "%s columns × %s rows · %s×%s per cell · arrow keys move focus",
-  "pickupcard.grid.cell": "Card %s",
-
   "pickupcard.hud.count": "%s hint(s)",
   "pickupcard.hud.hint": "G config"
 }
