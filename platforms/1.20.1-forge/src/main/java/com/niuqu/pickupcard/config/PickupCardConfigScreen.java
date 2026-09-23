@@ -431,9 +431,11 @@ public final class PickupCardConfigScreen extends Screen {
      * <p>【读数里的"重复增量"是什么】树在把一次按下标成重复的<b>同一个分支</b>里加那个计数器，
      * 所以它就是"这一下被判成重复了没有"，而且是从框架自己嘴里说出来的 —— 宿主没有第二份账。
      *
-     * <p>【"被吃=false"是对的】方向键在这一页没有任何控件接（`WidgetSlot` 的 KEY_DOWN 走
-     * `Widget.keyPressed`，默认返回 false），所以事件会照常落回 MC 的默认路径。探针要验的
+     * <p>【"被吃=false"是对的】<b>上/下方向键</b>在这一页没有任何控件接（`WidgetSlot` 的 KEY_DOWN
+     * 走 `Widget.keyPressed`，默认返回 false），所以事件会照常落回 MC 的默认路径。探针要验的
      * 是记账，不是"谁吃掉了键"。
+     * ⚠️ <b>A-29 起这句要限定成"上/下"</b>：滑条现在接 ← / →（各挪一档），
+     * 而本探针用的是 {@code GLFW_KEY_DOWN}（264）—— 它仍然无人接，所以探针本身照样成立。
      */
     public String keyRepeatForHarness() {
         UiTree tree = trellisColumn();
