@@ -108,6 +108,9 @@ public final class NvgUi implements AutoCloseable {
         this.now = now;
     }
 
+    /** 上下文拿不到只报<b>一次</b> —— 那是初始化期的失败，重试不会变好。 */
+    private static boolean unavailableLogged;
+
     /**
      * 开一帧。<b>调用方必须用 try-with-resources</b>：形状画在 {@link #end()} 里才提交文字，
      * 中间抛异常也要把 GL 状态还回去（{@link NvgCanvas#end()} 自己保证）。
@@ -117,7 +120,17 @@ public final class NvgUi implements AutoCloseable {
     public static NvgUi begin(GuiGraphics gui, NvgPalette palette, float mouseX, float mouseY, long now) {
         NvgCanvas nvg = NvgCanvas.shared();
         if (nvg == null || !nvg.valid()) {
-            PickupCard.LOGGER.error("NanoVG 不可用：自绘界面这一帧画不出来（上面的 [nvg] 日志有原因）");
+            // 【为什么只报一次】本仓自己早写过这条口径：`NvgCanvas.shared()` 的注释是
+            // "只尝试一次 —— 每帧重试的代价是每帧一条错误日志，日志会没法看"。但那句话只做在
+            // **创建**上，报错留在了调用方：三个 Screen 一帧只调一次，看不出来；而 A-24 的
+            // 常驻 HUD 面板进世界后**每帧**都会问到这一句 —— 在那台机器上日志会以 60+/s 的速度
+            // 刷同一条 ERROR，顺带毁掉验收用的"0 条 ERROR"判据。（评审逮到的潜伏项：本轮真机
+            // 没碰到，因为 NanoVG 起得来。）
+            if (!unavailableLogged) {
+                unavailableLogged = true;
+                PickupCard.LOGGER.error("NanoVG 不可用：自绘界面画不出来（上面的 [nvg] 日志有原因）。"
+                        + "这条只报一次：它是初始化期的失败，重试不会变好。");
+            }
             return null;
         }
         gui.flush();

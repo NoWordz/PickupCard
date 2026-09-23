@@ -7,6 +7,7 @@ import com.niuqu.pickupcard.config.PickupCardConfig;
 import com.niuqu.pickupcard.config.PickupCardConfigScreen;
 import com.niuqu.pickupcard.layout.LayoutSettings;
 import com.niuqu.pickupcard.render.CardStage;
+import com.niuqu.pickupcard.render.HudStatusPanel;
 import net.minecraft.client.KeyMapping;
 import net.minecraft.client.resources.language.I18n;
 import net.minecraft.client.Minecraft;
@@ -1135,6 +1136,21 @@ public final class DevHarness {
                                 "%s@(%.0f,%.0f %.0fx%.0f)", slot.view().key(),
                                 slot.x(), slot.y(), slot.width(), slot.height()))
                         .collect(java.util.stream.Collectors.joining(", ")));
+                // 【A-24 常驻 HUD 面板的读数】它画的是一棵只读的 Trellis 树，与卡堆<b>并列</b>
+                // 在同一个 HUD 上，但是**另一个 NanoVG 帧**（面板自己开的）。
+                // 打三个量：几何（读真矩形）、控件自检（在屏 = 被画过）、本帧耗时。
+                // ⚠️ 面板与卡堆不重叠（面板左上、卡堆下方），所以下面那张 pickupcard-hud
+                // 截图里**左上角那一条**就是它 —— 不需要另拍一张同帧的重复图。
+                // 传"此刻"进去：读数要能算出自己**是几帧前的** —— 面板停了却还报 1/1 的话，
+                // 这条读数恰恰成了"最该被抓的故障"的盲区（见 HudStatusPanel.dump 的 @param）。
+                String hudBar = HudStatusPanel.INSTANCE.dump(System.currentTimeMillis() * 1_000_000L);
+                if (hudBar == null) {
+                    // null 的含义是"一帧都没画过"，与"画了 0 个"是两件事，不能混成一行读数。
+                    PickupCard.LOGGER.error("[harness-auto] A-24 面板一帧都没画过"
+                            + "（screen/hideGui/level 三道门里有一道一直关着？）");
+                } else {
+                    PickupCard.LOGGER.info("[harness-auto] {}", hudBar);
+                }
                 Screenshot.grab(mc.gameDirectory, "pickupcard-hud", mc.getMainRenderTarget(),
                         m -> PickupCard.LOGGER.info("[harness-auto] 截图: pickupcard-hud -> {}",
                                 m.getString()));
