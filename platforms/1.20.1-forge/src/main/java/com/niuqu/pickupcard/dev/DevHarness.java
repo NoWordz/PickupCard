@@ -768,8 +768,17 @@ public final class DevHarness {
                 return;
             }
             if (gridTicks == WARMUP_TICKS + 34) {
+                // 【必须在"设指针"和"截图"之间隔一个 tick】截图读的是**上一帧**的帧缓冲，
+                // 同一个 tick 里设完就拍，拍到的是还没悬停的那一帧（A-19 第一版就是这么错的：
+                // 那张 hover 图与定妆图逐像素相同，等于没拍）。配置模式一贯是这个节奏
+                // —— 见 tickConfig 的 `hoverByLabel`(+66) → `capture`(+67)。
                 screen.pointAtCellForHarness(0);
+                PickupCard.LOGGER.info("[harness-auto] {}", screen.hoverDump(0));
+                return;
+            }
+            if (gridTicks == WARMUP_TICKS + 35) {
                 capture(mc, "hover");
+                PickupCard.LOGGER.info("[harness-auto] {}", screen.hoverDump(0));
                 return;
             }
             if (gridTicks == WARMUP_TICKS + 36) {

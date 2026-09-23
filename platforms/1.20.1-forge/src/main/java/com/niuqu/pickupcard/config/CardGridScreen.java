@@ -252,6 +252,19 @@ public final class CardGridScreen extends Screen {
         return new float[]{box.x() + box.width() / 2f, box.y() + box.height() / 2f};
     }
 
+    /**
+     * harness 读数：某一格的悬停缓动量（0 = 没悬停、1 = 完全悬停）。
+     * <p>【为什么值得有一条读数】它同时验两件事：指针真的落在了那一格上；以及
+     * {@code tree.tick(...)} 真的在跑 —— 漏掉 tick 时缓动量会<b>冻在 0</b>，
+     * 而屏幕上只是"悬停硬切、没有缓动"，不报错（A-19 那条坑）。
+     */
+    public String hoverDump(int index) {
+        if (grid == null || index < 0 || index >= grid.cells().size()) {
+            return "悬停缓动: 无";
+        }
+        return String.format("悬停缓动: 第%d格=%.2f", index, grid.cells().get(index).hoverAmount());
+    }
+
     /** harness 驱动：把指针定在某一格的中心上（MC 的真实鼠标挪不动，所以界面代记）。 */
     public void pointAtCellForHarness(int index) {
         float[] center = cellCenterForHarness(index);

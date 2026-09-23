@@ -4,6 +4,7 @@ import dev.e33.trellis.geom.Rect;
 import dev.e33.trellis.layout.Style;
 import dev.e33.trellis.render.Canvas;
 import dev.e33.trellis.ui.Component;
+import dev.e33.trellis.ui.Surface;
 import dev.e33.trellis.ui.UiEvent;
 import dev.e33.trellis.ui.widget.Widget;
 
@@ -40,6 +41,17 @@ public final class WidgetSlot extends Component {
         // 颜色由宿主给 —— 浅色主题下框架那个亮青在近白底上读不出来。
         // 环的圆角取调色板的 radius，和控件自己画的那条 outline 是同一个形状口径。
         focusRing(palette.focusRing, palette.radius);
+        // 【只给圆角、不给底板（A-20）】基类那笔悬停/按下叠加层用的是 `surface.radius()`，
+        // 而这里从前<b>没设底板</b>（Surface.NONE → 半径 0）—— 于是它是**直角**白雾，
+        // 盖在控件自己画的**圆角**填充上，四个角会溢出到控件外面（涂在面板/背景上）。
+        // 离屏量过：悬停角上最高 19/255、按下最高 57/255，且是硬边的方形（见
+        // `examples/OverlayComparisonExample`，跑 `./gradlew :examples:overlayCompare` 出图）。
+        //
+        // fill / border / borderWidth 全 0 → `Surface.isEmpty()` 为真，**底板一个字都不画**
+        // （画了就等于给每个控件凭空加一层底）；只有 radius 参与，那一笔因此跟着圆角走。
+        // 主体的双重上色（+6 / +14 白）本次<b>保留</b>：它轻微，而彻底关掉要连
+        // `Toggle` / `ColorChip` 一起改成自画状态，那是另一个决定（见 A-20 的遗留）。
+        surface(new Surface(0, 0, palette.radius, 0f));
     }
 
     /** 这一格托着的控件。 */
