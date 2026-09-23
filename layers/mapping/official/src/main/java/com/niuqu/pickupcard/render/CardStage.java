@@ -98,21 +98,15 @@ public final class CardStage {
     /** 上一帧绘制（NanoVG 外壳 + 图标现渲 + 文字）的耗时，给 harness 读 —— 性能护栏的另一半。 */
     private long paintMicros;
     /**
-     * 这一轮卡堆里最慢的一帧（layout + paint 合计）与当时的卡数、批次提交次数。
+     * 这一轮卡堆里最慢的一帧：<b>帧号</b>、layout/paint 拆分、卡数、批次提交数，以及本轮
+     * 单帧最多的提交次数（后者跟"最慢那一帧"不一定同时发生 —— 合并滚动会临时多提交两次/卡）。
      * <p>【为什么不能只看当前帧】{@code stats()} 是抽样读的（harness 在某 tick 顺手问一次），
      * 而真正卡的那一下往往落在入场/退场的中段 —— 抽样恰好命中它纯属运气。留住峰值后，
-     * 事后读到的就是"这一轮里最糟的一帧长什么样"。卡堆清空时复位（每轮各自记各自的）。
+     * 事后读到的就是"这一轮里最糟的一帧长什么样"。
+     * <p>【为什么帧号是必须的】只有 us 数是<b>认不出帧</b>的：A-25 遗留①就是拿着一个 15ms 的
+     * worst 猜不出它落在入场动画的哪一段（记账与教训见 {@link FramePeak}）。
      */
-    private long peakFrameMicros;
-    private int peakFrameCards;
-    private long peakFrameFlushes;
-    /**
-     * 这一轮卡堆里单帧最多的原版批次提交次数。
-     * <p>【为什么单独记它】它是入场/合并期帧开销的主要变量，而且它跟"最慢的一帧"不一定
-     * 同时发生 —— 合并滚动（数字卷动）会临时多提交两次/卡，那一帧未必最慢，但它的提交数
-     * 是最高的。两个数一起看才知道"贵在提交次数还是贵在别的"。
-     */
-    private long maxFlushesPerFrame;
+    private final FramePeak peak = new FramePeak();
     /** 上一帧原版批次提交次数（{@link BatchStats} 的差值）—— 入场期它是帧开销的主要变量。 */
     private long lastFlushes;
     /** 上一帧主题里的入场时长与最新那张卡的展开进度，给 harness 读 —— 动画出问题时靠它定位。 */
@@ -152,7 +146,7 @@ public final class CardStage {
         live.clear();
         pending.clear();
         styles.invalidate();
-        lastSlots = List.of();
+        endRound();
         layoutMicros = 0L;
         paintMicros = 0L;
         retainMoves(Set.of());
@@ -245,7 +239,7 @@ public final class CardStage {
                 live.clear();
                 pending.clear();
                 Inbox.INSTANCE.reset();
-                lastSlots = List.of();
+                endRound();
             }
             return;
         }
@@ -267,7 +261,7 @@ public final class CardStage {
             }
         }
         if (live.isEmpty()) {
-            lastSlots = List.of();
+            endRound();
             return;
         }
 
@@ -293,7 +287,7 @@ public final class CardStage {
             Inbox.INSTANCE.requeue(back);
         }
         if (live.isEmpty()) {
-            lastSlots = List.of();
+            endRound();
             return;
         }
 
@@ -390,33 +384,51 @@ public final class CardStage {
     }
 
     /**
-     * 把这一帧记进这一轮的峰值账。卡堆清空时复位 —— 每轮卡堆各自记各自的最糟帧。
-     * <p>只算"真有卡在屏上"的帧：没卡的帧是一两微秒的空转，记进去只会把峰值稀释掉。
+     * 收掉这一轮：屏上没卡了（或被总开关清掉）。峰值账本<b>不在这一刻清</b>，
+     * 只挂个"等下一轮第一帧再清"的旗 —— 见 {@link #roundPendingReset}。
+     * <p>【为什么由这条路径负责】峰值是「这一轮卡堆里最糟的一帧」，而"一轮结束"这件事
+     * 只在<b>卡堆变空的那些帧</b>上看得见；它们都在 {@link #renderInto} 里提前 return，
+     * 走不到 {@link #recordPeak}。从前峰值只在 recordPeak 内部的空槽分支上复位 ——
+     * 那条分支在普通的"卡清空了"路径上根本到不了，于是峰值实际成了<b>整个进程</b>的极值
+     * （名实不符，见 {@link FramePeak} 的类注释）。
+     */
+    private void endRound() {
+        lastSlots = List.of();
+        roundPendingReset = true;
+    }
+
+    /**
+     * 卡堆已清空、等下一轮第一帧再复位峰值账本。
+     * <p>【为什么延迟，而不是在 {@link #endRound} 里当场清】当场清的话，读数就<b>只在一轮
+     * 还活着的时候</b>才拿得到：harness 是<b>抽样</b>读的（一个 tick 问一次），若卡堆在
+     * 抽样之前就清空了，读到的是全 0，护栏那条 {@code peakCards() >= 4} 直接不成立、
+     * 静默失效 —— 而那正是这一轮要修的"认不出帧"的反面（"干脆什么都看不到"）。
+     * 延迟到下一轮首帧再清，刚结束那一轮的读数就还能被读一次。
+     */
+    private boolean roundPendingReset;
+
+    /**
+     * 把这一帧记进这一轮的峰值账。复位由 {@link #endRound} 挂旗、在这里兑现。
+     * <p>只看"真有卡在屏上"的帧 —— 那条判据在 {@link FramePeak#observe} 里守着，这里不重复。
      */
     private void recordPeak() {
-        if (lastSlots.isEmpty()) {
-            peakFrameMicros = 0L;
-            peakFrameCards = 0;
-            peakFrameFlushes = 0L;
-            maxFlushesPerFrame = 0L;
-            return;
+        if (roundPendingReset) {
+            peak.reset();
+            roundPendingReset = false;
         }
         long total = layoutMicros + paintMicros;
-        if (total > peakFrameMicros) {
-            peakFrameMicros = total;
-            peakFrameCards = lastSlots.size();
-            peakFrameFlushes = lastFlushes;
-            peakFrameShape = describeFrameShape();
-        }
-        maxFlushesPerFrame = Math.max(maxFlushesPerFrame, lastFlushes);
+        peak.observe(total, layoutMicros, paintMicros, lastSlots.size(), lastFlushes,
+                describeFrameShape());
         // 【慢帧探针】超线就留一条带上下文的日志：哪一帧、几张卡、提交几次、有没有卡在
         // 进场/退场。整帧只有几毫秒是常态，"哪一帧突然贵了"必须能事后指认 —— 上限 12 条，
         // 不刷屏；这条日志对玩家的下一次反馈同样有效（它就在正式版里）。
+        // ⚠️ 这里的帧号与峰值账本的帧号同源（本帧 = 第 {@code peak.frames()} 帧）——
+        // 有了它，"慢帧日志"与"峰值读数"才能被对到同一帧上。
         if (total > SLOW_FRAME_MICROS && slowFrameLogs < 12) {
             slowFrameLogs++;
-            PickupCard.LOGGER.info("[慢帧] {}us（layout={} paint={} cards={} flushes={} {}）"
+            PickupCard.LOGGER.info("[慢帧] frame={} {}us（layout={} paint={} cards={} flushes={} {}）"
                             + "—— 阈值 {}us{}",
-                    total, layoutMicros, paintMicros, lastSlots.size(), lastFlushes,
+                    peak.frames(), total, layoutMicros, paintMicros, lastSlots.size(), lastFlushes,
                     describeFrameShape(), SLOW_FRAME_MICROS,
                     slowFrameLogs >= 12 ? "（本会话已报满 12 条）" : "");
         }
@@ -442,7 +454,6 @@ public final class CardStage {
     private int slowFrameLogs;
     /** "还在进场"的判定窗口：主题入场时长 + 一点余量，只用于慢帧日志的上下文。 */
     private long peakEnterWindowMs = 1_000L;
-    private String peakFrameShape = "";
 
     /** 消费积压的账本事件。 */
     private void pump(long now, PickupCardSettings settings, StyleModel style) {
@@ -543,17 +554,27 @@ public final class CardStage {
     /**
      * 上一帧画了哪些卡、量了多久。**只读遥测，没有写入口**——它存在是为了让 harness 能把
      * "看不见的状态"（每张卡的实际位置与尺寸）变成可读的，而不是为了让别处改渲染。
+     * <p>峰值这一组带<b>帧号</b>（{@code peakFrameNo}，1 起）与本轮总帧数（{@code peakFrames}）：
+     * 只给一个 us 数，读的人认不出那是入场动画的哪一帧（A-25 遗留①卡在这里）。
+     * 另有最慢那一帧自己的 layout/paint 拆分 —— 只看合计分不清它贵在排布还是贵在绘制。
+     * <p><b>@implNote 只允许渲染线程读。</b>峰值那几个数不是一个原子快照（{@link FramePeak}
+     * 里逐字段读写、{@link #endRound} 的复位也要下一帧才兑现）—— 换线程读会拿到跨轮拼起来的
+     * 读数（比如帧号还是上一轮、us 数已是这一轮）。今天唯一的调用方都在渲染线程上。
      */
     public record Stats(int live, int painted, long layoutMicros, long paintMicros,
                         long enterMs, float firstRise,
                         long flushes, long maxFlushes,
-                        long peakMicros, int peakCards, long peakFlushes, String peakShape) {
+                        long peakFrameNo, long peakFrames, long peakMicros,
+                        long peakLayoutMicros, long peakPaintMicros,
+                        int peakCards, long peakFlushes, String peakShape) {
     }
 
     public Stats stats() {
         return new Stats(live.size(), lastSlots.size(), layoutMicros, paintMicros,
-                lastEnterMs, lastFirstRise, lastFlushes, maxFlushesPerFrame,
-                peakFrameMicros, peakFrameCards, peakFrameFlushes, peakFrameShape);
+                lastEnterMs, lastFirstRise, lastFlushes, peak.maxFlushes(),
+                peak.worstFrameNo(), peak.frames(), peak.worstMicros(),
+                peak.worstLayoutMicros(), peak.worstPaintMicros(),
+                peak.worstCards(), peak.worstFlushes(), peak.worstShape());
     }
 
     /** 上一帧参与绘制的卡。辅助线要按这个画，才保证画的是"真的画了的那批"。 */

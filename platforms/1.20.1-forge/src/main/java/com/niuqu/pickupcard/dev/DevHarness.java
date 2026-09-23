@@ -1122,9 +1122,17 @@ public final class DevHarness {
                 // 【峰值为什么要单独打】入场中段那几帧（全部卡都开着裁剪 + 内容正在滑）才是
                 // 一帧里最贵的位置，而它跟"稳态抽一帧"不在同一个时刻。峰值是"这一轮卡堆里
                 // 最糟的那一帧"，入场动画的性能问题只有它能指认。
-                PickupCard.LOGGER.info("[harness-auto] HUD 峰值 worst={}us（cards={} flushes={} {}）"
+                // 【为什么带帧号与 layout/paint 拆分】只给一个 us 数，读的人认不出那是入场
+                // 动画的哪一帧（A-25 遗留①就是卡在这里：15ms 的 worst 说不清落在哪个相位）。
+                // 帧号 = 本轮第几帧（1 起）；峰值那一帧自己的 layout/paint 拆分用来分清
+                // 贵在排布还是贵在绘制。第 1 帧 = 本轮首次上屏（harness 一次注入全部样例，
+                // 所以这里就是"整摞卡第一次上屏"，本来就最贵）。
+                PickupCard.LOGGER.info("[harness-auto] HUD 峰值 worst=第{}帧/共{}帧 {}us"
+                                + "（layout={}us paint={}us cards={} flushes={} {}）"
                                 + " 单帧最多提交={} 次 —— 一轮卡堆里的极值（layout+paint / 批次提交）",
-                        s.peakMicros(), s.peakCards(), s.peakFlushes(), s.peakShape(), s.maxFlushes());
+                        s.peakFrameNo(), s.peakFrames(), s.peakMicros(),
+                        s.peakLayoutMicros(), s.peakPaintMicros(),
+                        s.peakCards(), s.peakFlushes(), s.peakShape(), s.maxFlushes());
                 // 【性能护栏（2026-09-20 定）】排布是纯数学，超 500us 必是回归；绘制（NanoVG 外壳
                 // + 图标每帧现渲 + 文字）稳态一摞卡在毫秒以内，4000us 是数倍余量。超线只报 ERROR
                 // 不炸进程——这条线是给日志审查抓的（grep「性能护栏」）。
@@ -1136,9 +1144,13 @@ public final class DevHarness {
                             s.live(), s.layoutMicros(), s.paintMicros());
                 }
                 if (s.peakCards() >= 4 && s.peakMicros() > 8_000) {
-                    PickupCard.LOGGER.error("[harness-auto] 性能护栏（峰值）：worst={}us cards={}"
-                                    + " flushes={}（预算 8000）—— 入场/退场中段疑似回归",
-                            s.peakMicros(), s.peakCards(), s.peakFlushes());
+                    PickupCard.LOGGER.error("[harness-auto] 性能护栏（峰值）：第{}帧 {}us"
+                                    + "（layout={}us paint={}us）cards={} flushes={}（预算 8000）"
+                                    + " —— 第 1 帧 = 本轮首次上屏（harness 里即整摞，本就最贵）；"
+                                    + "帧号靠后才是中段回归",
+                            s.peakFrameNo(), s.peakMicros(),
+                            s.peakLayoutMicros(), s.peakPaintMicros(),
+                            s.peakCards(), s.peakFlushes());
                 }
                 logHudSafeZone(mc);
                 // 在屏的是哪几张 + <b>每张的实际矩形</b>：「少了我的那张卡」与「位置又不对」是最常见的
