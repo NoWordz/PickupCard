@@ -121,6 +121,20 @@ class TrellisKeyRoutingTest {
     }
 
     @Test
+    @DisplayName("长按重复这一位真的进了控件（A-33）：树推出来 → WidgetSlot 转下去")
+    void keyRepeatReachesTheWidgetThroughTheSlot() {
+        UiTree ui = column();
+        ui.pointerDown(centerX(ui, 0), centerY(ui, 0));
+
+        ui.keyDown(KEY_A, 0);
+        assertFalse(first.lastRepeat, "第一次按下是首按");
+
+        ui.keyDown(KEY_A, 0);      // 没抬又按 = 树判成长按重复
+        assertTrue(first.lastRepeat,
+                "WidgetSlot 把 isRepeat 丢了 —— 控件分不出首按与重复，按住空格会来回抖");
+    }
+
+    @Test
     @DisplayName("requestFocus(null)：旧控件收到 BLUR，之后 keyDown 返回 false")
     void requestFocusNullReleasesTheWidget() {
         UiTree ui = column();
@@ -253,6 +267,8 @@ class TrellisKeyRoutingTest {
         int lastKeyCode = -1;
         int lastModifiers = -1;
         char lastChar;
+        /** 最近一次收到的"是不是长按重复"（A-33）。 */
+        boolean lastRepeat;
 
         KeyRecorder(String label, List<String> focusLog) {
             super(label);
@@ -260,10 +276,11 @@ class TrellisKeyRoutingTest {
         }
 
         @Override
-        public boolean keyPressed(int keyCode, int modifiers) {
+        public boolean keyPressed(int keyCode, int modifiers, boolean repeat) {
             keys++;
             lastKeyCode = keyCode;
             lastModifiers = modifiers;
+            lastRepeat = repeat;      // A-33：树算出来的"长按重复"要能在这里观测到
             return acceptKeys;
         }
 

@@ -66,15 +66,39 @@ class TrellisWidgetKeyboardTest {
     }
 
     @Test
-    @DisplayName("真开关进树：回车也翻，再按翻回来（不是只跳一次）")
+    @DisplayName("真开关进树：回车也翻，抬起再按翻回来（不是只跳一次）")
     void realToggleKeepsFlipping() {
         UiTree ui = column(toggle, null, null);
         focusRow(ui, 0);
 
         assertTrue(ui.keyDown(Keys.ENTER, 0));
         assertTrue(toggleOn);
+        // ⚠️ 中间<b>必须</b>抬一次：不抬的第二次按下会被树判成"长按重复"，而开关对重复不动作
+        // （A-33）。本喵第一版就是漏了这句 —— 那时它靠的正是"重复也翻"那个 bug。
+        ui.keyUp(Keys.ENTER, 0);
         assertTrue(ui.keyDown(Keys.ENTER, 0));
-        assertFalse(toggleOn, "再按一次该翻回去 —— 循环得动");
+        assertFalse(toggleOn, "抬起再按一次该翻回去 —— 循环得动");
+    }
+
+    @Test
+    @DisplayName("真开关进树：按住不放只翻一次（A-33；从前进树的长按会让它来回抖）")
+    void realToggleIgnoresHoldThroughTheTree() {
+        UiTree ui = column(toggle, null, null);
+        focusRow(ui, 0);
+
+        assertTrue(ui.keyDown(Keys.SPACE, 0), "首按");
+        assertTrue(toggleOn, "首按该翻到开");
+
+        // 按住不放：树把后续的按下标成长按重复（同一个键、没抬），转发给控件
+        assertTrue(ui.keyDown(Keys.SPACE, 0), "重复按下也要被吃掉");
+        assertTrue(toggleOn, "长按重复不该把它翻回去 —— 从前进树这条路会让开关来回抖");
+        assertTrue(ui.keyDown(Keys.SPACE, 0));
+        assertTrue(toggleOn, "重复第 2 次也不该动");
+
+        // 抬起之后再一次按下 = 新的首按
+        ui.keyUp(Keys.SPACE, 0);
+        assertTrue(ui.keyDown(Keys.SPACE, 0));
+        assertFalse(toggleOn, "抬起再按才该翻回去");
     }
 
     @Test
@@ -87,6 +111,20 @@ class TrellisWidgetKeyboardTest {
         assertEquals(600, level);
         assertTrue(ui.keyDown(Keys.LEFT, 0));
         assertEquals(500, level);
+    }
+
+    @Test
+    @DisplayName("真滑条进树：按住不放一直走（重复照做）—— 与开关的重复不动正好相反")
+    void realSliderKeepsMovingOnHold() {
+        UiTree ui = column(slider, null, null);
+        focusRow(ui, 0);
+
+        assertTrue(ui.keyDown(Keys.RIGHT, 0), "首按");
+        assertEquals(600, level);
+        assertTrue(ui.keyDown(Keys.RIGHT, 0), "没抬又按 = 长按重复");
+        assertEquals(700, level, "滑条的重复照做 —— 按住在往前走才是它的手感（评审指出宿主侧当时没钉这条）");
+        assertTrue(ui.keyDown(Keys.RIGHT, 0));
+        assertEquals(800, level);
     }
 
     @Test

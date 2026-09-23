@@ -56,6 +56,8 @@ final class TestWidgets {
         int keyCode = Integer.MIN_VALUE;
         int keyMods;
         int keys;
+        /** 最近一次收到的"是不是长按重复"（A-33）。 */
+        boolean lastRepeat;
         char typed;
 
         boolean hasFocus;
@@ -95,9 +97,10 @@ final class TestWidgets {
         }
 
         @Override
-        public boolean keyPressed(int code, int modifiers) {
+        public boolean keyPressed(int code, int modifiers, boolean repeat) {
             keyCode = code;
             keyMods = modifiers;
+            lastRepeat = repeat;
             keys++;
             return true;
         }
