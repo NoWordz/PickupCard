@@ -122,6 +122,15 @@ public final class NvgPalette implements WidgetPalette {
     public float trackThickness = 3f;
     /** 细条的圆角（= 厚度的一半，胶囊端）。见 {@link #trackThickness}。 */
     public float trackRadius = 1.5f;
+    /**
+     * 这一帧的自适应单位 u（A-28）—— 控件内部按 {@code Tokens.Space} 阶梯取间距时乘它。
+     *
+     * <p>【为什么要留着它、不只用 radius/knobRadius】那两个是"点过名的角色"，值已经乘过 u；
+     * 而控件内部还有一批<b>没被点名</b>的间距（离盒边留多少、元素之间的缝），数量多且各家不同。
+     * 与其把 {@code WidgetPalette} 撑成几十项，不如把 u 交出去让控件乘**同一个阶梯** ——
+     * 统一性来自"控件挑的都是那几个档"，不是来自角色清单的长度。与 radius 同源（同一个入参）。
+     */
+    public final float u;
     // 【删掉的两个字段（2026-09-22）】`rowHeight = 18f` 与 `trackHeight = 6f` —— **全仓没有任何读点**：
     // 行高由 `ConfigRows` / 组件树用 `Size.ROW_H × u` 给；轨道高由 `trackThickness` 给。
     // 留着这两个死字段只会让人以为"改这里能调行高/轨道高"，而改了什么都不发生。
@@ -174,6 +183,7 @@ public final class NvgPalette implements WidgetPalette {
         this.knobIdle = knobIdle;
         this.focusRing = focusRing;
         // 尺寸：token × u。u 由调用方按画布高算好传进来（见 radius 的 javadoc）。
+        this.u = u;
         this.radius = Tokens.Radius.MD * u;
         this.knobRadius = Tokens.Size.KNOB_RADIUS * u;
     }
@@ -272,5 +282,18 @@ public final class NvgPalette implements WidgetPalette {
     @Override
     public float trackRadius() {
         return trackRadius;
+    }
+
+    /**
+     * 这一帧的自适应单位 u —— 控件内部按 {@code Tokens} 阶梯取间距时乘它（A-28）。
+     *
+     * <p>【为什么不直接给一大堆具名间距】控件要的间距是"离盒边多少、元素之间多少"这类，
+     * 数量多且各家不同；给角色清单会把它撑成几十项。交一个 {@code u} 出去，让控件乘
+     * {@code Tokens.Space} 的<b>同一个阶梯</b>，统一性才在（控件挑的都是那几个档）。
+     * 这是本对象构造时收进来的那个 u，与 {@code radius} / {@code knobRadius} 同源。
+     */
+    @Override
+    public float u() {
+        return u;
     }
 }
