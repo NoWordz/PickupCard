@@ -307,17 +307,71 @@ class CardGridTreeTest {
     }
 
     @Test
-    @DisplayName("焦点探针读数：走到视口外时焦点动了、容器偏移没动（scrollIntoView 尚不存在）")
-    void scrollProbeShowsFocusMovingWithoutScrolling() {
+    @DisplayName("★ 焦点走到视口外时视口跟着滚（A-21 把 scrollIntoView 补上了）")
+    void focusOutsideTheViewportScrollsItIntoView() {
         CardGridTree.Grid g = grid(24);
         g.tree().requestFocus(g.cells().get(0));
-        // 一路按到视口外（4 列 × 180 高，视口 672 → 第 4 行就出头了）
+        assertEquals(0f, g.scroller().offsetY(), EPS, "一开始没滚过");
+
+        // 一路按到视口外（4 列 × (180 + 4) 一行，视口高 672 → 第 4 行出头）
         for (int i = 0; i < 4; i++) {
             CardGridTree.navigate(g, 0, 1);
         }
         String probe = CardGridTree.scrollProbeDump(g);
         assertTrue(probe.contains("焦点=行4列0"), "焦点没往下走： " + probe);
-        assertTrue(probe.contains("容器偏移=0"),
-                "偏移不该动 —— 框架没有 scrollIntoView（这条读数是缺件的证据）： " + probe);
+        assertTrue(g.scroller().offsetY() > 0f,
+                "焦点到行 4 已经在视口外，视口必须跟过去（A-19 时这里恒为 0，"
+                        + "玩家看到的是「焦点环没了」，以为键盘失灵）： " + probe);
+
+        // 不变量：焦点那一格现在**完整**落在视口里（推够就行，不要求居中）。
+        // 要 relayout 一次才看得见 —— 偏移改的是字段，子节点矩形下一趟布局才跟着动。
+        relayout(g);
+        assertFocusedCellFullyVisible(g);
+        assertTrue(g.cells().get(g.focusedIndex()).bounds().y() <= g.viewport().bottom(),
+                "焦点格跑到视口下面去了");
+    }
+
+    @Test
+    @DisplayName("回头往上走时视口也跟回去（不是只会往下滚）")
+    void focusMovingBackUpScrollsBack() {
+        CardGridTree.Grid g = grid(24);
+        g.tree().requestFocus(g.cells().get(0));
+        for (int i = 0; i < 4; i++) {
+            CardGridTree.navigate(g, 0, 1);
+        }
+        assertTrue(g.scroller().offsetY() > 0f, "前提：先滚下去了");
+        for (int i = 0; i < 4; i++) {
+            CardGridTree.navigate(g, 0, -1);
+        }
+        assertEquals("焦点=行0列0", CardGridTree.focusDump(g));
+        // 【为什么不是正好 0】推的是"最小位移"—— 把目标顶到视口上沿就停；而内容顶上还有
+        // 4px 内边距（内容盒的 padding-top = 缝隙），所以停在 4。与浏览器的
+        // `scrollIntoView({ block: 'nearest' })` 同一口径：够用就停，不做"回到起点"这种额外动作。
+        assertTrue(g.scroller().offsetY() < 8f,
+                "回到第一行，偏移该基本回到起点，实际 " + g.scroller().offsetY());
+        relayout(g);
+        assertFocusedCellFullyVisible(g);
+    }
+
+    @Test
+    @DisplayName("同一屏内换焦点时一动不动（否则画面会一直微微抖）")
+    void focusInsideTheViewportDoesNotScroll() {
+        CardGridTree.Grid g = grid(24);
+        g.tree().requestFocus(g.cells().get(0));
+        for (int i = 0; i < 3; i++) {
+            CardGridTree.navigate(g, 1, 0);
+        }
+        assertEquals("焦点=行0列3", CardGridTree.focusDump(g));
+        assertEquals(0f, g.scroller().offsetY(), EPS,
+                "第 0 行本来就在视口里，挪焦点不该动视口");
+    }
+
+    /** 焦点那一格必须完整落在视口里 —— A-21 的那条不变量。 */
+    private static void assertFocusedCellFullyVisible(CardGridTree.Grid g) {
+        Rect box = g.cells().get(g.focusedIndex()).bounds();
+        Rect view = g.viewport();
+        assertTrue(box.y() >= view.y() - EPS && box.y() + box.height() <= view.y() + view.height() + EPS,
+                "焦点格没被完整露出来：格 y " + box.y() + ".." + (box.y() + box.height())
+                        + "，视口 y " + view.y() + ".." + (view.y() + view.height()));
     }
 }

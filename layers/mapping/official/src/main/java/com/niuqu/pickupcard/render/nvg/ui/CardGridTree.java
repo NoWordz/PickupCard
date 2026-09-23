@@ -221,6 +221,9 @@ public final class CardGridTree {
             return false;
         }
         grid.tree().requestFocus(cells.get(target));
+        // 【焦点走到哪，视口跟到哪】方向键是宿主自己的导航，不在 `focusNext` 那条路上，
+        // 所以这里显式跟一次 —— 不跟的话焦点环会被容器裁掉，看起来像"键盘失灵"。
+        grid.tree().revealFocus();
         return true;
     }
 
