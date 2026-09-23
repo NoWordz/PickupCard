@@ -219,6 +219,8 @@ public final class DevHarness {
 
         /** {@code -PharnessAuto=hud}：不打开调试屏，走玩家真正走的那条路。 */
         private static final boolean HUD_ONLY = "hud".equalsIgnoreCase(MODE);
+        /** HUD 模式产物名的 base（走 {@link ShotNaming#name} 同一套规矩）。 */
+        private static final String HUD_BASE = "pickupcard-hud";
         private static int hudTicks;
         private static boolean hudInjected;
         // 【A-23 撤掉了 scaleApplied 这个一次性开关】它想防的是"每 tick 改缩放会让窗口反复重建"，
@@ -1204,14 +1206,20 @@ public final class DevHarness {
             // 尺寸，要么从日志里的画布尺寸反推比例，别假设。
             PickupCard.LOGGER.info("[harness-auto] 截图尺寸：{}x{}（分析脚本别假设 1280x720）",
                     mc.getMainRenderTarget().width, mc.getMainRenderTarget().height);
+            // 【A-31：只清<b>本轮这一档</b>的旧图】从前这里是"删掉所有 pickupcard-*"，
+            // 而产物名里不带缩放档 —— 于是 -PharmerGuiScale=1..4 四轮互相删干净，
+            // 四档产物根本没法同时存在。现在名字带档标签、清理也按档筛选：
+            // 未给 -PharmerGuiScale 时标签为空串，行为与从前一致（清掉全部）。
             java.io.File dir = new java.io.File(mc.gameDirectory, "screenshots");
-            java.io.File[] old = dir.listFiles((d, n) -> n.startsWith("pickupcard-"));
+            String tag = scaleTag();
+            java.io.File[] old = dir.listFiles((d, n) -> ShotNaming.belongsToRun(n, tag));
             if (old == null || old.length == 0) return;
             int n = 0;
             for (java.io.File f : old) {
                 if (f.delete()) n++;
             }
-            PickupCard.LOGGER.info("[harness-auto] 清掉上一轮的 {} 张截图（跨轮同名会污染分析）", n);
+            PickupCard.LOGGER.info("[harness-auto] 清掉本轮（档{}）上一轮的 {} 张截图（跨轮同名会污染分析）",
+                    tag.isEmpty() ? "未定" : tag, n);
         }
 
         private static void tickHud(Minecraft mc) {
@@ -1252,20 +1260,20 @@ public final class DevHarness {
                 // 【扫光时窗】入场 480ms（≈10 tick）结束后扫光跑 480ms（≈19 tick 收尾）——
                 // age=14 正好在窗中央。扫光是一次性的，常规稳态截图（SHOT_AFTER_OPEN=40 起）
                 // 永远拍不到它，这一张就是"扫光真的存在"的证据。
-                Screenshot.grab(mc.gameDirectory, "pickupcard-hud-shimmer",
+                String shot = ShotNaming.name(HUD_BASE, scaleTag(), "shimmer");
+                Screenshot.grab(mc.gameDirectory, shot,
                         mc.getMainRenderTarget(),
-                        m -> PickupCard.LOGGER.info("[harness-auto] 截图: pickupcard-hud-shimmer -> {}",
-                                m.getString()));
+                        m -> PickupCard.LOGGER.info("[harness-auto] 截图: {} -> {}", shot, m.getString()));
             }
 
             // 【入场中途的两张】稳态图证明不了动画：镜像卡片"内容从竖条（右）那侧滑出来"
             // 这件事只在展开到一半时可见（2026-09-20 用户报「卡片动画镜像了、文字动画没有」，
             // 就是稳态截图全绿、动画途中才现形的那种）。rise≈0.3 与 ≈0.7 各一张。
             if (age == 3 || age == 7) {
-                Screenshot.grab(mc.gameDirectory, "pickupcard-hud-enter" + age,
+                String shot = ShotNaming.name(HUD_BASE, scaleTag(), "enter" + age);
+                Screenshot.grab(mc.gameDirectory, shot,
                         mc.getMainRenderTarget(),
-                        m -> PickupCard.LOGGER.info("[harness-auto] 截图: enter{} -> {}",
-                                age, m.getString()));
+                        m -> PickupCard.LOGGER.info("[harness-auto] 截图: {} -> {}", shot, m.getString()));
             }
 
             // 【收工必须是独立卫语句，不能是链尾的 else if】它原来是链尾，而前面
@@ -1341,9 +1349,9 @@ public final class DevHarness {
                 } else {
                     PickupCard.LOGGER.info("[harness-auto] {}", hudBar);
                 }
-                Screenshot.grab(mc.gameDirectory, "pickupcard-hud", mc.getMainRenderTarget(),
-                        m -> PickupCard.LOGGER.info("[harness-auto] 截图: pickupcard-hud -> {}",
-                                m.getString()));
+                String shot = ShotNaming.name(HUD_BASE, scaleTag(), null);
+                Screenshot.grab(mc.gameDirectory, shot, mc.getMainRenderTarget(),
+                        m -> PickupCard.LOGGER.info("[harness-auto] 截图: {} -> {}", shot, m.getString()));
             } else if (age == MERGE_BUMP_AFTER) {
                 // 最新那张（= 注入顺序里最后一个）再捡一次：这一次既没退场也没淡回，
                 // 屏幕上该出现的是"整张卡鼓一下 + 数字从旧值滚到新值"。
@@ -1357,11 +1365,10 @@ public final class DevHarness {
                     && (age - MERGE_BUMP_AFTER - 1) / MERGE_EVERY < MERGE_FRAMES) {
                 // 合并动画同样按毫秒走，默认 bumpMs=300 只有 6 tick —— 要量就得先把 bumpMs
                 // 拉长（跟 exitMs 一个道理，见 EXIT_LATE_* 那段）。
-                Screenshot.grab(mc.gameDirectory,
-                        "pickupcard-hud-merge" + (age - MERGE_BUMP_AFTER),
+                String shot = ShotNaming.name(HUD_BASE, scaleTag(), "merge" + (age - MERGE_BUMP_AFTER));
+                Screenshot.grab(mc.gameDirectory, shot,
                         mc.getMainRenderTarget(),
-                        m -> PickupCard.LOGGER.info("[harness-auto] 截图: merge{} -> {}",
-                                age - MERGE_BUMP_AFTER, m.getString()));
+                        m -> PickupCard.LOGGER.info("[harness-auto] 截图: {} -> {}", shot, m.getString()));
             } else if (age == EXIT_PUSH_AFTER) {
                 // 再推一张（钻石，跟这一页那五件都不是同一样东西）：③a 之后屏满**不再顶掉旧卡**
                 // 而是排队 —— 这一步因此从"触发淘汰"变成了"验证排队"。
@@ -1383,18 +1390,17 @@ public final class DevHarness {
                     exitShotDone = true;
                     PickupCard.LOGGER.info("[harness-auto] 退场中读数 cards={} painted={}",
                             CardStage.INSTANCE.stats().live(), CardStage.INSTANCE.stats().painted());
-                    Screenshot.grab(mc.gameDirectory, "pickupcard-hud-exit", mc.getMainRenderTarget(),
-                            m -> PickupCard.LOGGER.info("[harness-auto] 截图: pickupcard-hud-exit -> {}",
-                                    m.getString()));
+                    String shot = ShotNaming.name(HUD_BASE, scaleTag(), "exit");
+                    Screenshot.grab(mc.gameDirectory, shot, mc.getMainRenderTarget(),
+                            m -> PickupCard.LOGGER.info("[harness-auto] 截图: {} -> {}", shot, m.getString()));
                 } else if (exitSeen && ticksSinceExitSeen >= EXIT_LATE_TICK
                         && (ticksSinceExitSeen - EXIT_LATE_TICK) % EXIT_LATE_EVERY == 0
                         && ticksSinceExitSeen <= EXIT_LATE_TICK + EXIT_LATE_EVERY * (EXIT_LATE_FRAMES - 1)) {
                     // 【连拍见 EXIT_LATE_* 的说明】这组截图只在 exitMs 被拉长之后才有意义；
                     // 默认 480ms 在 20Hz 的 tick 网格上只有 9.6 格，拍出来是空屏。
-                    Screenshot.grab(mc.gameDirectory,
-                            "pickupcard-hud-exit-late" + ticksSinceExitSeen, mc.getMainRenderTarget(),
-                            m -> PickupCard.LOGGER.info("[harness-auto] 截图: exit-late{} -> {}",
-                                    ticksSinceExitSeen, m.getString()));
+                    String shot = ShotNaming.name(HUD_BASE, scaleTag(), "exit-late" + ticksSinceExitSeen);
+                    Screenshot.grab(mc.gameDirectory, shot, mc.getMainRenderTarget(),
+                            m -> PickupCard.LOGGER.info("[harness-auto] 截图: {} -> {}", shot, m.getString()));
                 } else if (exitShotDone && !reviveDone && anyExiting()
                         && ticksSinceExitSeen >= REVIVE_AFTER_EXIT_SEEN) {
                     // 【为什么要推这一下】用户报过「淡出最后一帧图标和文字完全不透明，然后消失」。
@@ -1408,9 +1414,9 @@ public final class DevHarness {
                 } else if (reviveDone && ++ticksSinceRevive == REVIVE_SHOT_AFTER + 1) {
                     PickupCard.LOGGER.info("[harness-auto] 救回后读数 cards={}",
                             CardStage.INSTANCE.stats().live());
-                    Screenshot.grab(mc.gameDirectory, "pickupcard-hud-revive", mc.getMainRenderTarget(),
-                            m -> PickupCard.LOGGER.info("[harness-auto] 截图: pickupcard-hud-revive -> {}",
-                                    m.getString()));
+                    String shot = ShotNaming.name(HUD_BASE, scaleTag(), "revive");
+                    Screenshot.grab(mc.gameDirectory, shot, mc.getMainRenderTarget(),
+                            m -> PickupCard.LOGGER.info("[harness-auto] 截图: {} -> {}", shot, m.getString()));
                 }
             }
         }
@@ -1433,7 +1439,25 @@ public final class DevHarness {
             } else {
                 base = "pickupcard-harness-p" + (page + 1);
             }
-            return base + (suffix == null ? "" : "-" + suffix);
+            return ShotNaming.name(base, scaleTag(), suffix);
+        }
+
+        /**
+         * 本轮的缩放档标签：{@code -sN}，或空串（没定档 / 这一档根本没被施加）。
+         *
+         * <p>【为什么用<b>请求值</b>而不是当前窗口的缩放】窗口缩放会在同一轮里被游戏的自动档
+         * 冲掉（A-23 第 64 轮那个仪器缺陷），拿它命名会让一轮产物出现两个档的混合名字；
+         * 请求值是稳定的。这一档实际渲染成多少由日志里那行"画布 …"如实记着。
+         *
+         * <p>【为什么还要问"有没有真的施加"（A-31 评审逮到）】{@code applyGuiScale} 只在
+         * config / grid / modal / hud 四条路上调；默认的 {@code shot} 路径<b>从不调它</b> ——
+         * 于是在 shot 模式给 {@code -PharmerGuiScale} 是<b>静默无效</b>的（这是它自己的缺口，
+         * 另记账）。若命名只看请求值，shot 模式就会打出 {@code …-s3-…} 而图其实是自动档 =
+         * <b>文件名撒谎</b>。所以档标签只在"这一轮真的会施加缩放"时才有。
+         */
+        private static String scaleTag() {
+            boolean applied = CONFIG_ONLY || GRID_ONLY || MODAL_ONLY || HUD_ONLY;
+            return ShotNaming.tagFor(GUI_SCALE, applied);
         }
 
         /**
@@ -1520,4 +1544,68 @@ public final class DevHarness {
                     message -> PickupCard.LOGGER.info("[harness-auto] 截图: {} -> {}", name, message.getString()));
         }
     }
+
+    /**
+     * 产物命名：<b>纯函数，不碰 MC</b>，所以测试能直接加载它
+     * （{@code DevHarnessShotNameTest}）—— {@code AutoDrive} 那一堆静态字段碰到 MC 类，
+     * 测试里加载不起来，命名逻辑因此必须住在一个干净的壳里。
+     *
+     * <p>【为什么值得从 {@code AutoDrive} 里搬出来】A-19 起就记着"四档产物同名互相覆盖"，
+     * 一直没修，正是因为命名逻辑住在只跑在真机上的那个类里、离线碰不到。
+     */
+    static final class ShotNaming {
+
+        private ShotNaming() {
+        }
+
+        /**
+         * 缩放档 → 产物名里的档标签。{@code rawScale} 是 {@code -PharmerGuiScale} 的原值
+         * （{@code "off"} 或 {@code "1".."5"}）；{@code applied} 是"这一轮真的会施加缩放吗"。
+         *
+         * <p>【为什么要 {@code applied} 这个门（A-31 评审逮到）】默认的 {@code shot} 路径
+         * 从不调 {@code applyGuiScale} —— 给它 {@code -PharmerGuiScale} 是静默无效的。
+         * 只看 {@code rawScale} 就会打出 {@code …-s3-…} 而图其实是自动档 = 文件名撒谎。
+         * 所以"这一轮不会施加"时一律返回空串（名字保持旧样）。
+         */
+        static String tagFor(String rawScale, boolean applied) {
+            if (!applied || rawScale == null || rawScale.equalsIgnoreCase("off")) {
+                return "";
+            }
+            return "-s" + rawScale;
+        }
+
+        /**
+         * 产物名 = {@code base + 档标签 + 后缀}。名字错是静默的：四档同名会互相覆盖，
+         * 而"覆盖"的唯一症状是分析脚本读到了另一档的图。
+         */
+        static String name(String base, String scaleTag, String suffix) {
+            String name = base + scaleTag;
+            return suffix == null ? name : name + "-" + suffix;
+        }
+
+        /**
+         * 这个名字属不属于本轮（{@code clearOldShots} 用它筛）。
+         *
+         * <p>规则：必须以 {@code pickupcard-} 开头；未定档（{@code scaleTag} 为空，
+         * 即默认/自动档那一轮）时全部算本轮（与旧行为一致）；定了档就只算<b>同档</b>的。
+         *
+         * <p>【为什么定档时也把"无档标签"的算进来】（A-31 评审改过口径）无标签有两种来源：
+         * ① 默认（off）档那一轮的产物；② 加档标签之前留下的旧图。两者都是"不是本轮这一档"，
+         * 清掉它们都能防混帧 —— 但也意味着<b>带档 run 会清掉之前的默认 run</b>。这是<b>有意的</b>：
+         * 跨档不混，代价是留不下"基准 + 四档"一起。要一起留就得给默认档也发显式标签，另说。
+         */
+        static boolean belongsToRun(String fileName, String scaleTag) {
+            if (fileName == null || !fileName.startsWith("pickupcard-")) {
+                return false;
+            }
+            if (scaleTag.isEmpty()) {
+                return true;
+            }
+            if (fileName.contains(scaleTag + "-") || fileName.endsWith(scaleTag)) {
+                return true;
+            }
+            return !fileName.matches(".*-s[0-9]+(-.*)?");   // 无档标签 = 默认档产物 / 加标签前的旧图
+        }
+    }
+
 }
