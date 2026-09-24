@@ -18,6 +18,8 @@
 
 - README 里「CHANGELOG 含产物指纹」这句早已过期
 - 结构闸与产物闸补上身份校验：占位值、许可与 `LICENSE` 对不上、仓库地址硬编码进资源，现在都会红
+- README 承诺过的「内置默认忽略表」并不存在（只剩三张玩家自填的表），说明已改回真实行为
+- 静音名单现在真的静音：命中的拾取照常弹卡，但不响原版拾取音（此前判定算出来了却没接到放音侧）
 
 ----
 
@@ -37,6 +39,8 @@
 
 - README claimed the changelog carried artifact fingerprints; it has not for a while
 - The structural and artifact gates now check identity: placeholder values, a licence that disagrees with `LICENSE`, and a hardcoded repository URL all fail the build
+- README promised a built-in default ignore list that no longer exists (only the three player-written lists remain); the wording now matches the real behaviour
+- The mute list now actually mutes: matching pickups still pop a card, but the vanilla pickup sound is suppressed (the decision was computed but never wired to the sound side)
 
 ## v0.2.2
 

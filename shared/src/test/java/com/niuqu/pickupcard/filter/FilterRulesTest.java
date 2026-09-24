@@ -113,6 +113,44 @@ class FilterRulesTest {
     }
 
     @Test
+    void blacklistDropsWithoutClaimingToMuteSound() {
+        // 【为什么要专门钉这一条】`Decision.muted()` 的语义是"连原版拾取音一起压掉"，
+        // 而账本会把丢弃那一支的判定原样交给声音侧。黑名单的语义只是"不弹卡"——
+        // 东西还是玩家捡到的，声音该留。这里一旦变成 true，往黑名单里写一样东西
+        // 会连它的拾取音一起吃掉，而画面上完全看不出原因。
+        var dropped = FilterRules.check(
+                subject("minecraft:dirt", "minecraft"),
+                settings(List.of("minecraft:dirt"), List.of(), List.of("minecraft:dirt")));
+        assertFalse(dropped.show());
+        assertFalse(dropped.muted(), "黑名单只丢掉卡片，不该顺手把拾取音也压了");
+        assertFalse(FilterRules.Decision.DROP.muted(), "DROP 的静音位恒为假");
+        assertFalse(FilterRules.Decision.PLAIN.muted(), "PLAIN 的静音位恒为假");
+    }
+
+    @Test
+    void mutedTracksTheMuteListOnly() {
+        // muted 位是一条独立的事实：只有"命中静音名单"才为真。白色、普通、丢弃三种都必须是假。
+        record Case(String id, List<String> black, List<String> white, List<String> mute,
+                    boolean wantMuted) {
+        }
+        var cases = List.of(
+                new Case("minecraft:stone", List.of(), List.of(), List.of("minecraft:stone"), true),
+                new Case("minecraft:stone", List.of(), List.of(), List.of(), false),
+                new Case("minecraft:stone", List.of(), List.of("minecraft:stone"), List.of(), false),
+                new Case("minecraft:stone", List.of("minecraft:stone"), List.of(), List.of(), false),
+                // tag 与 mod 写法同样能点亮静音位
+                new Case("somebotania:mana_diamond", List.of(), List.of(),
+                        List.of("#forge:gems"), true),
+                new Case("somebotania:mana_diamond", List.of(), List.of(),
+                        List.of("@somebotania"), true));
+        for (Case c : cases) {
+            var decision = FilterRules.check(subject(c.id(), c.id().split(":")[0],
+                            "forge:gems"), settings(c.black(), c.white(), c.mute()));
+            assertEquals(c.wantMuted(), decision.muted(), () -> "静音位错了：" + c);
+        }
+    }
+
+    @Test
     void tagRuleHitsEverythingWithTag() {
         var decision = FilterRules.check(
                 subject("somebotania:mana_diamond", "somebotania", "forge:gems", "c:gems"),

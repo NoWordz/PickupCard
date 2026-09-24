@@ -143,22 +143,30 @@ public final class Inbox {
     /**
      * 收下一次拾取（主线程）。
      *
-     * @return true = 这条拾取的提示音应当被压制（静音名单命中；经验卡恒为 false）
+     * @return 这条拾取算出来的过滤判定，原样交出去 —— 调用方读
+     *         {@link FilterRules.Decision#muted()} 决定要不要压掉原版拾取音（见
+     *         {@link PickupSoundGate}）。
+     *         <p>【为什么返回整个判定而不是一个布尔】判定就是在这里算出来的，原样交出，
+     *         调用方就不会"漏掉某一支的结论"。这里曾经只回一个"该不该压音"的 bool，
+     *         而静音名单那一支忘了带上它（只有黑名单那一支带了，偏偏黑名单恒为 false），
+     *         于是"静音名单命中的话原版拾取音也压掉"这句话在文档里写了三处、实现里一处没有，
+     *         静默缺失了很久也没人发现。
      */
-    public boolean offer(CardContent content, int amount) {
+    public FilterRules.Decision offer(CardContent content, int amount) {
         int count = Math.max(1, amount);
         long now = System.currentTimeMillis();
 
         String key;
         String look;
         boolean emphasized;
+        // 经验卡与未知内容不走过滤表：先给一个"照常弹、不静音"的判定，让出口只剩一处
+        FilterRules.Decision decision = FilterRules.Decision.PLAIN;
         if (content instanceof CardContent.Item item) {
-            FilterRules.Decision decision = FilterRules.check(
-                    subjectOf(item.stack()), filterSource.get());
+            decision = FilterRules.check(subjectOf(item.stack()), filterSource.get());
             if (!decision.show()) {
                 // 丢弃前留个声：玩家的观感是"没反应"，而日志里必须能看出是它干的
                 dropReporter.accept(item);
-                return decision.muted();
+                return decision;
             }
             MergeMode mode = settings().mergeMode();
             key = ItemIdentity.keyOf(item.stack(), mode);
@@ -170,7 +178,8 @@ public final class Inbox {
             look = XP_KEY;
             emphasized = false;
         } else {
-            return false;
+            // 密封接口上不该有别的实现；真有就当作"什么都不弹、也不压音"
+            return FilterRules.Decision.DROP;
         }
 
         // 【第一次见的判据固定用最细的键】NONE / 改名件每一张的身份键都不同，
@@ -211,7 +220,7 @@ public final class Inbox {
                         spilled.notice().count());
             }
         }
-        return false;
+        return decision;
     }
 
     /**
@@ -257,11 +266,13 @@ public final class Inbox {
         return events;
     }
 
-    /** 换世界/退出：队列、NEW 账本、未取走的事件一起回到"什么都没发生"。 */
+    /** 换世界/退出/总开关关掉：队列、NEW 账本、未取走的事件、在途的静音判定一起回到"什么都没发生"。 */
     public void reset() {
         queue.clear();
         seen.clear();
         pending.clear();
+        // 静音闸门也算"这一次拾取"的在途状态：换世界时清零，免得残留跨越世界边界
+        PickupSoundGate.arm(false);
     }
 
     private static FilterSubject subjectOf(ItemStack stack) {

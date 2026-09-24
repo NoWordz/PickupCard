@@ -405,7 +405,7 @@ public final class PickupCardConfig {
                     .defineList("whitelist", List.of(), o -> o instanceof String);
 
             muteList = builder
-                    .comment("静音名单：命中照常弹卡，但没有稀有提示音，原版拾取音也压掉。")
+                    .comment("静音名单：命中照常弹卡，但不强调，原版那声拾取音也不响。")
                     .defineList("muteList", List.of(), o -> o instanceof String);
             builder.pop();
         }

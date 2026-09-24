@@ -30,7 +30,9 @@ public final class FilterRules {
      *
      * @param show       弹不弹卡
      * @param emphasized 是否强调（白名单命中：描边/发光增强）
-     * @param muted      是否静音（静音名单命中：无稀有提示音，原版拾取音也压掉）
+     * @param muted      是否压掉这条拾取的<b>原版</b>拾取音（静音名单命中：卡片照常弹，
+     *                   只是不强调、也没有那一声"叮"）。这个 mod 自己不出声，所以"声音"
+     *                   指的一直是原版那一下。
      */
     public record Decision(boolean show, boolean emphasized, boolean muted) {
         public static final Decision PLAIN = new Decision(true, false, false);

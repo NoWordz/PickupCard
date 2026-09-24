@@ -35,6 +35,40 @@ tools/verify_targets.py    ← 结构守卫（CI 第一道闸）
 - 物品类型只出现在映射层，将来 Fabric 那份 Yarn 名副本不必重写队列；
 - "队列说该有哪些卡"与"卡片怎么画"彻底解耦。
 
+## 静音名单：判定与放音之间的接力棒
+
+"这条拾取要不要静音"算在账本里（`FilterRules` 判定 → `Inbox.offer`），而原版的拾取音
+**是客户端自己放的** —— `ClientPacketListener.handleTakeItemEntity` 里对物品与经验球各调一次
+`ClientLevel.playLocalSound`。两者在同一次方法调用里，隔几行字节码，没有参数能递结论：
+
+```
+handleTakeItemEntity(packet)                     ← 包处理（主线程）
+  └─ ensureRunningOnSameThread()                       ← 我们的 @Inject 挂在它之后
+  └─ PickupRelay.onTakeItem()                          ← 算判定，写闸门
+       └─ Inbox.offer() → FilterRules.check()          ← muted 从这里出来
+       └─ PickupSoundGate.arm(decision.muted())
+  └─ level.playLocalSound(...) ×2                      ← 我们的 @Redirect 挂在这一处
+       └─ PickupSoundGate.consumeMute() ? 跳过 : 照放
+```
+
+**整个方法不能取消**：`@Inject(cancellable = true)` 掐掉它，连物品数量扣减与实体移除
+一起没了 —— 屏幕上会留下一堆捡不掉的幽灵物品。所以只掐"放音"这一次调用。
+
+`mute` 名单命中的物品**照常弹卡**（`Decision.show() == true`），静音只影响"强调"与"原版音"。
+`PickupSoundGate` 是跨这两处的唯一状态，读写都在同一次方法调用、同一条线程上，所以不需要同步；
+`consumeMute()` 读一次即复位，`Inbox.reset()`（换世界 / 总开关关掉）也顺手清零。
+
+**优先级决定了三件事**（`FilterRules.check`）：白名单 > 黑名单 > 静音。所以
+白名单 + 静音 = 强调弹卡**且**压音（两条正交轴）；但**黑名单 + 静音 = 只丢卡、不压音** ——
+黑名单先短路返回 `DROP`（muted=false），静音那条不生效。这是有意的（不弹的东西谈不上静不静），
+写进这里免得被当成 bug 报。
+
+**这条链哪一段能离线测**：判定（`FilterRulesTest`）与闸门（`PickupSoundGateTest`）是纯的、全离线；
+`Inbox.offer` 的返回值只有**经验卡**那条路能离线跑（物品那条要先 `BuiltInRegistries`，
+实测 `Bootstrap.bootStrap()` 在纯 JVM 里直接抛，{@code InboxOfferTest} 里记着这个边界）。
+`PickupRelay` 的接线与 `@Redirect` 那一层**离线测不了** —— 它们靠 `require=2` / `allow=2`
+在启动时 fail-loud（形状不对就报红），以及一次真机的"听得到 / 听不到"。
+
 ## 渲染层：一条路
 
 渲染是需求变得最快的一层（换风格、换引擎、加特效），而拾取管线几乎不动。所以"怎么画"

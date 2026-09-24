@@ -8,7 +8,7 @@ import java.util.List;
  *
  * @param blacklist        黑名单：命中则不弹卡
  * @param whitelist        白名单：命中则永远弹卡并强调（优先于黑名单）
- * @param muteList         静音名单：命中照常弹卡，但稀有提示音与原版拾取音都被压制
+ * @param muteList         静音名单：命中照常弹卡，但不强调，且原版拾取音被压掉
  * <p>
  * 【为什么没有"内置忽略表"这个字段了】见 {@link FilterRules} 的类注释：默认不丢任何拾取。
  */

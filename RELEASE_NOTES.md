@@ -10,6 +10,11 @@
 - mod 列表的详细信息里能看到仓库链接与内嵌组件（NanoVG / LWJGL）的致谢
 - 作者署名「扭曲 (E33EPUS)」，描述改为「Every item you pick up becomes a card on your HUD」
 
+**修复**
+
+- 静音名单现在真的静音：命中的拾取照常弹卡，但不强调、也不响原版拾取音
+- README 承诺过的「内置默认忽略表」并不存在，说明已改回真实行为
+
 ----
 
 **A new icon, with the credits and the description written down properly.**
@@ -19,6 +24,11 @@
 - New mod icon and project logo: a stack of cards and a pickaxe
 - The mod list detail view now shows the repository link and credits for the bundled components (NanoVG / LWJGL)
 - Author credit is 扭曲 (E33EPUS); description is "Every item you pick up becomes a card on your HUD"
+
+**Fixed**
+
+- The mute list now actually mutes: matching pickups still pop a card, but are never highlighted and their vanilla pickup sound is suppressed
+- README promised a built-in default ignore list that no longer exists; the wording now matches the real behaviour
 
 ## v0.2.2
 

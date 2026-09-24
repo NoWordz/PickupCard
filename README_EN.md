@@ -51,7 +51,7 @@ Drop the jar into `mods/` and you are done.
 ## Features
 
 - **Merging** — grabbing the same thing again merges into the same card (`merge.mode`, four tiers: same item + NBT / same item / same item except renamed / never); the card pulses once and the count rolls from the old value to the new one.
-- **Three filter lists** — blacklist (never shown), whitelist (always shown and highlighted), muted (shown, but not highlighted). Rules accept `minecraft:stone`, `#forge:ores` and `@somebotania`, and a built-in ignore list covers spam items (dirt, cobblestone…) and can be switched off as a whole.
+- **Three filter lists** — blacklist (never shown), whitelist (always shown and highlighted), muted (still pops, but is never highlighted and its pickup sound is muted). Rules accept `minecraft:stone`, `#forge:ores` and `@somebotania`. Nothing is dropped by default.
 - **NEW badge** — items seen for the first time this session light up once. Deliberately not persisted: changing worlds resets it.
 - **Rarity accent** — the bar and the count share the accent colour, four vanilla tiers (common / uncommon / rare / epic). With RarityCore installed you get its seven tiers, plus an entrance shimmer on high tiers and a glow that steps up by tier.
 - **XP cards** — experience orbs pop a card too (nether star icon, its own green), sharing the same merge and filter rules.
@@ -103,7 +103,6 @@ The model is "the theme provides defaults, the TOML only overrides what you chan
 ## Known limitations
 
 - **1.20.1 Forge is the only shipping target.** The three 1.21.1 targets are explicitly recorded as `buildable: false` in `versions/targets.json`: the matrix is a rule, so cells we have not done have to be visible in the file rather than forgotten.
-- **The muted list does not mute sound.** It only affects emphasis — those pickups still pop a card, they just are not highlighted. Vanilla's pickup sound sits on an injection point that cannot be cancelled in 1.20.1, and this release does not touch it.
 - **English labels shrink on very narrow canvases.** At 320×180 (largest `guiScale`) English chip labels get noticeably small — no overlap, but not pleasant to read.
 - **Long filter rules need a hover to read in full.** A rule row shows one line; the whole rule is in the hint bar along the bottom.
 - **No server component, so server-only information is out of reach.** Renamed items and NBT come from grabbing the entity just before it is removed, which covers the vast majority of cases.

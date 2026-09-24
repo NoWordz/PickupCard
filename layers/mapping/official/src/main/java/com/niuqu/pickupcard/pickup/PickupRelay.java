@@ -1,6 +1,7 @@
 package com.niuqu.pickupcard.pickup;
 
 import com.niuqu.pickupcard.PickupCard;
+import com.niuqu.pickupcard.filter.FilterRules;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.client.player.AbstractClientPlayer;
@@ -57,10 +58,18 @@ public final class PickupRelay {
                 ItemStack stack = itemEntity.getItem();
                 if (stack.isEmpty()) return;
                 // 必须复制：实体下一 tick 就可能被移除，而我们的卡要活好几秒
-                Inbox.INSTANCE.offer(new CardContent.Item(stack.copy()), packet.getAmount());
+                FilterRules.Decision decision =
+                        Inbox.INSTANCE.offer(new CardContent.Item(stack.copy()), packet.getAmount());
+                // 【时序】先写闸门，原版随后放音时会来读它。两者在同一次方法调用、同一线程里，
+                // 见 PickupSoundGate 的类注释 —— 注入点一旦挪到放音之后就失效。
+                PickupSoundGate.arm(decision.muted());
             } else if (carried instanceof ExperienceOrb) {
                 // 数量就是包里的经验值（take 广播的是实际吸收的量）
                 Inbox.INSTANCE.offer(new CardContent.Experience(), packet.getAmount());
+                // 【两个分支都必须 arm】经验不过滤，判定恒不静音 —— 但"写下不压"这一步不能省：
+                // 闸门是静态的，万一上一条拾取留了 true 没被读走（原版没走到放音），漏掉这一步
+                // 就会把经验球那一声吃掉。写下 false 是兜底，也是"出口唯一"的实证。
+                PickupSoundGate.arm(false);
             }
         } finally {
             long micros = (System.nanoTime() - t0) / 1_000L;
