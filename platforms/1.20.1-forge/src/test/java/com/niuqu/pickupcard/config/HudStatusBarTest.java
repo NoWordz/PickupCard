@@ -9,9 +9,11 @@ import com.niuqu.pickupcard.render.nvg.ui.NvgPalette;
 import com.niuqu.pickupcard.style.StyleModel;
 import dev.e33.trellis.geom.Rect;
 import dev.e33.trellis.tokens.Tokens;
+import dev.e33.trellis.ui.ComponentEnv;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
+import java.util.List;
 import java.util.Locale;
 
 /**
@@ -51,8 +53,9 @@ class HudStatusBarTest {
 
     /** 按给定的 u 现造调色板 —— 调色板的半径等角色是 u 的函数，不能跨档复用一份。 */
     private static HudStatusBar.Bar bar(float u, float w, float h) {
-        return HudStatusBar.build("hud-count", () -> "5 hint(s)", HINT_W,
-                w, h, u, NvgPalette.dark(StyleModel.Accents.defaults(), u));
+        NvgPalette palette = NvgPalette.dark(StyleModel.Accents.defaults(), u);
+        return HudStatusBar.build("hud-count", () -> "5 hint(s)",
+                () -> "G config", palette.textDim, HINT_W, w, h, u, palette);
     }
 
     private static HudStatusBar.Bar bar() {
@@ -104,11 +107,14 @@ class HudStatusBarTest {
     @Test
     @DisplayName("提示盒跟着量宽走：两个不同的量宽给出两个不同的盒宽")
     void theHintBoxHonoursTheMeasuredWidth() {
-        float narrow = HudStatusBar.build("hud-count", () -> "5 hint(s)", 20f,
-                CANVAS_W, CANVAS_H, U, NvgPalette.dark(StyleModel.Accents.defaults(), U))
+        NvgPalette palette = NvgPalette.dark(StyleModel.Accents.defaults(), U);
+        float narrow = HudStatusBar.build("hud-count", () -> "5 hint(s)",
+                        () -> "G config", palette.textDim, 20f,
+                        CANVAS_W, CANVAS_H, U, palette)
                 .hintBox().width();
-        float wide = HudStatusBar.build("hud-count", () -> "5 hint(s)", 60f,
-                CANVAS_W, CANVAS_H, U, NvgPalette.dark(StyleModel.Accents.defaults(), U))
+        float wide = HudStatusBar.build("hud-count", () -> "5 hint(s)",
+                        () -> "G config", palette.textDim, 60f,
+                        CANVAS_W, CANVAS_H, U, palette)
                 .hintBox().width();
         assertEquals(20f, narrow, EPS, "量宽 20 就该给 20");
         assertEquals(60f, wide, EPS, "量宽 60 就该给 60");
@@ -194,5 +200,78 @@ class HudStatusBarTest {
                 h.width(), h.height(), h.x(), h.y(),
                 h.x() - (c.x() + c.width()));
         assertEquals(expected, b.dump(), "读数必须就是这几个矩形的原文");
+    }
+
+    @Test
+    @DisplayName("★ 真的 draw 一遍整棵树：提示那句话必须落到字形缝上（离线唯一能抓'漏设色'的一条）")
+    void drawingTheTreeActuallyEmitsTheHintText() {
+        // 【为什么要这一条】这一屏的提示字从前由宿主画，现在由树的 Label 画 —— 于是"字到底有没有
+        // 画出来"只能靠真机看，而离线全是几何断言。"谁哪天把 .color(...) 删了"就会让整句话消失，
+        // 而且离线全绿（Label 没设色会在绘制时抛 —— 这一条把那个抛提前到测试里）。
+        HudStatusBar.Bar b = bar();
+        RecordingGlyphs glyphs = new RecordingGlyphs();
+        RecordingCanvas canvas = new RecordingCanvas();
+
+        b.tree().tick(0L);
+        b.tree().draw(canvas, new ComponentEnv(
+                NvgPalette.dark(StyleModel.Accents.defaults(), U), glyphs));
+
+        // 这一趟画出两串：芯片的值（Button 自己画）+ 提示（Label 自己画）。
+        // 逐串相等而不是 contains("G config") —— 后者钉不住"提示到底画没画"以外的任何东西。
+        assertEquals(List.of("5 hint(s)", "G config"), glyphs.drawn,
+                "树这一趟必须把芯片的值与提示那句话都落笔");
+    }
+
+    /** 记下画过哪些串的字形缝替身（宿主测试里字形不进这个 JVM）。 */
+    private static final class RecordingGlyphs implements dev.e33.trellis.ui.widget.GlyphPainter {
+
+        final List<String> drawn = new java.util.ArrayList<>();
+
+        @Override public float lineHeight() { return 9f; }
+
+        @Override public float textWidth(String text) { return text.length() * 6f; }
+
+        @Override public void text(String text, float x, float topY, int argb) {
+            drawn.add(text);
+        }
+
+        @Override public void textCentered(String text, float centerX, float topY, int argb) {
+            drawn.add(text);
+        }
+
+        @Override public void textCenteredFitted(String text, float centerX, float topY,
+                                                 int argb, float maxWidth) {
+            drawn.add(text);
+        }
+
+        @Override public void textFitted(String text, float x, float topY, int argb,
+                                         float maxWidth) {
+            drawn.add(text);
+        }
+    }
+
+    /** 只验"画过什么"的画布替身；形状一概不关心。 */
+    private static final class RecordingCanvas implements dev.e33.trellis.render.Canvas {
+
+        @Override public void save() { }
+        @Override public void restore() { }
+        @Override public void translate(float dx, float dy) { }
+        @Override public void scale(float sx, float sy) { }
+        @Override public void clip(Rect rect) { }
+        @Override public void resetClip() { }
+        @Override public void fillRect(Rect rect, int argb) { }
+        @Override public void fillRoundRect(Rect rect, float radius, int argb) { }
+        @Override public void strokeRoundRect(Rect rect, float radius, float strokeWidth, int argb) { }
+        @Override public void strokeLine(float x0, float y0, float x1, float y1,
+                                         float strokeWidth, int argb) { }
+        @Override public void fillCircle(float centerX, float centerY, float radius, int argb) { }
+        @Override public void fillPath(dev.e33.trellis.geom.Path path, int argb) { }
+        @Override public void strokePath(dev.e33.trellis.geom.Path path, float strokeWidth,
+                                         int argb) { }
+        @Override public void drawImage(long texture, Rect destination, float alpha) { }
+        @Override public void beginLayer(Rect bounds, float alpha) { }
+        @Override public void endLayer() { }
+        @Override public void drawText(dev.e33.trellis.text.TextLayout layout, float x,
+                                       float baselineY, int argb) { }
     }
 }

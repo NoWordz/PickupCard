@@ -7,6 +7,7 @@ import dev.e33.trellis.layout.Style;
 import dev.e33.trellis.render.Canvas;
 import dev.e33.trellis.tokens.Tokens;
 import dev.e33.trellis.ui.Component;
+import dev.e33.trellis.ui.Label;
 import dev.e33.trellis.ui.Surface;
 import dev.e33.trellis.ui.UiTree;
 import dev.e33.trellis.ui.WidgetSlot;
@@ -37,7 +38,7 @@ import java.util.function.Supplier;
  * 根 Box（横排，左上加 STEP_3 的留白）              ← 透明，只用来把面板摆到左上
  * └ 面板 Box（横排、gap = STEP_2、内边距 STEP_2、底色 = palette.panel()、圆角 = palette.radius()）
  *   ├ WidgetSlot（只读按钮，文案由调用方给）        ← 宽 CONTROL_MIN_W、高 ROW_H
- *   └ 提示盒 Box（宽 LABEL_MIN_W、高 ROW_H）        ← 自己不画，字由宿主画在 bounds() 上
+ *   └ Label（提示文字）                             ← 宽按实量文字宽、高 ROW_H，字自己画
  * </pre>
  *
  * <p>【面板为什么是"自然尺寸"而不是铺满】HUD 上留白是稀缺的：铺满会把世界压暗一片。
@@ -65,13 +66,13 @@ public final class HudStatusBar {
 
         private final UiTree tree;
         private final Component panel;
-        private final Component hintBox;
+        private final Label hint;
         private final WidgetSlot chip;
 
-        Bar(UiTree tree, Component panel, Component hintBox, WidgetSlot chip) {
+        Bar(UiTree tree, Component panel, Label hint, WidgetSlot chip) {
             this.tree = tree;
             this.panel = panel;
-            this.hintBox = hintBox;
+            this.hint = hint;
             this.chip = chip;
         }
 
@@ -84,9 +85,9 @@ public final class HudStatusBar {
             return panel.bounds();
         }
 
-        /** 提示文字的落笔盒 —— 宿主的字画在这里面。 */
+        /** 提示文字的矩形 —— 字由 {@link Label} 自己画，这里只把几何交出去（读 {@code bounds()}）。 */
         public Rect hintBox() {
-            return hintBox.bounds();
+            return hint.bounds();
         }
 
         /** 只读芯片的矩形。 */
@@ -125,6 +126,9 @@ public final class HudStatusBar {
      * @param chipLabel 芯片的标识（只进诊断日志；<b>画出来的</b>是 {@code chipValue}）
      * @param chipValue 芯片的<b>值</b>，每帧现取 —— 数值会变而树不重建，
      *                  靠的就是这条 {@code Supplier}（A-18 定的口径）
+     * @param hintText  提示文案，同样每帧现取（换了语言不用重建这棵树）
+     * @param hintColor 提示文字的颜色 —— 配色归宿主（{@code WidgetPalette} 那条口径），
+     *                  框架不替它决定
      * @param hintWidth 提示盒的宽，<b>由调用方量出来</b>（{@code font.width(提示串)}），
      *                  不是从 token 猜的。⚠️ A-24 的评审逮到过这一条：本喵第一版把它写成
      *                  {@code LABEL_MIN_W × u} = 24px，而 en_us 的 {@code "G config"} 实测
@@ -137,7 +141,8 @@ public final class HudStatusBar {
      * @param u         单位 u（token × u）
      * @param palette   这一帧的调色板（测试用 {@code NvgPalette.dark(...)}）
      */
-    public static Bar build(String chipLabel, Supplier<String> chipValue, float hintWidth,
+    public static Bar build(String chipLabel, Supplier<String> chipValue,
+                            Supplier<String> hintText, int hintColor, float hintWidth,
                             float viewportWidth, float viewportHeight,
                             float u, WidgetPalette palette) {
         float pad = Tokens.Space.STEP_2 * u;
@@ -168,14 +173,14 @@ public final class HudStatusBar {
                         .withHeight(Sizing.fixed(rowH)),
                 palette));
 
-        // 提示盒：自己什么都不画，字由宿主画在它的 bounds() 上（同 CardGridTree 的标题/提示带）。
-        // 宽 = 调用方量出来的文字宽 —— **盒子按内容给**，字形缝那一步才不会去缩它。
-        Component hintBox = panel.add(new Box(Style.row()
+        // 提示：一个 Label —— 自己经字形缝画字（从前是一个空盒子 + 宿主在外面另画一笔）。
+        // 宽 = 调用方量出来的文字宽（**盒子按内容给**，字形缝那一步才不会去缩它）。
+        Label hint = panel.add(new Label(hintText, Style.row()
                 .withWidth(Sizing.fixed(hintWidth))
-                .withHeight(Sizing.fixed(rowH))));
+                .withHeight(Sizing.fixed(rowH))).color(hintColor).fitted(true));
 
         UiTree tree = new UiTree(root);
-        Bar bar = new Bar(tree, panel, hintBox, chip);
+        Bar bar = new Bar(tree, panel, hint, chip);
         // 建完当场布局一次：事件可能落在两帧之间，那时树已作废、下一帧还没到，
         // 读 bounds() 会 NPE（真机第 21 轮崩过）。
         // ⚠️ 必须用调用方给的视口。本喵第一版写的是 `layout(bar, 0f, 0f, 1f)`，于是
@@ -199,10 +204,16 @@ public final class HudStatusBar {
         bar.tree().layout(new Rect(0f, 0f, viewportWidth, viewportHeight), pixelGrid);
     }
 
-    /** 只占位、自己不画东西的盒子（文字由宿主画在它的 {@code bounds()} 上）。 */
+    /**
+     * 结构容器：只占位、自己不画东西。
+     *
+     * <p>【它和 {@link Label} 的分工】这里只留"根 / 面板"这类<b>纯结构</b>盒子（要底色就带
+     * {@link Surface}）；<b>要显示文字的地方一律用 {@link Label}</b> —— 从前提示盒也是一个 Box、
+     * 字由宿主在外面另画一笔，那笔已经收进 Label 了（它在字上画，不需要基类那层白雾叠加）。
+     */
     private static final class Box extends Component {
 
-        /** 无底色（定位层与提示盒）。 */
+        /** 无底色（定位层）。 */
         Box(Style style) {
             style(style);
             // 【必须关掉状态叠加层】基类那层白色覆盖是给"有底色的控件"做反馈的；这些盒子自己不画

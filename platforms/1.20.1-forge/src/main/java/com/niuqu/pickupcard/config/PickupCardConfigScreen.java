@@ -857,6 +857,7 @@ public final class PickupCardConfigScreen extends Screen {
                 I18n.get("pickupcard.config.modal.cancel"),
                 this::confirmModal,
                 this::cancelModal,
+                modalLines,
                 msgW, lineH * modalLines.size(), Tokens.Size.CONTROL_MIN_W * unit(), unit(), palette,
                 // 【面板要不透明】palette.panel() 是给常驻控件的半透色（0xC0），铺成整块面板
                 // 会把蒙层下的东西透上来 —— 对话框是"盖住底下"的东西，底色必须是实心的。
@@ -1102,15 +1103,8 @@ public final class PickupCardConfigScreen extends Screen {
             // 【为什么这么不透明（85%）】第一版用 69%，底下那一屏的颜色还是透出来不少；
             // 模态的语义就是"底下先放下"，蒙层要压得住。
             ui.fillRoundRect(0f, 0f, this.width, this.height, 0f, 0xD8000000);
-            // 正文：逐行居中（换行由 {@link #wrap} 在开模态时算好；盒子高 = 行数 × 行高）。
-            // 【面板本体不在这里画】它由组件自己的 Surface 画（见 ConfirmModal.build 的 panelColor），
-            // 同一块地方画两遍只会让先画那笔被后画那笔盖掉（评审指出宿主那笔是多余的）。
-            Rect mb = m.messageBox();
-            float lineH = this.font.lineHeight;
-            for (int i = 0; i < modalLines.size(); i++) {
-                ui.textCentered(modalLines.get(i), mb.x() + mb.width() / 2f,
-                        mb.y() + i * lineH, palette.text());
-            }
+            // 正文在树里（一个多行 Label，自己经字形缝居中画每一行 —— 从前是这一屏逐行另画）。
+            // 【面板本体也不在这里画】它由组件自己的 Surface 画（见 ConfirmModal.build 的 panelColor）。
             // 两颗钮：由组件树那一趟画（与悬停/命中同几何）。
             TrellisColumn.Frame surface = TrellisColumn.surface(ui.canvas(), palette,
                     new McGlyphPainter(ui), guiScale());

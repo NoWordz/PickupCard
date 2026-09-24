@@ -5,7 +5,6 @@ import com.niuqu.pickupcard.render.nvg.ui.McGlyphPainter;
 import com.niuqu.pickupcard.render.nvg.ui.NvgPalette;
 import com.niuqu.pickupcard.render.nvg.ui.NvgUi;
 import com.niuqu.pickupcard.render.nvg.ui.TrellisColumn;
-import dev.e33.trellis.geom.Rect;
 import dev.e33.trellis.tokens.Units;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
@@ -95,9 +94,10 @@ public final class HudStatusPanel {
             // （见 `HudStatusBar.build` 的 `hintWidth` 那条：24px 装 41px 的字 = 缩到 58%）。
             // 用 `mc.font` 而不是等 `ui.font()`：树要在 `NvgUi` 会话**之前**建好，
             // 而两者取的是同一个字体（`NvgUi.begin` 里就是这一句）。
+            // 文案与颜色一起交进树：字现在由 `Label` 自己画（从前是这句之后由宿主另画一笔）。
             bar = HudStatusBar.build("hud-count",
                     () -> I18n.get("pickupcard.hud.count", CardStage.INSTANCE.stats().live()),
-                    mc.font.width(hint),
+                    () -> I18n.get("pickupcard.hud.hint"), palette.textDim, mc.font.width(hint),
                     gui.guiWidth(), gui.guiHeight(), u, palette);
             builtU = u;
             builtFill = palette.panel;
@@ -115,19 +115,9 @@ public final class HudStatusPanel {
             if (ui != null) {
                 TrellisColumn.Frame surface = TrellisColumn.surface(ui.canvas(), palette,
                         new McGlyphPainter(ui), guiScale());
-                // ① 树：面板底 + 只读芯片。字由控件自己经字形缝落笔。
+                // ① 树：面板底 + 只读芯片 + 提示文字（提示那个 Label 自己经字形缝落笔，
+                //    从前它的字在树外由宿主另画一笔 —— 那一笔已收进 Label）。
                 TrellisColumn.paint(surface, bar.tree());
-                // ② 提示文字在树外（那个盒子自己不画东西，同 CardGridTree 的标题/提示带）。
-                //    不需要 pushClip/popClip：这一条不滚动，没有"滚出视口的字糊在外面"那回事。
-                // 【y 是"行框顶"，不是"盒顶"】`NvgUi.textFitted` 把字竖直居中在
-                // `y + lineHeight/2` 上（拟合与缩小两支都是这个口径），所以要让字的中心落在
-                // 盒中心，得自己把行框顶算出来 —— 与 `Button` 同一个式子。
-                // ⚠️ 本喵第一版直接传了盒顶 `hint.y()`，实测字比芯片那行**高了 4.5px**
-                // （= (ROW_H×u − lineHeight)/2，评审从截图像素反解出来的）。
-                Rect hint = bar.hintBox();
-                ui.textFitted(I18n.get("pickupcard.hud.hint"),
-                        hint.x(), hint.y() + (hint.height() - ui.font().lineHeight) / 2f,
-                        palette.textDim, hint.width());
             }
         } finally {
             // 【为什么要计时】HUD 每帧都在游戏里跑，这里的预算是真的（三个 Screen 只在打开时跑）。

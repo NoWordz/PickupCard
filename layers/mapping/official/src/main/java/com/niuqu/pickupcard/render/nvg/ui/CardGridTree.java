@@ -166,6 +166,12 @@ public final class CardGridTree {
                 .withAlign(Align.STRETCH)
                 .withPadding(Insets.all(pad)));
 
+        // ⚠️【标题与提示为什么还是空 Box、字由宿主画】这两个盒子在滚动容器<b>之外</b>，
+        // 而这一屏为了不让滚出去的行糊到它们身上，对整棵树开了一圈 ui.pushClip(滚动视口)
+        // （见 CardGridScreen.render）。延迟文字会继承那个裁剪框，所以标题/提示一旦
+        // 放进树里画，就会被裁掉。要迁得先把"裁剪作用于延迟文字"这条机制改对（或把这两处
+        // 拆到另一棵树里去画），那是框架侧的事，不在这次回流范围内。
+        // 其余调用点（HUD / 模态 / 编辑场）没有这层区域裁剪，已经迁到 Label。
         Component titleBox = root.add(new Box(Style.column().withHeight(Sizing.fixed(rowH))));
 
         // 固定头 + 可滚主体，见类注释：fixed(0) + grow 是唯一表达。

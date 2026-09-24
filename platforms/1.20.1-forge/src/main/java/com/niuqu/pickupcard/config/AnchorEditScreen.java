@@ -24,8 +24,10 @@ import dev.e33.trellis.layout.Sizing;
 import dev.e33.trellis.layout.Style;
 import dev.e33.trellis.render.Canvas;
 import dev.e33.trellis.ui.Component;
+import dev.e33.trellis.ui.Label;
 import dev.e33.trellis.ui.UiEvent;
 import dev.e33.trellis.ui.UiTree;
+import dev.e33.trellis.text.TextAlign;
 import com.niuqu.pickupcard.style.CardTimeline;
 import com.niuqu.pickupcard.style.StyleModel;
 import net.minecraft.client.Minecraft;
@@ -89,9 +91,9 @@ public final class AnchorEditScreen extends Screen {
     private UiTree tree;
     /** 蒙层那一格：全屏、可拖（在这块屏上按哪儿都算抓那摞卡）。 */
     private DragSurface backdrop;
-    /** 两行字的盒子（文字仍由宿主画，盒子从树读 —— 字形缝那条既有口径）。 */
-    private Component titleBox;
-    private Component hintBox;
+    /** 两行字（标题 / 提示）—— 由 {@code Label} 自己经字形缝画，几何从树读。 */
+    private Label titleBox;
+    private Label hintBox;
 
     /** 进编辑场时那两颗按钮的样子（树里的槽托着它们，几何归树）。 */
     private WidgetSlot saveSlot;
@@ -148,8 +150,22 @@ public final class AnchorEditScreen extends Screen {
                 .withPadding(Insets.of(6f, 8f, 8f, 8f))
                 .withGap(2f)
                 .withAlign(Align.STRETCH));
-        titleBox = backdrop.add(new Box(Style.column().withHeight(Sizing.fixed(9f))));
-        hintBox = backdrop.add(new Box(Style.column().withHeight(Sizing.fixed(9f))));
+        titleBox = backdrop.add(new Label(this.title.getString(),
+                        Style.column().withHeight(Sizing.fixed(9f)))
+                .color(0xFFFFFFFF)
+                .verticalAlign(TextAlign.V.TOP));
+        // 提示文案每帧现取：锚点可拖，anchorX / anchorY 会变 —— 用取值口就不用重建树。
+        // 【参数必须交给 I18n.get，不要自己套一层 String.format】1.20.1 的 `I18n.get(key)`
+        // 就算一个参数都不给也会执行一遍 `String.format` —— 值里带 `%.2f` 时当场抛，它 catch
+        // 之后返回的是 **"Format error: 原文"**（源码：`I18n.get`）。把参数交进去，
+        // 格式这一步才在它手里做对。这是 A-17 顺手修过的既有 bug。
+        hintBox = backdrop.add(new Label(
+                        () -> isAuto() ? I18n.get("pickupcard.anchor.autoHint")
+                                : I18n.get("pickupcard.anchor.customHint", anchorX, anchorY),
+                        Style.column().withHeight(Sizing.fixed(9f)))
+                .color(palette.textDim)
+                .fitted(true)
+                .verticalAlign(TextAlign.V.TOP));
         // 撑开中间那段：于是按钮行被顶到底边（等价于从前那个 by = height - bh - 8）
         backdrop.add(new Box(Style.column().withGrow(1f)));
         Component buttonRow = backdrop.add(new Box(Style.row()
@@ -161,7 +177,7 @@ public final class AnchorEditScreen extends Screen {
         tree = new UiTree(backdrop);
     }
 
-    /** 只占位、自己不画东西的盒子（文字由宿主画在它的 {@code bounds()} 上）。 */
+    /** 只占位、自己不画东西的盒子（撑开的 spacer 与按钮行；两行字已改用 {@code Label}）。 */
     private static final class Box extends Component {
         Box(Style style) {
             style(style);
@@ -371,19 +387,9 @@ public final class AnchorEditScreen extends Screen {
                 TrellisColumn.paint(surface, tree);
                 // ② 宿主 decor：括号与锚线（任意坐标、业务算的 → 见 buildTree 的说明）
                 drawBrackets(ui, b);
-                // ③ 文字：盒子从树读，笔仍由宿主落（字形缝）
-                Rect title = titleBox.bounds();
-                ui.text(this.title.getString(), title.x(), title.y(), 0xFFFFFFFF);
-                Rect hint = hintBox.bounds();
-                // 【参数必须交给 I18n.get，不要自己套一层 String.format】1.20.1 的
-                // `I18n.get(key)` 就算一个参数都不给也会执行一遍 `String.format` ——
-                // 值里带 `%.2f` 时当场抛，它 catch 之后返回的是 **"Format error: 原文"**
-                // （源码：`net.minecraft.client.resources.language.I18n.get`）。
-                // 把参数交进去，格式这一步才在它手里做对。这一条是 A-17 顺手修的既有 bug
-                // （A-17 之前这行就是这样，截图里那行字一直是 "Format error: …"）。
-                ui.textFitted(isAuto() ? I18n.get("pickupcard.anchor.autoHint")
-                                : I18n.get("pickupcard.anchor.customHint", anchorX, anchorY),
-                        hint.x(), hint.y(), palette.textDim, hint.width());
+                // ③ 两行字在树里（两个 Label，自己经字形缝落笔）—— 从前这两笔在树外由本屏画。
+                //    右下角那行控件说明仍是宿主画：它是绝对坐标（width - 8 / height - 12），
+                //    不在任何盒子里。
                 ui.textRight(I18n.get("pickupcard.anchor.controls"), this.width - 8f, this.height - 12f, palette.textDim);
             }
         }

@@ -86,6 +86,7 @@ handleTakeItemEntity(packet)                     ← 包处理（主线程）
 | 主题从哪来 | `render/StyleSource` | 懒加载 + 一秒热重读 |
 | 动画进度 | `shared/style/CardTimeline` + `render/CardCanvas` | 纯函数 + 每帧上下文 |
 | 事件 → 屏上的卡 | `render/CardStage` | 只调度，**不画一笔** |
+| 界面上一行字怎么画 | 框架的 `Label`（Trellis） | 组件自己经**字形缝**画字；宿主不再自己写空壳盒子 + 在外面另画一笔（2026-09-24，A-34） |
 
 ## 稀有度联动：一个交接面
 

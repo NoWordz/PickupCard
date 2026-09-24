@@ -43,6 +43,10 @@ class ConfirmModalTest {
     private static final float MSG_W = 160f;
     private static final float MSG_H = 40f;
 
+    /** 正文各行 —— 换行由宿主切好再交进树（框架不做断词）。这里两行，够验"多行居中"。 */
+    private static final java.util.List<String> MSG_LINES =
+            java.util.List.of("确认要恢复这一页的默认值吗？", "这一步不能撤销。");
+
     private static ConfirmModal.Modal modal(Runnable confirm, Runnable cancel) {
         return modal(confirm, cancel, MSG_W, MSG_H, U, CANVAS_W, CANVAS_H);
     }
@@ -51,7 +55,7 @@ class ConfirmModalTest {
                                             float msgW, float msgH, float u,
                                             float vw, float vh) {
         ConfirmModal.Modal m = ConfirmModal.build("确认", "取消", confirm, cancel,
-                msgW, msgH, Tokens.Size.CONTROL_MIN_W * u, u,
+                MSG_LINES, msgW, msgH, Tokens.Size.CONTROL_MIN_W * u, u,
                 NvgPalette.dark(StyleModel.Accents.defaults(), u));
         ConfirmModal.layout(m, vw, vh, 1f);
         return m;

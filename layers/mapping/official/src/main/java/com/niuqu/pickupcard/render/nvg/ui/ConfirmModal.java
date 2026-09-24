@@ -8,14 +8,16 @@ import dev.e33.trellis.layout.Sizing;
 import dev.e33.trellis.layout.Style;
 import dev.e33.trellis.render.Canvas;
 import dev.e33.trellis.tokens.Tokens;
+import dev.e33.trellis.text.TextAlign;
 import dev.e33.trellis.ui.Component;
+import dev.e33.trellis.ui.Label;
 import dev.e33.trellis.ui.Surface;
 import dev.e33.trellis.ui.UiTree;
 import dev.e33.trellis.ui.WidgetSlot;
 import dev.e33.trellis.ui.widget.Button;
 import dev.e33.trellis.ui.widget.WidgetPalette;
 
-import java.util.function.Supplier;
+import java.util.List;
 
 /**
  * <b>第五个形态：模态 / 对话框</b>（A-27）。
@@ -62,11 +64,11 @@ public final class ConfirmModal {
 
         private final UiTree tree;
         private final Component panel;
-        private final Component message;
+        private final Label message;
         private final WidgetSlot confirm;
         private final WidgetSlot cancel;
 
-        Modal(UiTree tree, Component panel, Component message, WidgetSlot confirm, WidgetSlot cancel) {
+        Modal(UiTree tree, Component panel, Label message, WidgetSlot confirm, WidgetSlot cancel) {
             this.tree = tree;
             this.panel = panel;
             this.message = message;
@@ -83,7 +85,7 @@ public final class ConfirmModal {
             return panel.bounds();
         }
 
-        /** 正文的落笔盒 —— 宿主的字画在这里面。 */
+        /** 正文的矩形（字由它自己即多行 {@link Label} 画，这里只把几何交出去）。 */
         public Rect messageBox() {
             return message.bounds();
         }
@@ -195,19 +197,25 @@ public final class ConfirmModal {
      * @param cancelLabel  取消钮的标签
      * @param onConfirm    点确认做什么（<b>由调用方给</b> —— 动作归宿主，形状归这里）
      * @param onCancel     点取消 / 按 Esc 做什么
+     * @param messageLines  正文的<b>各行</b>（换行由调用方切好 —— 框架不做断词，那是排版策略）
      * @param messageWidth  正文盒的宽，<b>由调用方量出来</b>（{@code font.width} 的换行结果），
      *                      不是从 token 猜的 —— A-24 的评审逮过"从 token 猜宽 → 字形缝把字缩成糊"
-     * @param messageHeight 正文盒的高（同上，宿主按行数算）
+     * @param messageHeight 正文盒的高。⚠️<b>必须等于"行数 × 行高"</b>：正文在盒里是<b>整块居中</b>
+     *                      摆的（{@code Label} 的多行语义），只有这个等式成立时"整块居中"才与
+     *                      "从盒顶逐行往下排"逐像素相同。传高一点不会报错，只会让整段字整体下漂
+     *                      {@code (h − 行数×行高)/2} —— 那种错只有截图看得见。
      * @param buttonWidth   每个钮的宽（{@code CONTROL_MIN_W} 之类，由调用方定）
      * @param u            单位 u（token × u）
      * @param palette      这一帧的调色板（测试用 {@code NvgPalette.dark(...)}）
      */
     public static Modal build(String confirmLabel, String cancelLabel,
                               Runnable onConfirm, Runnable onCancel,
+                              List<String> messageLines,
                               float messageWidth, float messageHeight,
                               float buttonWidth, float u, WidgetPalette palette) {
         return build(confirmLabel, cancelLabel, onConfirm, onCancel,
-                messageWidth, messageHeight, buttonWidth, u, palette, palette.panel());
+                messageLines, messageWidth, messageHeight, buttonWidth, u, palette,
+                palette.panel());
     }
 
     /**
@@ -220,6 +228,7 @@ public final class ConfirmModal {
      */
     public static Modal build(String confirmLabel, String cancelLabel,
                               Runnable onConfirm, Runnable onCancel,
+                              List<String> messageLines,
                               float messageWidth, float messageHeight,
                               float buttonWidth, float u, WidgetPalette palette,
                               int panelColor) {
@@ -242,10 +251,13 @@ public final class ConfirmModal {
                         .withAlign(Align.CENTER),
                 new Surface(panelColor, 0, palette.radius(), 0f)));
 
-        // 正文盒：自己什么都不画，字由宿主画在 bounds() 上（同 HudStatusBar 的提示盒）。
-        Component message = panel.add(new Box(Style.row()
+        // 正文：一个多行 Label —— 自己经字形缝居中画每一行（从前是一个空盒子 + 宿主在外面
+        // 逐行另画）。盒高 = 行数 × 行高时，整块居中与"从盒顶逐行往下排"逐像素相同。
+        Label message = panel.add(new Label(messageLines, Style.row()
                 .withWidth(Sizing.fixed(messageWidth))
-                .withHeight(Sizing.fixed(messageHeight))));
+                .withHeight(Sizing.fixed(messageHeight)))
+                .color(palette.text())
+                .align(TextAlign.H.CENTER));
 
         // 按钮行：两个钮居中排（面板宽于两个钮时，这行两侧留白均分）。
         Component buttonRow = panel.add(new Box(Style.row()
@@ -285,10 +297,15 @@ public final class ConfirmModal {
         modal.tree().layout(new Rect(0f, 0f, viewportWidth, viewportHeight), pixelGrid);
     }
 
-    /** 只占位、自己不画东西的盒子（文字由宿主画在它的 {@code bounds()} 上）。 */
+    /**
+     * 结构容器：只占位、自己不画东西（根 / 面板 / 按钮行）。
+     *
+     * <p>【要显示文字的地方一律用 {@link Label}】从前正文也是一个 Box、字由宿主在外面逐行另画，
+     * 那一笔已收进多行 {@link Label} —— 所以这里只剩纯结构用途。
+     */
     private static final class Box extends Component {
 
-        /** 无底色（定位层与正文盒）。 */
+        /** 无底色（定位层）。 */
         Box(Style style) {
             style(style);
             // 【必须关掉状态叠加层】基类那层白色覆盖是给"有底色的控件"做反馈的；这些盒子自己不画
