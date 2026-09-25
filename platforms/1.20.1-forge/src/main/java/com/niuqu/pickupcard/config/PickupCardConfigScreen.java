@@ -25,6 +25,7 @@ import dev.e33.trellis.ui.widget.Widget;
 import com.niuqu.pickupcard.render.nvg.ui.McGlyphPainter;
 import dev.e33.trellis.ui.widget.PaintCtx;
 import dev.e33.trellis.motion.Animated;
+import dev.e33.trellis.motion.Hover;
 import dev.e33.trellis.motion.Easing;
 import dev.e33.trellis.ui.widget.TextField;
 import com.niuqu.pickupcard.style.StyleModel;
@@ -526,6 +527,12 @@ public final class PickupCardConfigScreen extends Screen {
 
     /** 标签强调条：值 = 选中那一颗的序号（小数 = 正在滑）。 */
     private final Animated tabAccentAnim = Animated.of(0f);
+    /** 树外控件（页签/样例钮）的悬停缓动 —— 每颗一个，参数与树内组件同源（motion.Hover）。 */
+    private final java.util.Map<Widget, Hover> chipHovers = new java.util.HashMap<>();
+
+    private Hover chipHover(Widget w) {
+        return chipHovers.computeIfAbsent(w, k -> new Hover());
+    }
 
     /** 「位置」行的回调：显示当前锚点值、打开编辑场（界面自己才知道这两件事）。 */
     private final ConfigPageSpec.AnchorBridge anchorBridge = new ConfigPageSpec.AnchorBridge() {
@@ -995,9 +1002,13 @@ public final class PickupCardConfigScreen extends Screen {
         updateTrellisColumn();
         driveAnimations();
         for (Widget w : chips()) {
-            // 树外的控件（标签列、切样例按钮）：命中还是自己判 —— 它们不在树的几何里
+            // 树外的控件（标签列、切样例按钮）：命中还是自己判 —— 它们不在树的几何里。
+            // 悬停的【视觉】走 motion.Hover（与树内组件同一颗参数）：从前这里只有裸布尔，
+            // 树外控件的悬停观感是硬切的 —— "左侧页签没有动画"就是它。
             Rect box = chipBoxes.get(w);
-            w.hover(box != null && box.contains(mouseX, mouseY));
+            boolean on = box != null && box.contains(mouseX, mouseY);
+            w.hover(on);
+            chipHover(w).set(on, now * 1_000_000L);
         }
 
         gui.fill(0, 0, this.width, this.height, palette.backdrop);
@@ -1015,7 +1026,7 @@ public final class PickupCardConfigScreen extends Screen {
                 // 【标签列必须自己画一遍】它不参与配置列的裁剪与换页淡入（换页时它不动）；
                 // 几何由排布者给（{@code chipBoxes}）。
                 for (Widget w : tabButtons) {
-                    w.draw(surface.ctxFor(chipBoxes.get(w), now * 1_000_000L));
+                    w.draw(surface.ctxFor(chipBoxes.get(w), now * 1_000_000L, chipHover(w).at(now * 1_000_000L)));
                 }
                 // 配置项那一列：裁剪到视口里 —— 滚出去的标签标记与滚动条不许糊在别的列上。
                 // 【树内那一趟自己裁了（A-16）】ScrollContainer 的 clipChildren 把内容裁在容器盒子里；
@@ -1032,7 +1043,7 @@ public final class PickupCardConfigScreen extends Screen {
                 drawScrollBar(ui);
                 ui.popClip();
                 for (Widget w : sampleButtons) {
-                    w.draw(surface.ctxFor(chipBoxes.get(w), now * 1_000_000L));
+                    w.draw(surface.ctxFor(chipBoxes.get(w), now * 1_000_000L, chipHover(w).at(now * 1_000_000L)));
                 }
             }
         }
@@ -1439,11 +1450,17 @@ public final class PickupCardConfigScreen extends Screen {
      * （2026-09-19 真机截图抓过），所以这一根刺留着。
      */
     private void drawLabelMarks(NvgUi ui) {
-        for (ConfigRows.Row row : rowsModel.all()) {
-            if (!row.isHeader()) {
+        List<ConfigRows.Row> rows = rowsModel.all();
+        for (int i = 0; i < rows.size(); i++) {
+            if (!rows.get(i).isHeader()) {
                 continue;
             }
-            ui.fillRoundRect(labelX() - 3f, row.yAt + 5f, 2f, 8f, 1f,
+            // 竖条【垂直居中于树里那个标签文本框】：从前 y=row.yAt+5 是手摆魔数，
+            // 文字搬进树之后它就没人管了 —— 真机截图里竖条比文字高出一截（2026-09-25）。
+            // 文本框在哪、多高，读树里同一份 bounds（labelBox 返回的就是那个对象本身）。
+            var box = TrellisColumn.labelBox(trellisColumn(), i);
+            float cy = box.y() + box.height() / 2f;
+            ui.fillRoundRect(box.x() - 3f, cy - 4f, 2f, 8f, 1f,
                     NvgUi.fade(ui.palette.accent(), 0.45f));
         }
     }

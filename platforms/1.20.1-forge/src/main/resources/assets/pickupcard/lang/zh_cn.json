@@ -177,7 +177,5 @@
   "pickupcard.anchor.clamped": "卡已贴边距：锚线再往右，卡也不会越过屏幕边距",
 
   "pickupcard.grid.title": "卡片一览 · 网格",
-  "pickupcard.grid.hint": "%s 列 × %s 行 · 每格 %s×%s · 方向键移动焦点",
-  "pickupcard.hud.count": "提示 %s 条",
-  "pickupcard.hud.hint": "G 配置"
+  "pickupcard.grid.hint": "%s 列 × %s 行 · 每格 %s×%s · 方向键移动焦点"
 }

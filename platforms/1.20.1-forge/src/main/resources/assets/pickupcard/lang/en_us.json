@@ -177,7 +177,5 @@
   "pickupcard.anchor.clamped": "Card is at the margin: the anchor won't push the card past the screen edge",
 
   "pickupcard.grid.title": "Card overview · grid",
-  "pickupcard.grid.hint": "%s columns × %s rows · %s×%s per cell · arrow keys move focus",
-  "pickupcard.hud.count": "%s hint(s)",
-  "pickupcard.hud.hint": "G config"
+  "pickupcard.grid.hint": "%s columns × %s rows · %s×%s per cell · arrow keys move focus"
 }

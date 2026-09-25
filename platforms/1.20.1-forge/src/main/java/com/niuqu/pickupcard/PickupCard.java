@@ -8,7 +8,6 @@ import com.niuqu.pickupcard.client.PickupCardKeys;
 import com.niuqu.pickupcard.config.CardGridScreen;
 import com.niuqu.pickupcard.config.PickupCardConfigScreen;
 import com.niuqu.pickupcard.render.CardStage;
-import com.niuqu.pickupcard.render.HudStatusPanel;
 import com.niuqu.pickupcard.pickup.Inbox;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraftforge.api.distmarker.Dist;
@@ -90,7 +89,6 @@ public final class PickupCard {
         // 先后 = 谁的 NanoVG 帧后画 = 谁在上面。⚠️ Forge 的派发顺序本喵**没有实测** ——
         // 两个面板今天在屏幕上不重叠（面板在左上、卡堆在下方），所以这一条此刻不承重；
         // 真出现重叠时要先量再定。（不确定的事就写清楚"不确定"。）
-        HudStatusPanel.register();
 
         // 调试屏只活在开发环境：正式 jar 里这些类存在，但注册路径根本不会走到
         if (!FMLEnvironment.production) {

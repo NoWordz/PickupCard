@@ -275,8 +275,8 @@ public final class TrellisColumn {
          * 就有这一帧的时刻，直接交过来。两边必须是同一个值：控件的"帧号"只有这一个来源
          * （单位是纳秒，见 {@code PaintCtx.now}）。
          */
-        public PaintCtx ctxFor(Rect box, long now) {
-            return new PaintCtx(box, canvas, env.palette(), env.glyphs(), env.boxes(), now);
+        public PaintCtx ctxFor(Rect box, long now, float hover) {
+            return new PaintCtx(box, canvas, env.palette(), env.glyphs(), env.boxes(), now, hover);
         }
     }
 

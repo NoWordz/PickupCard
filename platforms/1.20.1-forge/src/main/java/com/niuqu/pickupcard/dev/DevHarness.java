@@ -7,7 +7,6 @@ import com.niuqu.pickupcard.config.PickupCardConfig;
 import com.niuqu.pickupcard.config.PickupCardConfigScreen;
 import com.niuqu.pickupcard.layout.LayoutSettings;
 import com.niuqu.pickupcard.render.CardStage;
-import com.niuqu.pickupcard.render.HudStatusPanel;
 import net.minecraft.client.KeyMapping;
 import net.minecraft.client.resources.language.I18n;
 import net.minecraft.client.Minecraft;
@@ -1341,14 +1340,6 @@ public final class DevHarness {
                 // 截图里**左上角那一条**就是它 —— 不需要另拍一张同帧的重复图。
                 // 传"此刻"进去：读数要能算出自己**是几帧前的** —— 面板停了却还报 1/1 的话，
                 // 这条读数恰恰成了"最该被抓的故障"的盲区（见 HudStatusPanel.dump 的 @param）。
-                String hudBar = HudStatusPanel.INSTANCE.dump(System.currentTimeMillis() * 1_000_000L);
-                if (hudBar == null) {
-                    // null 的含义是"一帧都没画过"，与"画了 0 个"是两件事，不能混成一行读数。
-                    PickupCard.LOGGER.error("[harness-auto] A-24 面板一帧都没画过"
-                            + "（screen/hideGui/level 三道门里有一道一直关着？）");
-                } else {
-                    PickupCard.LOGGER.info("[harness-auto] {}", hudBar);
-                }
                 String shot = ShotNaming.name(HUD_BASE, scaleTag(), null);
                 Screenshot.grab(mc.gameDirectory, shot, mc.getMainRenderTarget(),
                         m -> PickupCard.LOGGER.info("[harness-auto] 截图: {} -> {}", shot, m.getString()));
