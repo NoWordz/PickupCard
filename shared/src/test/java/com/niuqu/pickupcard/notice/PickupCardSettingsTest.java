@@ -31,6 +31,22 @@ class PickupCardSettingsTest {
     }
 
     @Test
+    void nullFullPolicySanitizesToReplace() {
+        PickupCardSettings settings = new PickupCardSettings(2_600L, 320L, MergeMode.defaults(),
+                5, 9, CountFormat.PLUS, true, true, false, 0, null);
+        assertEquals(FullPolicy.REPLACE, settings.sanitized().fullPolicy(), "null 防御回新默认 REPLACE");
+    }
+
+    @Test
+    void fullPolicyDefaultsToReplace() {
+        assertEquals(FullPolicy.REPLACE, PickupCardSettings.defaults().fullPolicy(),
+                "新默认：屏满顶掉旧卡");
+        PickupCardSettings viaTenArgs = new PickupCardSettings(1_000L, 100L, MergeMode.SAME_NBT,
+                3, 9, CountFormat.PLUS, true, true, false, 0);
+        assertEquals(FullPolicy.REPLACE, viaTenArgs.fullPolicy(), "10 参旧签名缺省 REPLACE");
+    }
+
+    @Test
     void switchesSurviveSanitizing() {
         PickupCardSettings off = new PickupCardSettings(1_000L, 100L, MergeMode.SAME_NBT, 3, 9,
                 CountFormat.PLAIN, false, false, true, 0).sanitized();

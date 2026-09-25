@@ -13,13 +13,14 @@ import com.niuqu.pickupcard.text.CountFormat;
  * @param exitMs        退场动画时长；渲染层要等它播完才把这张卡从屏上撤掉
  * @param mergeMode     哪些拾取算同一件东西（同名同 NBT / 同名 / 同名但改名的不并 / 从不合并）
  *                      四档见 {@link MergeMode}
- * @param maxOnScreen   同时在屏上限；满了就排队（不再顶掉别人）
+ * @param maxOnScreen   同时在屏上限；满了之后怎么办看 {@link FullPolicy}
  * @param queueSize     排队上限；0 = 不排队（超出的直接丢）
  * @param countFormat   数量怎么写
  * @param enabled       总开关。关掉之后捡东西不再弹卡（屏上已有的也立刻清掉）
  * @param showItemName  显示物品名。关掉只剩"竖条 + 图标 + 数量" —— 卡会明显变窄
  * @param showItemId    显示物品 ID（{@code minecraft:stone}）而不是它的名字
  * @param nameMaxWidth  物品名最大宽度（像素）；0 = 按屏宽比例自动（{@code CardMetrics}）
+ * @param fullPolicy    屏满之后的新拾取怎么办（顶掉最老 / 排队），见 {@link FullPolicy}
  */
 public record PickupCardSettings(long holdMs,
                                  long exitMs,
@@ -30,11 +31,27 @@ public record PickupCardSettings(long holdMs,
                                  boolean enabled,
                                  boolean showItemName,
                                  boolean showItemId,
-                                 int nameMaxWidth) {
+                                 int nameMaxWidth,
+                                 FullPolicy fullPolicy) {
 
     public static PickupCardSettings defaults() {
         return new PickupCardSettings(2_600L, 320L, MergeMode.defaults(), 5, 9, CountFormat.PLUS,
-                true, true, false, 0);
+                true, true, false, 0, FullPolicy.REPLACE);
+    }
+
+    /** 旧 10 参签名：{@code fullPolicy} 缺省 {@link FullPolicy#REPLACE}（0.2.3 起的新默认），旧调用点零改动。 */
+    public PickupCardSettings(long holdMs,
+                              long exitMs,
+                              MergeMode mergeMode,
+                              int maxOnScreen,
+                              int queueSize,
+                              CountFormat countFormat,
+                              boolean enabled,
+                              boolean showItemName,
+                              boolean showItemId,
+                              int nameMaxWidth) {
+        this(holdMs, exitMs, mergeMode, maxOnScreen, queueSize, countFormat, enabled,
+                showItemName, showItemId, nameMaxWidth, FullPolicy.REPLACE);
     }
 
     /** 把外部来的值夹到合法区间：config 是玩家可改的，非法值不该变成崩溃或永不离场。 */
@@ -50,6 +67,7 @@ public record PickupCardSettings(long holdMs,
                 showItemName,
                 showItemId,
                 // 0 = 自动；给了正数就别小于 24px —— 比一个字符还窄的"最大宽度"不是设置，是 bug
-                nameMaxWidth <= 0 ? 0 : Math.max(24, Math.min(600, nameMaxWidth)));
+                nameMaxWidth <= 0 ? 0 : Math.max(24, Math.min(600, nameMaxWidth)),
+                fullPolicy == null ? FullPolicy.REPLACE : fullPolicy);
     }
 }
