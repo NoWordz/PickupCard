@@ -80,8 +80,10 @@ public final class NvgCardContent {
         int accent = NvgCardPainter.accentOf(card, style.accents());
 
         gui.pose().pushPose();
-        // 与外壳同一个变换：以卡心为原点、按 S·p 缩放（脉冲内外一致）
-        float effScale = cardScale * canvas.pulseOf(view);
+        // 与外壳同一个变换：以卡心为原点、按 S·p·exitScale 缩放（脉冲内外一致）。
+        // 【退场缩放与外壳同吃一个数】SCALE 档的收缩因子由 NvgCardPainter#cardScaleOf
+        // 一处给出（乘法关系，不新增变换栈）—— 2026-09-20 镜像 bug 的教训。
+        float effScale = cardScale * canvas.pulseOf(view) * NvgCardPainter.cardScaleOf(canvas, slot);
         // 【纵向位移与外壳同吃一个数】DROP 入场 / FALL 退场的竖向位移由
         // NvgCardPainter#verticalShiftOf 一处给出（2026-09-20 镜像 bug 的教训：
         // 两份实现必有一份错）—— 外壳的 nvgTranslate 加的就是同一个函数的返回值。
@@ -89,6 +91,13 @@ public final class NvgCardContent {
                 slot.y() + slot.height() / 2f + NvgCardPainter.verticalShiftOf(canvas, slot), 0f);
         if (effScale != 1f) {
             gui.pose().scale(effScale, effScale, 1f);
+        }
+        // 【sway 与外壳同吃一个数、同枢轴】角度由 swayAngleOf 一处给出；当前原点在卡心
+        // （位移之后、回到左上角之前），与外壳 nvgRotate 的枢轴一致。sway 非 0 时
+        // clipped 必为 false（入场完且非退场），旋转不会跟 scissor 打架。
+        float sway = NvgCardPainter.swayAngleOf(canvas, slot);
+        if (sway != 0f) {
+            gui.pose().mulPose(com.mojang.math.Axis.ZP.rotationDegrees(sway));
         }
         gui.pose().translate(-cardW / 2f, -h / 2f, 0f);
         // 裁剪在两种情况下都要在：入场还没走完（隧道口在开），或者退场选了带位移/收拢的类型

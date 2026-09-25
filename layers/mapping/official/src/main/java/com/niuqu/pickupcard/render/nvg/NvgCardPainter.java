@@ -33,6 +33,7 @@ import static org.lwjgl.nanovg.NanoVG.nvgLinearGradient;
 import static org.lwjgl.nanovg.NanoVG.nvgRGBA;
 import static org.lwjgl.nanovg.NanoVG.nvgRect;
 import static org.lwjgl.nanovg.NanoVG.nvgRestore;
+import static org.lwjgl.nanovg.NanoVG.nvgRotate;
 import static org.lwjgl.nanovg.NanoVG.nvgRoundedRect;
 import static org.lwjgl.nanovg.NanoVG.nvgSave;
 import static org.lwjgl.nanovg.NanoVG.nvgScale;
@@ -177,6 +178,10 @@ public final class NvgCardPainter {
                 // 读起来是位移；以卡心为原点才是原地鼓。内容那一路必须用同一个原点，否则错开。
                 float cardScale = canvas.scale();
                 float pulse = canvas.pulseOf(slot.view());
+                // 【退场缩放单点出处】SCALE 档的整卡收缩由 cardScaleOf 一处给出，与画布缩放、
+                // 脉冲相乘（不是替代，不新增变换栈）；内容路（NvgCardContent#paint 的
+                // effScale）同吃这一个数 —— 两份实现必有一份错（2026-09-20 镜像 bug 的教训）。
+                float exitScale = cardScaleOf(canvas, slot);
                 float w0 = slot.width() / cardScale;
                 float h0 = slot.height() / cardScale;
                 // 【纵向位移单点出处】DROP 入场 / FALL 退场的竖向位移由 verticalShiftOf 一处给出，
@@ -185,7 +190,14 @@ public final class NvgCardPainter {
                 // 两份实现必有一份错（2026-09-20 镜像 bug 的教训）。
                 nvgTranslate(vg, slot.x() + slot.width() / 2f,
                         slot.y() + slot.height() / 2f + verticalShiftOf(canvas, slot));
-                nvgScale(vg, cardScale * pulse, cardScale * pulse);
+                nvgScale(vg, cardScale * pulse * exitScale, cardScale * pulse * exitScale);
+                // 【sway 单点出处】稳态摇摆由 swayAngleOf 一处给出角度；当前原点在卡心，
+                // 与缩放变换同一个枢轴 —— 内容路 mulPose 同角度、同枢轴（卡心 + 位移），同吃一个数。
+                // sway 非 0 时窗口必然全开（入场完且非退场），旋转不会让窗口裁掉任何外壳。
+                float sway = swayAngleOf(canvas, slot);
+                if (sway != 0f) {
+                    nvgRotate(vg, (float) Math.toRadians(sway));
+                }
                 paintShell(vg, style, -w0 / 2f, -h0 / 2f, w0, h0,
                         accentOf(card, style.accents()), canvas.barOf(slot.view()),
                         bodyShiftOf(canvas, slot, style, rise), rise, glowStrengthOf(card),
@@ -638,6 +650,42 @@ public final class NvgCardPainter {
             s += Easing.easeInQuad(canvas.exitOf(slot.view())) * drop;          // 加速下坠
         }
         return s;
+    }
+
+    /**
+     * 这一帧整卡的缩放因子：SCALE 退场时 1 → 0.15（easeInQuad 收敛，慢起快收地缩没），
+     * 其余恒 1。终点 0.15 而不是 0：缩成竖条那么细再随 alpha 消失，比缩到无更"收起"。
+     * <p>
+     * 【与画布缩放的关系】乘法，不是替代：外壳 {@code nvgScale(S·p)}/{@code nvgScale(S·p·本值)}、
+     * 内容 {@code effScale = S·p·本值} —— 不新增变换栈，只是把现成的缩放因子多乘一个。
+     * 外壳与内容【必须】同吃这一个数（2026-09-20 镜像 bug 的教训）。
+     */
+    static float cardScaleOf(CardCanvas canvas, CardSlot slot) {
+        LayoutSettings ls = canvas.layout();
+        if (ls.exitMode() == LayoutSettings.Exit.SCALE && slot.view().exiting()) {
+            return 1f - 0.85f * Easing.easeInQuad(canvas.exitOf(slot.view()));
+        }
+        return 1f;
+    }
+
+    /**
+     * 停留期的摇摆角（度）：±1.2° 正弦往复，按 key 散列错开相位（{@link #glowScaleOf} 同款
+     * 手法）—— 一摞卡不会齐步摇摆，那是迪厅不是"活着"。
+     * <p>
+     * 【只在稳态摇】sway 关着、还没入场完（{@code contentOf < 1}，卡还在演入场）、
+     * 或正在退场（退场有自己的戏）时恒 0 —— 摇摆是"无事发生"时的心跳，不跟别的动画抢戏。
+     * <p>【接线】外壳 {@code nvgRotate} 与内容 {@code mulPose(Axis.ZP…)} 同吃这一个数、
+     * 同以卡心为枢（两侧枢轴方式与现有缩放变换一致）—— 一处出角度，两处消费。
+     */
+    static float swayAngleOf(CardCanvas canvas, CardSlot slot) {
+        LayoutSettings ls = canvas.layout();
+        if (!ls.swayEnabled() || canvas.contentOf(slot.view()) < 1f || slot.view().exiting()) {
+            return 0f;
+        }
+        float phase = (slot.view().key().hashCode() & 0xFFFF) / 65536f;
+        double wave = Math.sin((canvas.now() % 100_000L) / 2000.0 * 2.0 * Math.PI
+                + phase * 2.0 * Math.PI);
+        return 1.2f * (float) wave;
     }
 
     /**
