@@ -164,12 +164,8 @@ public final class TrellisColumn {
         Component root = new Box(columnStyle(topInset, pad, rowGap), false);
         for (Widget control : controls) {
             Component line = new Box(Style.row().withGap(gap).withHeight(Sizing.fixed(rowH)), false);
-            // 【label 格不画悬停底】它是文字的定位格，不是交互物：grow 让它占行的大半宽度，
-            // overlay 开着的话，指针飘在文字右侧的大片空白上也是"亮着一条"（0.2.3 真机反馈
-            // "空白也有 hover"的残留就在这）。悬停底只跟控件格走（WidgetSlot 的基类叠加，
-            // 且命中已被 Widget.hitArea 收窄到本体）。
             line.add(new Box(Style.row().withGrow(1f).withWidth(Sizing.atLeast(labelMin))
-                    .withHeight(Sizing.fixed(rowH)), false));
+                    .withHeight(Sizing.fixed(rowH)), true));
             if (control != null) {
                 line.add(new WidgetSlot(control, Style.row()
                         .withWidth(Sizing.fraction(controlMin,
@@ -551,12 +547,20 @@ public final class TrellisColumn {
     /**
      * 占位盒子：只占位，不画内容 —— 几何与命中由基类负责。
      *
-     * <p>【悬停底是基类画的】这一版起"指到哪一行"的视觉来自 {@link Component} 那处
-     * 唯一的实现（判据 2），这里的 {@code drawContent} 因此是空的。
+     * <p>【leaf 是布局语义，不是视觉】第二参只决定"这颗盒子在布局里是叶子（自己量尺寸）
+     * 还是容器（按孩子摆）"—— 与悬停底无关。⚠️ 第一版修复把 label 格的 leaf 改成了 false
+     * 想关悬停底，两件事搞混了：悬停底一动没动，布局语义倒是错了（0f21ad6，hunt 逮回）。
+     *
+     * <p>【悬停底在这里关死】占位盒子是"列/行/文字定位格"，不是交互物 —— 基类那笔
+     * 悬停/按下叠加层在它们身上全部关掉。悬停视觉只归<b>控件本体</b>：WidgetSlot 关掉
+     * 整格淡底后，亮的东西只剩控件自己画的那一笔（Toggle/Slider 的胶囊与轨道描边、
+     * Button 的悬停底），按 {@code PaintCtx.hover()} 缓动渐显 —— 真机三轮反馈的
+     * "空白也有 hover / 标题文本上也有 hover"就此根除。
      */
     private static final class Box extends Component {
         Box(Style s, boolean leaf) {
             style(s);
+            stateOverlay(false);
             if (leaf) {
                 contentSizer(ContentSizer.EMPTY);
             }
@@ -564,7 +568,7 @@ public final class TrellisColumn {
 
         @Override
         protected void drawContent(dev.e33.trellis.render.Canvas canvas) {
-            // 内容为空：底板与悬停底都由基类画（判据 2）。
+            // 内容为空；悬停/按下叠加层也关了（见构造器）—— 这颗盒子什么都不画。
         }
     }
 }
