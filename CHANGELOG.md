@@ -1,5 +1,51 @@
 # Changelog
 
+## v0.2.4
+
+**新增**
+
+- 磁铁把物品吸进你的背包时也弹卡（默认开，检测半径可调；原版漏斗整组吸走与经验吸取检测不到）
+- 屏幕放满后新卡立刻顶掉最老的一张，不再排队等位（旧做法挪进「屏满时」配置，随时切回）
+- 计数口径新增「背包总数」：卡上的数字实时跟随原版物品栏（含盔甲与副手，共 41 格）
+- 入场动画新增「弹出回弹」与「掉落」两档，退场新增「下坠」与「缩放消失」两档
+- 新增「停留摇摆」：卡片停留期间轻微摆动呼吸（默认关）
+
+**修复**
+
+- 配置界面的悬停高亮只落在配置项本体上，空白与标签文字不再误亮
+- 开关的点击区恢复整格；点击不再出现蓝色焦点框（键盘导航时才显示）
+- 修复拖动锚点编辑场时的偶发崩溃
+- 高稀有度卡片的微光拉亮：epic 峰值不透明度 11%→24%
+- 移除 HUD 左上角的调试面板
+
+**更改**
+
+- 卡片停留时长默认 2.6→3.2 秒，配置界面的时间一律以秒显示
+- 配置界面的全部说明文字压缩为一句话
+
+----
+
+**Added**
+
+- Magnets pulling items into your inventory now pop a card too (on by default, radius configurable; vanilla hoppers emptying a whole stack and absorbed XP can't be detected)
+- When the screen is full a new card now replaces the oldest one instead of waiting (the old behavior moved to the "when full" option)
+- A new counting mode "held total": the number follows your vanilla inventory live (41 slots including armor and offhand)
+- Two new entrances (bounce, drop) and two new exits (fall, shrink)
+- A new idle sway: a settled card gently sways (off by default)
+
+**Fixed**
+
+- Hover highlight in the config screen lands only on the control itself; blank areas and labels no longer light up
+- The toggle hit area is the whole cell again; clicking no longer shows a blue focus ring (keyboard navigation only)
+- Fixed an occasional crash while dragging the anchor editor
+- The glow on high-rarity cards is louder: epic peak opacity 11%→24%
+- Removed the debug panel in the top-left corner of the HUD
+
+**Changed**
+
+- Default hold time 2.6→3.2s; every duration in the config screen is shown in seconds
+- All tooltips in the config screen trimmed to one short sentence
+
 ## v0.2.3
 
 **新增**

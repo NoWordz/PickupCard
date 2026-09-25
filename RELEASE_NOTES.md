@@ -1,5 +1,45 @@
 # Release Notes
 
+## v0.2.4
+
+**这一版把「捡东西」补全成「得到东西」：磁铁吸进背包的也弹卡，屏满了新卡直接顶旧卡，数字还能数背包里的总数。**
+
+**新增**
+
+- 磁铁检测：磁铁升级把物品吸进你的背包时也弹卡（默认开，半径可调）
+- 屏满时新卡立刻顶掉最老的旧卡（想排队可在配置里切回）
+- 计数口径「背包总数」：卡上的数字实时跟随原版背包（41 格）
+- 五档新动画：入场「弹出回弹」「掉落」，退场「下坠」「缩放消失」，停留「摇摆」
+
+**更改**
+
+- 停留时长默认 3.2 秒；配置界面的时间按秒显示，全部说明文字精简成一句话
+
+**修复**
+
+- 配置界面悬停误亮、开关点不了、点击出蓝框、编辑场偶发崩溃，都已修复
+- 高稀有度卡片的微光明显加亮
+
+----
+
+**Pickups are now "gains": magnets pulling into your inventory pop a card, a full screen replaces the oldest card, and the number can count your inventory.**
+
+**Added**
+
+- Magnet detection: magnets pulling items into your inventory pop a card (on by default, radius configurable)
+- A full screen replaces the oldest card immediately (queueing can be re-enabled in the config)
+- Counting mode "held total": the number follows your vanilla inventory live (41 slots)
+- Five new animations: entrances bounce & drop, exits fall & shrink, and an idle sway
+
+**Changed**
+
+- Default hold time is 3.2s; durations show as seconds and every tooltip is one short sentence
+
+**Fixed**
+
+- Config hover misfires, unclickable toggles, the blue click ring and an editor crash are all fixed
+- The glow on high-rarity cards is clearly louder
+
 ## v0.2.3
 
 **换了新图标，署名与描述也一次写清楚。**

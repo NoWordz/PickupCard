@@ -15,15 +15,15 @@
   <img alt="Loader" src="https://img.shields.io/badge/Loader-Forge-red">
   <img alt="Side" src="https://img.shields.io/badge/Side-Client-blue">
   <img alt="Java" src="https://img.shields.io/badge/Java-17%2B-yellow">
-  <img alt="Version" src="https://img.shields.io/github/v/release/E33EPUS/PickupCard?sort=semver">
+  <img alt="Version" src="https://img.shields.io/github/v/release/NoWordz/PickupCard?sort=semver">
   <img alt="License" src="https://img.shields.io/badge/License-MIT-brightgreen">
 </p>
 
 <p align="center">
-  <a href="https://github.com/E33EPUS/PickupCard/actions/workflows/build.yml"><img alt="Build" src="https://github.com/E33EPUS/PickupCard/actions/workflows/build.yml/badge.svg?branch=main"></a>
+  <a href="https://github.com/NoWordz/PickupCard/actions/workflows/build.yml"><img alt="Build" src="https://github.com/NoWordz/PickupCard/actions/workflows/build.yml/badge.svg?branch=main"></a>
 </p>
 
-> 最新版见 [Releases](https://github.com/E33EPUS/PickupCard/releases) · [更新日志](CHANGELOG.md) · 纯客户端，零必需前置。
+> 最新版见 [Releases](https://github.com/NoWordz/PickupCard/releases) · [更新日志](CHANGELOG.md) · 纯客户端，零必需前置。
 
 ## 这是什么
 
@@ -56,9 +56,11 @@
 - **稀有度强调色** —— 竖条与数量同色，原版四档（白 / 黄 / 青 / 紫）；装了 RarityCore 则改用它的七档，并追加高稀有卡的入场扫光与按档阶梯的微光。
 - **经验卡** —— 经验球拾取同样弹卡（下界之星图标、独立绿色），与物品卡共用合并与过滤规则。
 - **只弹你的** —— 信号源头按拾取者过滤，其他玩家捡东西、僵尸捡装备都不会弹到你屏幕上。
+- **磁铁检测** —— 磁铁升级（如 Sophisticated Backpacks）把物品吸进你的背包时也弹卡；16 格内没有其他玩家时立即弹出，多人时按自己的背包变化确认归属。漏斗整组吸走与经验吸取检测不到。
+- **计数口径** —— 卡上的数字可以是本次拾取数（默认，带 `+` 号），也可以切换成背包持有总数：实时跟随原版物品栏（含盔甲与副手，共 41 格），捡了会涨、用了会掉。
 - **位置与堆叠** —— 默认落在快捷栏右侧那条带里，右缘对齐；锚点可拖、卡片可镜像（竖条搬到最右）、间距可调、缩放可自动或手动（50%~200%）。
-- **放不下的先排队** —— 同屏上限满了不顶掉旧卡，而是先排队；屏满队满之后并成一张「还有 N 项」的溢出卡。
-- **动画逐项可关** —— 入场、合并脉冲、微光呼吸各自独立开关；入场与退场各有多种形态（滑出 / 拉幕、淡出 / 火车退回 / 拉幕收拢）。
+- **屏满的处理** —— 默认新卡立刻顶掉最老的一张；也可切回「排队等位」，屏满队满之后并成一张「还有 N 项」的溢出卡。
+- **动画逐项可关** —— 入场、合并脉冲、微光呼吸各自独立开关；入场四种形态（滑出 / 拉幕 / 弹出回弹 / 掉落），退场五种（淡出 / 火车退回 / 拉幕收拢 / 下坠 / 缩放消失），另有停留摇摆（默认关）。
 
 ## 配置
 
@@ -106,6 +108,7 @@
 - **窄画布上的英文标签会缩字。** 320×180 那一档（`guiScale` 拉到最大）英文芯片标签会缩得偏小 —— 不重叠，但不好读。
 - **很长的过滤规则要靠悬停看全文。** 规则行只显示一行，全文在那行底部的说明条里。
 - **没有服务端组件，所以拿不到只有服务端知道的信息。** 物品改名与 NBT 走的是"实体移除之前捞真身"这条路，绝大多数情况够用。
+- **磁铁检测的两处盲区。** 原版漏斗把一整组吸空走的是实体移除（检测不到）；经验被磁吸走同样检测不到。多人游戏里附近有其他玩家时会改为严格确认（等自己的背包变化），个别容器类 mod 可能因此漏弹。
 
 ## 常见问题
 
@@ -143,6 +146,6 @@ python tools/verify_targets.py                   # 结构自洽性（CI 第一�
 
 MIT，见 [LICENSE](LICENSE)。内嵌组件（NanoVG 绑定与四平台 native、LWJGL）的许可见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。
 
-作者：[扭曲 (E33EPUS)](https://github.com/E33EPUS) · 仓库：[E33EPUS/PickupCard](https://github.com/E33EPUS/PickupCard) · 问题反馈：[Issues](https://github.com/E33EPUS/PickupCard/issues)
+作者：[扭曲 (E33EPUS)](https://github.com/E33EPUS) · 仓库：[NoWordz/PickupCard](https://github.com/NoWordz/PickupCard) · 问题反馈：[Issues](https://github.com/NoWordz/PickupCard/issues)
 
 Copyright (c) 2026 扭曲 (E33EPUS)

@@ -15,15 +15,15 @@
   <img alt="Loader" src="https://img.shields.io/badge/Loader-Forge-red">
   <img alt="Side" src="https://img.shields.io/badge/Side-Client-blue">
   <img alt="Java" src="https://img.shields.io/badge/Java-17%2B-yellow">
-  <img alt="Version" src="https://img.shields.io/github/v/release/E33EPUS/PickupCard?sort=semver">
+  <img alt="Version" src="https://img.shields.io/github/v/release/NoWordz/PickupCard?sort=semver">
   <img alt="License" src="https://img.shields.io/badge/License-MIT-brightgreen">
 </p>
 
 <p align="center">
-  <a href="https://github.com/E33EPUS/PickupCard/actions/workflows/build.yml"><img alt="Build" src="https://github.com/E33EPUS/PickupCard/actions/workflows/build.yml/badge.svg?branch=main"></a>
+  <a href="https://github.com/NoWordz/PickupCard/actions/workflows/build.yml"><img alt="Build" src="https://github.com/NoWordz/PickupCard/actions/workflows/build.yml/badge.svg?branch=main"></a>
 </p>
 
-> Latest release on [Releases](https://github.com/E33EPUS/PickupCard/releases) · [Changelog](CHANGELOG.md) · Client-side only, no required dependencies.
+> Latest release on [Releases](https://github.com/NoWordz/PickupCard/releases) · [Changelog](CHANGELOG.md) · Client-side only, no required dependencies.
 
 ## What it is
 
@@ -56,9 +56,11 @@ Drop the jar into `mods/` and you are done.
 - **Rarity accent** — the bar and the count share the accent colour, four vanilla tiers (common / uncommon / rare / epic). With RarityCore installed you get its seven tiers, plus an entrance shimmer on high tiers and a glow that steps up by tier.
 - **XP cards** — experience orbs pop a card too (nether star icon, its own green), sharing the same merge and filter rules.
 - **Only your pickups** — the signal source is filtered by the picking player, so other players looting, or zombies picking up gear, never put a card on your screen.
+- **Magnet detection** — when a magnet upgrade (e.g. Sophisticated Backpacks) pulls items into your inventory, a card pops too; it fires immediately when no other player is within 16 blocks, and near other players it confirms ownership by your own inventory changes. Vanilla hoppers emptying a whole stack and absorbed XP can't be detected.
+- **Counting mode** — the number on a card is either this pickup (default, with a `+`) or the held total: it follows your vanilla inventory live (41 slots including armor and offhand), rising as you pick up and dropping as you spend.
 - **Placement and stacking** — cards land in the strip to the right of the hotbar, right-aligned by default; the anchor is draggable, the card can be mirrored (bar on the far right), spacing is adjustable, and scaling can be automatic or manual (50%–200%).
-- **Queued instead of dropped** — when the on-screen limit is full, new pickups queue rather than pushing older cards out; once the queue is full too they collapse into a single "N more" overflow card.
-- **Every animation can be turned off** — entrance, merge pulse and glow breathing each have their own switch, and both entrance and exit offer several shapes (slide / clip, fade / train back / wipe).
+- **When the screen is full** — by default a new card replaces the oldest one right away; you can switch back to queueing, where a full screen and a full queue collapse into a single "N more" overflow card.
+- **Every animation can be turned off** — entrance, merge pulse and glow breathing each have their own switch; entrances come in four shapes (slide / clip / bounce / drop), exits in five (fade / train back / wipe / fall / shrink), plus an idle sway (off by default).
 
 ## Configuration
 
@@ -106,6 +108,7 @@ The model is "the theme provides defaults, the TOML only overrides what you chan
 - **English labels shrink on very narrow canvases.** At 320×180 (largest `guiScale`) English chip labels get noticeably small — no overlap, but not pleasant to read.
 - **Long filter rules need a hover to read in full.** A rule row shows one line; the whole rule is in the hint bar along the bottom.
 - **No server component, so server-only information is out of reach.** Renamed items and NBT come from grabbing the entity just before it is removed, which covers the vast majority of cases.
+- **Two blind spots in magnet detection.** A vanilla hopper emptying a whole stack removes the entity directly (undetectable); XP absorbed by magnets is undetectable too. In multiplayer, when other players are nearby the mod switches to strict confirmation (waiting for your own inventory to change), and some container mods may therefore be missed.
 
 ## FAQ
 
@@ -143,6 +146,6 @@ Artifacts land in `platforms/1.20.1-forge/build/libs/`.
 
 MIT — see [LICENSE](LICENSE). Licences for bundled components (the NanoVG bindings with their four-platform natives, and LWJGL) are listed in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
-Author: [扭曲 (E33EPUS)](https://github.com/E33EPUS) · Repository: [E33EPUS/PickupCard](https://github.com/E33EPUS/PickupCard) · Issues: [Issues](https://github.com/E33EPUS/PickupCard/issues)
+Author: [扭曲 (E33EPUS)](https://github.com/E33EPUS) · Repository: [NoWordz/PickupCard](https://github.com/NoWordz/PickupCard) · Issues: [Issues](https://github.com/NoWordz/PickupCard/issues)
 
 Copyright (c) 2026 扭曲 (E33EPUS)
