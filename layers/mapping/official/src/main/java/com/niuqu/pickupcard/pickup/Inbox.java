@@ -278,6 +278,8 @@ public final class Inbox {
         // 持有总数表同理：不清的话新世界的第 1 tick 会撞上旧表的 tick 号，
         // 总数口径的卡会画出上一个世界背包里剩的东西
         InventoryTotals.reset();
+        // 磁铁押注同理：基线是旧世界的背包，留着只会对错账（确认制 2026-09-25 起）
+        PickupRelay.resetMagnetPending();
     }
 
     private static FilterSubject subjectOf(ItemStack stack) {

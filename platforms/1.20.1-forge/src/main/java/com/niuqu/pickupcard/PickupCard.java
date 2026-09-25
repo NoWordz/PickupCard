@@ -3,6 +3,7 @@ package com.niuqu.pickupcard;
 import com.niuqu.pickupcard.config.PickupCardConfig;
 import com.niuqu.pickupcard.compat.RarityCoreBridge;
 import com.niuqu.pickupcard.pickup.CardContent;
+import com.niuqu.pickupcard.pickup.PickupRelay;
 import com.niuqu.pickupcard.dev.DevHarness;
 import com.niuqu.pickupcard.client.PickupCardKeys;
 import com.niuqu.pickupcard.config.CardGridScreen;
@@ -111,6 +112,8 @@ public final class PickupCard {
             if (event.phase != TickEvent.Phase.END) {
                 return;
             }
+            // 磁铁押注对账：吸收信号押 3 tick 等背包增量确认，这里每 tick 放行/丢弃（20Hz）
+            PickupRelay.onClientTick(Minecraft.getInstance().player);
             while (PickupCardKeys.CONFIG.consumeClick()) {
                 Minecraft mc = Minecraft.getInstance();
                 // 只在没有别的界面时打开：否则会把玩家正在用的界面（比如背包）压掉

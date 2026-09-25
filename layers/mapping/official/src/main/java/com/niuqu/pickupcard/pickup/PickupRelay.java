@@ -2,7 +2,9 @@ package com.niuqu.pickupcard.pickup;
 
 import com.niuqu.pickupcard.PickupCard;
 import com.niuqu.pickupcard.filter.FilterRules;
+import com.niuqu.pickupcard.magnet.MagnetConfirm;
 import com.niuqu.pickupcard.magnet.MagnetMath;
+import com.niuqu.pickupcard.render.InventoryTotals;
 import com.niuqu.pickupcard.notice.PickupCardSettings;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;
@@ -12,6 +14,7 @@ import net.minecraft.network.protocol.game.ClientboundTakeItemEntityPacket;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.ExperienceOrb;
 import net.minecraft.world.entity.item.ItemEntity;
+import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import org.jetbrains.annotations.Nullable;
 
@@ -90,6 +93,12 @@ public final class PickupRelay {
      * 磁铁开关 → 距离：先便宜后贵，绝大多数同步包（玩家、怪、盔甲架的元数据）在第一格
      * 就出局。距离用的是平方比较，省一次开方。
      * <p>
+     * 【为什么这里只押注、不弹卡（2026-09-25 用户真机反馈）】信号<b>不带"进了谁的背包"</b>
+     * ——别人的磁铁在身边吸东西，客户端看到的是一模一样的数量变小，直接弹卡就是误弹。
+     * 但"进我自己背包"客户端看得到：背包里该物品总量会涨。所以信号先进
+     * {@link #MAGNET_CONFIRM} 押 3 tick，{@link #onClientTick} 里对账（背包增量 ≥ 吸收量
+     * 才放行）——别人吸的永远等不到自己背包涨，超时丢弃。代价是弹卡最多晚 150ms，无感。
+     * <p>
      * 【总开关为什么不在这里查】与 {@link #onTakeItem} 同一条分工：{@code enabled} 归渲染层
      * （{@code CardStage.renderInto}）管 —— 关掉时屏上清卡、账本重置，账本这边照常记账，
      * 两层各管各的。磁铁开关是本功能的独立闸门，才归这里。
@@ -113,17 +122,34 @@ public final class PickupRelay {
         if (self == null || entity == null) return;
         if (self.distanceToSqr(entity) > settings.magnetRadius() * settings.magnetRadius()) return;
         // 【before 不用再 copy】mixin 捕获时已经复制过一份（实体身上的栈随时会被服务端
-        // 改写），relay 只是所有权的中转站 —— 再 copy 一次是白付的钱
-        long t0 = System.nanoTime();
-        Inbox.INSTANCE.offer(new CardContent.Item(before), amount);
-        long micros = (System.nanoTime() - t0) / 1_000L;
-        // 【一次性可观测（真机定位靠它）】弹卡本身不该刷屏，但"这条同步被当成了吸收"
-        // 必须在日志里留痕 —— 真机排障（漏斗/磁铁/别的 mod 乱改数量）全指望这条。
-        PickupCard.LOGGER.info("[磁铁] ItemEntity 数量 {} → {}，弹卡 {} 个（{}）",
-                before.getCount(), afterCount, amount, before.getItem());
-        if (micros >= SLOW_PICKUP_MICROS) {
-            PickupCard.LOGGER.warn("[磁铁] 这次记账花了 {}us（阈值 {}）—— 会直接算进掉帧",
-                    micros, SLOW_PICKUP_MICROS);
+        // 改写），relay 只是所有权的中转站 —— 再 copy 一次是白付的钱。
+        // 押注带原件：确认后弹的是这一份（同物品不同 NBT 不能拿错栈）。
+        MAGNET_CONFIRM.pending(before.getItem(), before, amount, self.tickCount);
+    }
+
+    /** 磁铁押注的对账器：键=物品，负载=押注时的原 ItemStack；总量喂 InventoryTotals（当前/上一 tick）。 */
+    private static final MagnetConfirm<Item, ItemStack> MAGNET_CONFIRM =
+            new MagnetConfirm<>(InventoryTotals::of, InventoryTotals::previousOf);
+
+    /** 换世界/总开关：上个世界的押注全部作废（基线是旧世界的背包，留着只会对错账）。 */
+    public static void resetMagnetPending() {
+        MAGNET_CONFIRM.clear();
+    }
+
+    /** 每客户端 tick 调一次：对磁铁押注对账，确认的当场弹卡（Caller 保持与拾取同一条入账路）。 */
+    public static void onClientTick(@Nullable LocalPlayer player) {
+        if (player == null) return;
+        for (MagnetConfirm.Confirmed<Item, ItemStack> c : MAGNET_CONFIRM.confirm(player.tickCount)) {
+            long t0 = System.nanoTime();
+            Inbox.INSTANCE.offer(new CardContent.Item(c.payload()), c.amount());
+            long micros = (System.nanoTime() - t0) / 1_000L;
+            // 【一次性可观测（真机定位靠它）】"这条同步被确认成了吸收"必须在日志里留痕
+            // —— 排障（漏斗/磁铁/别的 mod 乱改数量、为什么没弹）全指望这条。
+            PickupCard.LOGGER.info("[磁铁] 背包增量确认吸收，弹卡 {} 个（{}）", c.amount(), c.item());
+            if (micros >= SLOW_PICKUP_MICROS) {
+                PickupCard.LOGGER.warn("[磁铁] 这次记账花了 {}us（阈值 {}）—— 会直接算进掉帧",
+                        micros, SLOW_PICKUP_MICROS);
+            }
         }
     }
 

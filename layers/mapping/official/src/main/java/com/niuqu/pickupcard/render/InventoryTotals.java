@@ -23,6 +23,8 @@ public final class InventoryTotals {
 
     private static int lastTick = -1;
     private static final Map<Item, Integer> totals = new HashMap<>();
+    /** 上一 tick 的总量表（{@link #previousOf} 用）：换代时把旧表整体挪过来，不清不拷。 */
+    private static final Map<Item, Integer> prevTotals = new HashMap<>();
 
     private InventoryTotals() {
     }
@@ -31,6 +33,17 @@ public final class InventoryTotals {
     public static int of(Item item) {
         scanIfStale();
         return totals.getOrDefault(item, 0);
+    }
+
+    /**
+     * 这个物品<b>上一 tick</b>背包里有几个（0 = 没有）。
+     * <p>【谁在用】磁铁确认（{@code MagnetConfirm}）拿它当基线：信号与背包同步常在
+     * <b>同一 tick</b> 到达，押注那一刻的当前值已含本次吸收，拿它当基线永远等不到增量
+     * （误杀）；上一 tick 的值肯定不含 —— "当前 − 上一 tick 基线"在押注第一天就能对上账。
+     */
+    public static int previousOf(Item item) {
+        scanIfStale();
+        return prevTotals.getOrDefault(item, 0);
     }
 
     private static void scanIfStale() {
@@ -43,6 +56,9 @@ public final class InventoryTotals {
             return;
         }
         lastTick = player.tickCount;
+        // 换代：旧表整体挪进 prev（先拷再清 —— 上一 tick 的值是磁铁确认的基线）
+        prevTotals.clear();
+        prevTotals.putAll(totals);
         totals.clear();
         Inventory inv = player.getInventory();
         for (List<ItemStack> part : List.of(inv.items, inv.armor, inv.offhand)) {
@@ -58,5 +74,6 @@ public final class InventoryTotals {
     public static void reset() {
         lastTick = -1;
         totals.clear();
+        prevTotals.clear();
     }
 }

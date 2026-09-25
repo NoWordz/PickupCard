@@ -5,7 +5,6 @@
   "key.pickupcard.harness": "Open PickupCard Harness",
   "key.pickupcard.config": "Open Pickup Card Settings",
   "key.pickupcard.grid": "Open Card Grid",
-
   "pickupcard.config.title": "Pickup Card · Settings",
   "pickupcard.config.subtitle": "Changes apply instantly — nothing to save",
   "pickupcard.config.preview": "Preview",
@@ -23,7 +22,6 @@
   "pickupcard.config.modal.restore.message": "Clear all three lists? Every rule you added will be deleted, and this cannot be undone.",
   "pickupcard.config.modal.confirm": "Clear",
   "pickupcard.config.modal.cancel": "Cancel",
-
   "pickupcard.config.page.general.name": "General",
   "pickupcard.config.page.general.hint": "Whether cards pop, what they show, and what counts as one item",
   "pickupcard.config.page.anim.name": "Animation",
@@ -34,7 +32,6 @@
   "pickupcard.config.page.look.hint": "What cards look like: shape first, then colors",
   "pickupcard.config.page.filter.name": "Filter",
   "pickupcard.config.page.filter.hint": "Which items never pop, always pop, or pop quietly",
-
   "pickupcard.config.section.show": "What's shown",
   "pickupcard.config.section.behavior": "Behavior & merging",
   "pickupcard.config.section.enter": "Entrance",
@@ -44,7 +41,6 @@
   "pickupcard.config.section.count": "Count",
   "pickupcard.config.section.shape": "Shape",
   "pickupcard.config.section.color": "Colors",
-
   "pickupcard.config.row.master.name": "Master switch",
   "pickupcard.config.row.master.hint": "When off, pickups don't pop cards and nothing piles up while it's off",
   "pickupcard.config.row.showName.name": "Show item name",
@@ -62,9 +58,9 @@
   "pickupcard.config.row.mergeMode.name": "Merge granularity",
   "pickupcard.config.row.mergeMode.hint": "What counts as \"the same item\". Click to cycle: name + enchants → name → name, but renamed splits → never merge",
   "pickupcard.config.row.magnet.name": "Magnet detection",
-  "pickupcard.config.row.magnet.hint": "Also pops a card when magnets (Sophisticated Backpacks upgrades, funnels) pull ground items into a container. It watches the generic signal of \"an item entity's count being shrunk by the server\": magnet mods trigger it; a vanilla hopper emptying a whole stack removes the entity directly and cannot be detected; XP absorbed by magnets can't be detected either",
+  "pickupcard.config.row.magnet.hint": "Also pops a card when magnets (Sophisticated Backpacks upgrades) pull ground items into your own inventory. It watches the generic signal of an item entity count being shrunk by the server, but only confirms ones that actually land in your inventory: the signal is held for up to 3 ticks (150ms) until your inventory count for that item rises, so other players' magnets never pop on your screen. A vanilla hopper emptying a whole stack removes the entity directly and cannot be detected; XP absorbed by magnets can't be detected either",
   "pickupcard.config.row.magnetRadius.name": "Magnet radius",
-  "pickupcard.config.row.magnetRadius.hint": "Only absorptions within this distance count as yours; too wide and other players' pickups land on your screen",
+  "pickupcard.config.row.magnetRadius.hint": "Only absorptions within this distance are even considered (ownership is confirmed by your inventory rising); too wide just wastes bookkeeping",
   "pickupcard.config.row.enterMs.name": "Enter duration",
   "pickupcard.config.row.enterMs.hint": "How long a new card takes to slide out and settle; changing it replays the preview",
   "pickupcard.config.row.enterToggle.name": "Enter animation",
@@ -117,7 +113,6 @@
   "pickupcard.config.row.borderColor.hint": "Outline color; exact values: border in the TOML",
   "pickupcard.config.row.nameColor.name": "Name color",
   "pickupcard.config.row.nameColor.hint": "Item name color; exact values: nameColor in the TOML",
-
   "pickupcard.config.value.align.barLeft": "Bar left edge",
   "pickupcard.config.value.align.right": "Right edge",
   "pickupcard.config.value.appear.train": "Train",
@@ -144,10 +139,8 @@
   "pickupcard.config.unit.blocks": " blocks",
   "pickupcard.config.toggle.on": "On",
   "pickupcard.config.toggle.off": "Off",
-
   "pickupcard.config.anchor.value.auto": "Auto (bottom-right)",
   "pickupcard.config.anchor.value.custom": "Custom (%s, %s)",
-
   "pickupcard.config.sample.common.label": "Common",
   "pickupcard.config.sample.common.hint": "The most common tier — gray. Most vanilla items are here, diamonds included",
   "pickupcard.config.sample.rare.label": "Rare",
@@ -157,7 +150,6 @@
   "pickupcard.config.sample.longName.label": "Long name",
   "pickupcard.config.sample.longName.hint": "Epic tier — purple; also proves long names get truncated",
   "pickupcard.config.sample.longName.custom": "Enchanted Golden Apple (Treasured · from an End City)",
-
   "pickupcard.config.filter.blacklist": "Blacklist",
   "pickupcard.config.filter.blacklist.hint": "Matching items never pop — for when a beach dig would flood the screen",
   "pickupcard.config.filter.blacklist.input": "Add to blacklist: item <id> / tag #<id> / mod @<id>, press Enter",
@@ -174,13 +166,11 @@
   "pickupcard.config.filter.addRow": "Add one",
   "pickupcard.config.filter.placeholder": "Type a rule and press Enter",
   "pickupcard.config.filter.rejected": "%s: %s",
-
   "pickupcard.filter.reject.blank": "Nothing entered",
   "pickupcard.filter.reject.tooLong": "Too long (max %s characters)",
   "pickupcard.filter.reject.badSyntax": "Bad syntax. Use item <id>, tag #<id>, or mod @<id>",
   "pickupcard.filter.reject.duplicate": "Already on this list",
   "pickupcard.filter.reject.full": "A list holds at most %s rules",
-
   "pickupcard.anchor.title": "Card position · drag to adjust",
   "pickupcard.anchor.done": "Done",
   "pickupcard.anchor.reset": "Reset to default",
@@ -190,7 +180,6 @@
   "pickupcard.anchor.controls": "Esc cancels · Enter applies",
   "pickupcard.anchor.footprint": "Footprint preview (sample width)",
   "pickupcard.anchor.clamped": "Card is at the margin: the anchor won't push the card past the screen edge",
-
   "pickupcard.grid.title": "Card overview · grid",
   "pickupcard.grid.hint": "%s columns × %s rows · %s×%s per cell · arrow keys move focus"
 }
