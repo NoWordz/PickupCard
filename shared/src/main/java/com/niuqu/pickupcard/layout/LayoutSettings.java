@@ -8,7 +8,7 @@ package com.niuqu.pickupcard.layout;
  * @param appearMode   卡片出现时怎么展开。{@link Appear#SLIDE} = 内容保持原样从竖条后面平移出来；
  *                     {@link Appear#CLIP} = 内容不动、可见范围从左往右展开；
  *                     {@link Appear#BOUNCE} = 沿火车路线滑出、冲过终点再弹回（过冲回弹）；
- *                     {@link Appear#DROP} = 从锚线上方掉落、落地带一记小弹。
+ *                     {@link Appear#DROP} = 沿火车路线斜着滑进来，同时从锚线上方落下一记、落地带小弹。
  * @param exitMode     卡片怎么消失。{@link Exit#FADE} = 原地淡出；{@link Exit#TRAIN} = 内容整块
  *                     平移回竖条后面（与火车入场的逆放）；{@link Exit#WIPE} = 可见范围从右往左
  *                     收拢（与拉幕入场的逆放）；{@link Exit#FALL} = 向下坠 + 淡出；
@@ -100,7 +100,7 @@ public record LayoutSettings(Appear appearMode, Exit exitMode, Side align, float
         CLIP,
         /** 滑出 + 过冲回弹：与火车同路线，但冲过终点一截再被拉回来（easeOutBack 的过冲）。 */
         BOUNCE,
-        /** 掉落：从锚线上方掉下来，落地时带一记小弹。 */
+        /** 掉落：沿火车路线斜着滑进来（水平走火车那趟），同时从锚线上方轻微下落，落地带一记小弹。 */
         DROP
     }
 

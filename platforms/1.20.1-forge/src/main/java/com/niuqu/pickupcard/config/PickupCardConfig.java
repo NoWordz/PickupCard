@@ -329,7 +329,7 @@ public final class PickupCardConfig {
                             "  SLIDE  = 火车：内容保持原样，从竖条后面平移出来；数字端先进视野。",
                             "  CLIP   = 拉幕：内容不动，可见范围从左往右展开；图标端先露。",
                             "  BOUNCE = 弹出回弹：沿火车路线滑出，冲过终点再弹回来。",
-                            "  DROP   = 掉落：从锚线上方掉下来，落地带一记小弹。")
+                            "  DROP   = 掉落：沿火车路线斜着滑进来，同时从锚线上方轻微下落，落地带一记小弹。")
                     .defineEnum("appearMode", LayoutSettings.Appear.SLIDE);
 
             exitMode = builder

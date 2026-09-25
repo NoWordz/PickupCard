@@ -64,7 +64,7 @@
   "pickupcard.config.row.enterToggle.name": "入场动画",
   "pickupcard.config.row.enterToggle.hint": "只关新卡滑出这一段：关掉后新卡直接出现，跳动和淡出不受影响",
   "pickupcard.config.row.appearMode.name": "展开方式",
-  "pickupcard.config.row.appearMode.hint": "新卡入场怎么从竖条右侧出现，点一下换下一种：火车（内容整块平移出来，默认）→ 拉幕（可见范围从左往右展开）→ 弹出回弹（冲过终点再弹回来）→ 掉落（从锚线上方掉下来，落地带一记小弹）",
+  "pickupcard.config.row.appearMode.hint": "新卡入场怎么从竖条右侧出现，点一下换下一种：火车（内容整块平移出来，默认）→ 拉幕（可见范围从左往右展开）→ 弹出回弹（冲过终点再弹回来）→ 掉落（斜着滑进来，同时从锚线上方轻微下落，落地带一记小弹）",
   "pickupcard.config.row.holdMs.name": "停留时长",
   "pickupcard.config.row.holdMs.hint": "一张卡从就位到开始淡出，在屏上待多久；连捡同一件会不断刷新这个计时",
   "pickupcard.config.row.sway.name": "停留摇摆",

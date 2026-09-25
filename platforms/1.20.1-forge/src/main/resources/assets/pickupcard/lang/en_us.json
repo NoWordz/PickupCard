@@ -64,7 +64,7 @@
   "pickupcard.config.row.enterToggle.name": "Enter animation",
   "pickupcard.config.row.enterToggle.hint": "Only the slide-out: off makes new cards appear instantly; bump and exit are unaffected",
   "pickupcard.config.row.appearMode.name": "Entrance style",
-  "pickupcard.config.row.appearMode.hint": "How a new card emerges from behind the bar. Click to cycle: Train (content slides as a block, default) → Curtain (the view wipes open) → Bounce (overshoots the end and springs back) → Drop (falls onto the anchor line from above)",
+  "pickupcard.config.row.appearMode.hint": "How a new card emerges from behind the bar. Click to cycle: Train (content slides as a block, default) → Curtain (the view wipes open) → Bounce (overshoots the end and springs back) → Drop (slides in along the train path while settling down from the anchor line, with a small landing bounce)",
   "pickupcard.config.row.holdMs.name": "Hold duration",
   "pickupcard.config.row.holdMs.hint": "How long a settled card stays before exiting; picking the same item refreshes the timer",
   "pickupcard.config.row.sway.name": "Idle sway",

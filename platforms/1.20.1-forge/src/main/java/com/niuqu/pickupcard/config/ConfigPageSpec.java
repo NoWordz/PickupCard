@@ -436,7 +436,7 @@ public final class ConfigPageSpec {
                 ? "pickupcard.config.value.align.right" : "pickupcard.config.value.align.barLeft");
     }
 
-    /** 界面上的叫法：火车＝平移，拉幕＝展开可见范围，弹出回弹＝冲过终点再弹回，掉落＝从锚线上方落下。
+    /** 界面上的叫法：火车＝平移，拉幕＝展开可见范围，弹出回弹＝冲过终点再弹回，掉落＝斜着滑进来带下坠小弹。
      *  <p>【穷举 switch】不用 default：枚举再扩档时编译器会逼着这里补映射，
      *  新档就不会因为落到 default 而在界面上显示成别人的名字或英文枚举名。 */
     static String appearName(LayoutSettings.Appear appear) {
