@@ -41,6 +41,18 @@ class CountFormatTest {
     }
 
     @Test
+    @DisplayName("总数写法不带进账符号：口径是「背包里有多少」，不是「这次进账多少」")
+    void holdHasNoGainPrefix() {
+        assertEquals("64", CountFormat.PLUS.hold(64));
+        assertEquals("64", CountFormat.X_PREFIX.hold(64));
+        assertEquals("64", CountFormat.PLAIN.hold(64));
+        assertEquals("1.2K", CountFormat.ABBREVIATED.hold(1_200));
+        // 缩写档与 gain 同一把尺：千位起缩、一位小数封顶
+        assertEquals("1.0K", CountFormat.ABBREVIATED.hold(1_000));
+        assertEquals("999", CountFormat.ABBREVIATED.hold(999));
+    }
+
+    @Test
     @DisplayName("所有格式都不含空白：卡片宽度是算出来的，混进空格会量错")
     void noWhitespace() {
         for (CountFormat format : CountFormat.values()) {

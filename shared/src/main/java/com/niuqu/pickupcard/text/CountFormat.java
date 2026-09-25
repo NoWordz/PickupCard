@@ -34,6 +34,18 @@ public enum CountFormat {
         };
     }
 
+    /**
+     * 把"背包里现在有几个"写成完整显示文本 —— <b>不带进账符号</b>：数量口径是
+     * 持有量而不是进账量，{@code +64} 的那个 {@code +} 在这里就是错话。
+     * 缩写档与 {@link #gain} 同一把尺（千位起缩、一位小数封顶），只是不前置 {@code +}。
+     *
+     * @param count 物品栏持有总数
+     * @return 直接可画的字符串；调用方不要再前置任何符号
+     */
+    public String hold(int count) {
+        return this == ABBREVIATED ? abbreviate(count) : group(count);
+    }
+
     /** 不加符号的数字本身（给需要自己控制布局的场合用）。 */
     public String group(int count) {
         return Integer.toString(count);

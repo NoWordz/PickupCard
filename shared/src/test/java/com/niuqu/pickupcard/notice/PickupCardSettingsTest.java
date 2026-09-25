@@ -1,6 +1,7 @@
 package com.niuqu.pickupcard.notice;
 
 import com.niuqu.pickupcard.text.CountFormat;
+import com.niuqu.pickupcard.text.CountMode;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -44,6 +45,26 @@ class PickupCardSettingsTest {
         PickupCardSettings viaTenArgs = new PickupCardSettings(1_000L, 100L, MergeMode.SAME_NBT,
                 3, 9, CountFormat.PLUS, true, true, false, 0);
         assertEquals(FullPolicy.REPLACE, viaTenArgs.fullPolicy(), "10 参旧签名缺省 REPLACE");
+    }
+
+    @Test
+    void nullCountModeSanitizesToPickup() {
+        PickupCardSettings settings = new PickupCardSettings(2_600L, 320L, MergeMode.defaults(),
+                5, 9, CountFormat.PLUS, true, true, false, 0, FullPolicy.REPLACE, null);
+        assertEquals(CountMode.PICKUP, settings.sanitized().countMode(), "null 防御回默认口径");
+    }
+
+    @Test
+    void countModeDefaultsToPickup() {
+        assertEquals(CountMode.PICKUP, PickupCardSettings.defaults().countMode(),
+                "默认口径 = 本次拾取数（0.2.2 及以前的行为）");
+        PickupCardSettings viaElevenArgs = new PickupCardSettings(1_000L, 100L, MergeMode.SAME_NBT,
+                3, 9, CountFormat.PLUS, true, true, false, 0, FullPolicy.QUEUE);
+        assertEquals(CountMode.PICKUP, viaElevenArgs.countMode(), "11 参旧签名缺省 PICKUP");
+        PickupCardSettings viaTenArgs = new PickupCardSettings(1_000L, 100L, MergeMode.SAME_NBT,
+                3, 9, CountFormat.PLUS, true, true, false, 0);
+        assertEquals(CountMode.PICKUP, viaTenArgs.countMode(), "10 参旧签名也缺省 PICKUP");
+        assertEquals(FullPolicy.REPLACE, viaTenArgs.fullPolicy(), "10 参旧签名的 fullPolicy 缺省不变");
     }
 
     @Test

@@ -1,6 +1,7 @@
 package com.niuqu.pickupcard.notice;
 
 import com.niuqu.pickupcard.text.CountFormat;
+import com.niuqu.pickupcard.text.CountMode;
 
 /**
  * 一次会话里所有卡共用的参数。
@@ -21,6 +22,7 @@ import com.niuqu.pickupcard.text.CountFormat;
  * @param showItemId    显示物品 ID（{@code minecraft:stone}）而不是它的名字
  * @param nameMaxWidth  物品名最大宽度（像素）；0 = 按屏宽比例自动（{@code CardMetrics}）
  * @param fullPolicy    屏满之后的新拾取怎么办（顶掉最老 / 排队），见 {@link FullPolicy}
+ * @param countMode     卡上数字回答哪个问题（本次拾取数 / 背包持有总数），见 {@link CountMode}
  */
 public record PickupCardSettings(long holdMs,
                                  long exitMs,
@@ -32,11 +34,28 @@ public record PickupCardSettings(long holdMs,
                                  boolean showItemName,
                                  boolean showItemId,
                                  int nameMaxWidth,
-                                 FullPolicy fullPolicy) {
+                                 FullPolicy fullPolicy,
+                                 CountMode countMode) {
 
     public static PickupCardSettings defaults() {
         return new PickupCardSettings(2_600L, 320L, MergeMode.defaults(), 5, 9, CountFormat.PLUS,
-                true, true, false, 0, FullPolicy.REPLACE);
+                true, true, false, 0, FullPolicy.REPLACE, CountMode.PICKUP);
+    }
+
+    /** 旧 11 参签名：{@code countMode} 缺省 {@link CountMode#PICKUP}（本次拾取数），旧调用点零改动。 */
+    public PickupCardSettings(long holdMs,
+                              long exitMs,
+                              MergeMode mergeMode,
+                              int maxOnScreen,
+                              int queueSize,
+                              CountFormat countFormat,
+                              boolean enabled,
+                              boolean showItemName,
+                              boolean showItemId,
+                              int nameMaxWidth,
+                              FullPolicy fullPolicy) {
+        this(holdMs, exitMs, mergeMode, maxOnScreen, queueSize, countFormat, enabled,
+                showItemName, showItemId, nameMaxWidth, fullPolicy, CountMode.PICKUP);
     }
 
     /** 旧 10 参签名：{@code fullPolicy} 缺省 {@link FullPolicy#REPLACE}（0.2.3 起的新默认），旧调用点零改动。 */
@@ -68,6 +87,7 @@ public record PickupCardSettings(long holdMs,
                 showItemId,
                 // 0 = 自动；给了正数就别小于 24px —— 比一个字符还窄的"最大宽度"不是设置，是 bug
                 nameMaxWidth <= 0 ? 0 : Math.max(24, Math.min(600, nameMaxWidth)),
-                fullPolicy == null ? FullPolicy.REPLACE : fullPolicy);
+                fullPolicy == null ? FullPolicy.REPLACE : fullPolicy,
+                countMode == null ? CountMode.PICKUP : countMode);
     }
 }
