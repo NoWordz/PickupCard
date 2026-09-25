@@ -51,6 +51,7 @@ public final class Inbox {
         record Added(Notice<Card> notice) implements Event {
         }
 
+        /** 并进了已有卡：改数字/代数即可；同帧可能还有别的卡被连带顶掉（救回守恒顶卡），照 Evicted 各自处理。 */
         record Merged(Notice<Card> notice) implements Event {
         }
 

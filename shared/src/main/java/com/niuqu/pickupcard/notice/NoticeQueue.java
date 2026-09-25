@@ -24,7 +24,7 @@ public final class NoticeQueue<T> {
     public enum Change {
         /** 新开一张卡：需要新建一张卡并播入场。 */
         ADDED,
-        /** 并进了已有卡：只需要把数量与代数写回那张卡。 */
+        /** 并进了已有卡：把数量与代数写回那张卡；可能<b>同时</b>带着被连带顶掉的卡（见 {@link #EVICTED}）——救回守恒与"不可并的顶替后命中排队合并"都会这样。 */
         MERGED,
         /** 已有卡被挤掉（超出同时在屏数量）：需要播退场后移除。 */
         EVICTED,
@@ -101,22 +101,25 @@ public final class NoticeQueue<T> {
             Notice<T> returning = leaving.get(key);
             if (returning != null
                     && MergeWindow.shouldMerge(true, returning.lookKey().equals(lookKey), mergeMode)) {
-                leaving.remove(key);
-                Notice<T> merged = returning.mergeInto(amount, now);
                 // 【名额守恒】救回不查上限的老前提是"名额是 sweep 腾出来的"——REPLACE 顶卡不是：
                 // 顶那一刻名额就被新卡占走，这时把它免费拉回来，realSize 就永久停在 max+1。
-                // 超限就同帧把最老的一张正常卡顶出去：救回与顶卡一起完成，realSize 恒不超 max
-                //（QUEUE 档下 alive 只会经 sweep 减员后再救回，天然守恒，这个分支不触发）。
-                if (realSize() >= maxOnScreen) {
-                    Notice<T> victim = oldestNormalCard();
+                // 超限就同帧把最老的一张正常卡顶出去：救回与顶卡一起完成，realSize 恒不超 max。
+                // （QUEUE 档也会走到这里：sweep 腾的名额同 tick 就被 promote 补位占回，
+                // 此时捡回 leaving 里的同名卡同样超限 —— 守恒逻辑两档通用，不是 REPLACE 专属。）
+                // 实在无人可顶（alive 里只剩溢出卡，几何容量 0）：救不回 —— 淡出中的它继续淡出，
+                // 这次拾取当一次全新拾取，落到下面的排队/丢弃路径，绝不硬塞上账。
+                Notice<T> victim = realSize() >= maxOnScreen ? oldestNormalCard() : null;
+                if (victim != null || realSize() < maxOnScreen) {
+                    leaving.remove(key);
+                    Notice<T> merged = returning.mergeInto(amount, now);
                     if (victim != null) {
                         alive.remove(victim.key());
                         leaving.put(victim.key(), victim);   // 与 sweep 同一条离场路
                         evicted.add(victim);
                     }
+                    alive.put(key, merged);
+                    return new Outcome<>(Change.MERGED, merged, evicted);
                 }
-                alive.put(key, merged);
-                return new Outcome<>(Change.MERGED, merged, evicted);
             }
         }
         if (existing != null) {

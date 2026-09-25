@@ -446,6 +446,7 @@ class NoticeQueueTest {
         assertEquals(NoticeQueue.Change.MERGED, rescue.change());
         assertEquals(1, rescue.evicted().size(), "超限的救回要连带顶一张");
         assertEquals("b", rescue.evicted().get(0).key());
+        assertEquals(4, rescue.notice().count(), "数量累加到救回那张卡身上（1+3）");
         assertEquals(2, q.size(), "名额守恒：救回的 a + 先来的 c");
         assertTrue(q.find("a").isPresent());
         assertTrue(q.isLeaving("b"), "b 走与 sweep 同一条离场路");
@@ -483,5 +484,35 @@ class NoticeQueueTest {
 
         assertEquals(NoticeQueue.Change.QUEUED, outcome.change());
         assertEquals(0, q.size(), "几何上连一张都放不下时，REPLACE 不能硬塞一张上账");
+    }
+
+    @Test
+    @DisplayName("REPLACE 档容量为 0 且不排队：与 QUEUE 档一样丢弃，绝不上账")
+    void replaceWithZeroCapacityAndNoQueueDrops() {
+        NoticeQueue<String> q = queue();
+
+        var outcome = add(q, "a", 1, 0L, 0, 0, FullPolicy.REPLACE);
+
+        assertEquals(NoticeQueue.Change.DROPPED, outcome.change());
+        assertEquals(0, q.size());
+    }
+
+    @Test
+    @DisplayName("救回无人可顶（alive 只剩溢出卡、容量 0）：救不回，落去排队，淡出中的它继续淡出")
+    void rescueWithNoVictimFallsThroughToQueue() {
+        NoticeQueue<String> q = queue();
+        add(q, "a", 1, 0L, 1, 0, FullPolicy.REPLACE);                 // a 上屏
+        var pushed = add(q, "b", 1, 100L, 1, 0, FullPolicy.REPLACE);  // 顶 a 上 b，a 进 leaving
+        assertEquals(NoticeQueue.Change.ADDED, pushed.change());
+        q.sweep(1_000_000L, 0L);                                      // b 到点退场（holdMs=0），alive 空
+        q.absorbOverflow("~overflow", "~overflow", "spill", 1, 150L); // 屏上只剩溢出卡
+
+        // 容量 0：捡回 a 时 realSize(0) >= 0 且 alive 里没有正常卡可顶 → 救不回
+        var outcome = add(q, "a", 1, 200L, 0, 9, FullPolicy.REPLACE);
+
+        assertEquals(NoticeQueue.Change.QUEUED, outcome.change());
+        assertTrue(q.isLeaving("a"), "救不回的 a 留在 leaving 继续淡出");
+        assertTrue(q.find("a").isEmpty(), "这次拾取不上账");
+        assertTrue(q.find("~overflow").isPresent(), "溢出卡不受影响");
     }
 }
