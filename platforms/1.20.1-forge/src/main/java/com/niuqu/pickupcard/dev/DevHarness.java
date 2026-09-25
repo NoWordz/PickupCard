@@ -243,6 +243,19 @@ public final class DevHarness {
         /** spawn 时记下的漏斗/玩家坐标（dump 用同一坐标——当下玩家位置会漂，见 tickProbe 注释）。 */
         private static net.minecraft.core.BlockPos probeHopperPos;
         private static net.minecraft.core.BlockPos probePlayerPos;
+        /** 客户端线程先取好的玩家 UUID（评审 🟢-3：server.execute 的 lambda 在服务端线程跑，
+         * 别在里面读 mc.player —— 哪怕只是读个 UUID，跨线程读共享状态也是坏味道）。 */
+        private static java.util.UUID probePlayerUuid;
+
+        /** 把石头塞进漏斗指定槽（预填压容量用）。 */
+        private static void hoppersFill(net.minecraft.server.level.ServerLevel level,
+                                        net.minecraft.core.BlockPos pos, int slot, int count) {
+            if (level.getBlockEntity(pos)
+                    instanceof net.minecraft.world.level.block.entity.HopperBlockEntity h) {
+                h.setItem(slot, new net.minecraft.world.item.ItemStack(
+                        net.minecraft.world.item.Items.STONE, count));
+            }
+        }
 
         /**
          * {@code -PharnessAuto=grid}：第三个形态（网格，A-19）→ 截图 + 读数 → 退出。
@@ -1257,10 +1270,13 @@ public final class DevHarness {
             probeTicks++;
             if (probeTicks < WARMUP_TICKS) return;
             if (mc.getOverlay() != null || mc.screen != null) return;
+            if (probePlayerUuid == null && mc.player != null) {
+                probePlayerUuid = mc.player.getUUID();
+            }
             if (probeTicks == WARMUP_TICKS) {
                 server.execute(() -> {
                     var sLevel = server.overworld();
-                    var player = sLevel.getPlayerByUUID(mc.player.getUUID());
+                    var player = sLevel.getPlayerByUUID(probePlayerUuid);
                     if (player == null) return;
                     // 漏斗放在玩家东侧两格：漏斗从上方区域吸物品实体（原版行为）。
                     // 【坐标记进静态字段】dump 用的是同一个 pos —— 第一版 dump 用"当下玩家位置"
@@ -1270,6 +1286,14 @@ public final class DevHarness {
                     probePlayerPos = player.blockPosition();
                     sLevel.setBlockAndUpdate(hopperPos,
                             net.minecraft.world.level.block.Blocks.HOPPER.defaultBlockState());
+                    // 【预填 252 个（评审 🔴-1 的修法）】空漏斗对 64 石头必然整组搬空走 discard
+                    // （javap：addItem 里 isEmpty→discard、非空才 setItem）—— discard 不发数据
+                    // 同步，SHRUNK 永远等不到。预填到只剩 4 个空位后，整组只装得下 4 个，
+                    // 剩 60 走 setItem(60) → 客户端必见 64→4 的 SHRUNK，漏斗场景也验得出信号。
+                    for (int slot = 0; slot < 4; slot++) {
+                        hoppersFill(sLevel, hopperPos, slot, 64);
+                    }
+                    hoppersFill(sLevel, hopperPos, 4, 60);
                     var stack = new net.minecraft.world.item.ItemStack(
                             net.minecraft.world.item.Items.STONE, 64);
                     var item = new net.minecraft.world.entity.item.ItemEntity(
@@ -1277,17 +1301,17 @@ public final class DevHarness {
                             stack);
                     item.setPickUpDelay(20);
                     sLevel.addFreshEntity(item);
-                    PickupCard.LOGGER.info("[harness-auto] probe：漏斗已放在 {}，上方丢出 64 石头（等吸收）", hopperPos);
+                    PickupCard.LOGGER.info("[harness-auto] probe：漏斗已放在 {}（预填 252/320，剩 4 空位），上方丢出 64 石头 → 期望 64→4 SHRUNK", hopperPos);
                 });
                 return;
             }
-            // 对照组：t=WARMUP+60（漏斗那组已经被吸走几个之后）在无漏斗处丢一组，
-            // 它静置在地上，数量不该有任何服务端改动 → 不该有 SHRUNK。
+            // 对照组：t=WARMUP+60 在无漏斗处丢一组，它静置在地上，数量不该有任何
+            // 服务端改动 → 不该有 SHRUNK。
             if (probeTicks == WARMUP_TICKS + 60 && !probeControlDropped) {
                 probeControlDropped = true;
                 server.execute(() -> {
                     var sLevel = server.overworld();
-                    var player = sLevel.getPlayerByUUID(mc.player.getUUID());
+                    var player = sLevel.getPlayerByUUID(probePlayerUuid);
                     if (player == null || probePlayerPos == null) return;
                     var awayPos = probePlayerPos.offset(-4, 0, 0);
                     var stack = new net.minecraft.world.item.ItemStack(

@@ -112,17 +112,6 @@ public record CardCanvas(long now,
         return countText(view.prevCount());
     }
 
-    /**
-     * 这一帧数字要占多宽：滚动中取旧值/新值里宽的那个。
-     * <p>【为什么不能只看新值】宽度是排布算出来的，而排布在动画之前 —— 只按新值算的话，
-     * 1 → 10 这一下会在滚到一半时把卡整个撑宽，看着像卡在抖。
-     */
-    public int countWidth(CardView view, net.minecraft.client.gui.Font font) {
-        String prev = prevCountText(view);
-        int w = font.width(countText(view.notice().count()));
-        return prev == null ? w : Math.max(w, font.width(prev));
-    }
-
     /** 退场进度 ∈ [0,1]，0 = 还没退场。 */
     public float exitOf(CardView view) {
         if (!view.exiting()) return 0f;

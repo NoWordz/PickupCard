@@ -51,4 +51,11 @@ class MagnetMathTest {
         // 但"before=0"作为防御边界钉死：0 张卡也弹不出。
         assertEquals(0, MagnetMath.absorbed(0, 64));
     }
+
+    @Test
+    @DisplayName("负数 after 是脏数据，不弹卡：64 → -1 = 0")
+    void negativeAfterIsNothing() {
+        // after 来自实体现值读数，正常不可能是负的 —— 守卫在，测试也钉住（评审 🟢-4）。
+        assertEquals(0, MagnetMath.absorbed(64, -1));
+    }
 }

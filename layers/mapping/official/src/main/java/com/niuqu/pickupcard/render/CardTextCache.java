@@ -46,6 +46,11 @@ public final class CardTextCache {
     private int nameMaxWidth = -1;
     private boolean showName;
     private boolean showId;
+    // 【口径两键（评审 🟡-2，2026-09-25）】countText 读 countFormat/countMode（CardCanvas.countText），
+    // 不进键的话玩家在配置界面切「数字含义/数量写法」，屏上活着的卡会拿旧口径文本撑到
+    // 其它键变化或自然退场（~3s）。countMode 的语义翻转（+号有无、数字含义）尤其刺眼。
+    private com.niuqu.pickupcard.text.CountFormat countFormat;
+    private com.niuqu.pickupcard.text.CountMode countMode;
 
     // ---- 值 ----
     /** 未截断的名字（含「显示物品 ID」与溢出卡的两条分支）。 */
@@ -76,9 +81,12 @@ public final class CardTextCache {
         int nowNameMax = settings.nameMaxWidth();
         boolean nowShowName = settings.showItemName();
         boolean nowShowId = settings.showItemId();
+        var nowCountFormat = settings.countFormat();
+        var nowCountMode = settings.countMode();
         if (current == card && nowCount == count && oldCount == prevCount && nowScale == scale
                 && nowWidth == guiWidth && nowNameMax == nameMaxWidth
-                && nowShowName == showName && nowShowId == showId) {
+                && nowShowName == showName && nowShowId == showId
+                && nowCountFormat == countFormat && nowCountMode == countMode) {
             return;
         }
         card = current;
@@ -89,6 +97,8 @@ public final class CardTextCache {
         nameMaxWidth = nowNameMax;
         showName = nowShowName;
         showId = nowShowId;
+        countFormat = nowCountFormat;
+        countMode = nowCountMode;
 
         name = rawName(current, nowCount, nowShowId);
         countText = canvas.countText(nowCount);
