@@ -117,6 +117,10 @@ public final class PickupRelay {
         long t0 = System.nanoTime();
         Inbox.INSTANCE.offer(new CardContent.Item(before), amount);
         long micros = (System.nanoTime() - t0) / 1_000L;
+        // 【一次性可观测（真机定位靠它）】弹卡本身不该刷屏，但"这条同步被当成了吸收"
+        // 必须在日志里留痕 —— 真机排障（漏斗/磁铁/别的 mod 乱改数量）全指望这条。
+        PickupCard.LOGGER.info("[磁铁] ItemEntity 数量 {} → {}，弹卡 {} 个（{}）",
+                before.getCount(), afterCount, amount, before.getItem());
         if (micros >= SLOW_PICKUP_MICROS) {
             PickupCard.LOGGER.warn("[磁铁] 这次记账花了 {}us（阈值 {}）—— 会直接算进掉帧",
                     micros, SLOW_PICKUP_MICROS);
