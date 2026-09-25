@@ -231,6 +231,17 @@ public final class DevHarness {
         private static int configTicks;
 
         /**
+         * {@code -PharnessAuto=probe}：磁铁探针的自动场景（Phase D / Task D1）。
+         * <p>单人 dev 里在玩家旁边放一个漏斗、头顶丢一组 64 个的石头（服务端侧），
+         * 漏斗吸收会把物品实体的数量改小 → 客户端 {@code [magnet-probe]} 日志应出现
+         * {@code SHRUNK}；对照组在无漏斗处再丢一组，静置<b>不该</b>出现 SHRUNK
+         * （despawn 场景 5 分钟太长，归 Task D4 真机验收）。跑完自动退出。
+         */
+        private static final boolean PROBE_ONLY = "probe".equalsIgnoreCase(MODE);
+        private static int probeTicks;
+        private static boolean probeControlDropped;
+
+        /**
          * {@code -PharnessAuto=grid}：第三个形态（网格，A-19）→ 截图 + 读数 → 退出。
          * <p>独立一条时间线：{@code tickConfig} 那串偏移是配置流程的，网格不复用也不会互相干扰。
          */
@@ -309,6 +320,10 @@ public final class DevHarness {
 
         static void tick(Minecraft mc) {
             if (!enabled()) return;
+            if (PROBE_ONLY) {
+                tickProbe(mc);
+                return;
+            }
             if (HUD_ONLY) {
                 tickHud(mc);
                 return;
@@ -1219,6 +1234,71 @@ public final class DevHarness {
             }
             PickupCard.LOGGER.info("[harness-auto] 清掉本轮（档{}）上一轮的 {} 张截图（跨轮同名会污染分析）",
                     tag.isEmpty() ? "未定" : tag, n);
+        }
+
+        /**
+         * 磁铁探针剧本（{@code -PharnessAuto=probe}）：放漏斗 → 头顶丢 64 石头 →
+         * 对照组远处置放 → 等探针日志 → 退出。所有世界改动都在<b>服务端线程</b>
+         * （{@code server.execute}）——客户端 tick 线程碰服务端世界是线程违规。
+         */
+        private static void tickProbe(Minecraft mc) {
+            if (mc.level == null || mc.getOverlay() != null) {
+                return;
+            }
+            var server = mc.getSingleplayerServer();
+            if (server == null) {
+                PickupCard.LOGGER.error("[harness-auto] probe 模式需要单人世界（内置服务端），当前没有 —— 退出");
+                mc.stop();
+                return;
+            }
+            probeTicks++;
+            if (probeTicks < WARMUP_TICKS) return;
+            if (mc.getOverlay() != null || mc.screen != null) return;
+            if (probeTicks == WARMUP_TICKS) {
+                server.execute(() -> {
+                    var sLevel = server.overworld();
+                    var player = sLevel.getPlayerByUUID(mc.player.getUUID());
+                    if (player == null) return;
+                    // 漏斗放在玩家东侧两格：漏斗从上方区域吸物品实体（原版行为）
+                    var hopperPos = player.blockPosition().offset(2, 0, 0);
+                    sLevel.setBlockAndUpdate(hopperPos,
+                            net.minecraft.world.level.block.Blocks.HOPPER.defaultBlockState());
+                    var stack = new net.minecraft.world.item.ItemStack(
+                            net.minecraft.world.item.Items.STONE, 64);
+                    var item = new net.minecraft.world.entity.item.ItemEntity(
+                            sLevel, hopperPos.getX() + 0.5, hopperPos.getY() + 1.25, hopperPos.getZ() + 0.5,
+                            stack);
+                    item.setPickUpDelay(20);
+                    sLevel.addFreshEntity(item);
+                    PickupCard.LOGGER.info("[harness-auto] probe：漏斗已放在 {}，上方丢出 64 石头（等吸收）", hopperPos);
+                });
+                return;
+            }
+            // 对照组：t=WARMUP+60（漏斗那组已经被吸走几个之后）在无漏斗处丢一组，
+            // 它静置在地上，数量不该有任何服务端改动 → 不该有 SHRUNK。
+            if (probeTicks == WARMUP_TICKS + 60 && !probeControlDropped) {
+                probeControlDropped = true;
+                server.execute(() -> {
+                    var sLevel = server.overworld();
+                    var player = sLevel.getPlayerByUUID(mc.player.getUUID());
+                    if (player == null) return;
+                    var awayPos = player.blockPosition().offset(-4, 0, 0);
+                    var stack = new net.minecraft.world.item.ItemStack(
+                            net.minecraft.world.item.Items.STONE, 64);
+                    var item = new net.minecraft.world.entity.item.ItemEntity(
+                            sLevel, awayPos.getX() + 0.5, awayPos.getY() + 1.0, awayPos.getZ() + 0.5,
+                            stack);
+                    item.setPickUpDelay(20);
+                    sLevel.addFreshEntity(item);
+                    PickupCard.LOGGER.info("[harness-auto] probe：对照组 64 石头丢在 {}（无漏斗，不该 SHRUNK）", awayPos);
+                });
+                return;
+            }
+            // 漏斗 8gt 吸 1 个：64→63 的 SHRUNK 最早在 ~1-2s 出现；给 10s 余量足够证据落地
+            if (probeTicks >= WARMUP_TICKS + 200) {
+                PickupCard.LOGGER.info("[harness-auto] probe 收工：查 latest.log 里 [magnet-probe] 的 SHRUNK 记录，退出客户端");
+                mc.stop();
+            }
         }
 
         private static void tickHud(Minecraft mc) {

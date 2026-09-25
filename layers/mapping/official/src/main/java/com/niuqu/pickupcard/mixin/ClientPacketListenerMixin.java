@@ -1,12 +1,16 @@
 package com.niuqu.pickupcard.mixin;
 
+import com.niuqu.pickupcard.PickupCard;
 import com.niuqu.pickupcard.pickup.PickupRelay;
 import com.niuqu.pickupcard.pickup.PickupSoundGate;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.client.multiplayer.ClientPacketListener;
+import net.minecraft.network.protocol.game.ClientboundSetEntityDataPacket;
 import net.minecraft.network.protocol.game.ClientboundTakeItemEntityPacket;
 import net.minecraft.sounds.SoundEvent;
 import net.minecraft.sounds.SoundSource;
+import net.minecraft.world.entity.item.ItemEntity;
+import net.minecraft.world.item.ItemStack;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.injection.At;
@@ -41,6 +45,53 @@ public abstract class ClientPacketListenerMixin {
 
     @Shadow
     private ClientLevel level;
+
+    // =====================================================================
+    // 【磁铁探针（Phase D / Task D1，临时插桩）】ItemEntity 的实体数据同步前后值。
+    // 目的：验证"磁铁/漏斗把物品实体数量改小"在客户端可见（DATA_ITEM 槽同步），
+    // 给 D3 的正式 mixin 落证据。探针结论出来后本段由 D3 正式化改写。
+    // 【签名与注入点为何长这样（2026-09-25 javap 47.4.10 核实）】
+    // handleSetEntityData 开头 ensureRunningOnSameThread（字节码指令 6），随后
+    // level.getEntity(packet.id())——所以 before 必须挂在同款 INVOKE+shift=AFTER 上
+    // （HEAD 是网络线程，碰不得 level）；after 在 TAIL（原版已把 packedItems 应用进实体）。
+    // =====================================================================
+
+    /** 同步前的 ItemStack 副本（卡要带 NBT/名字活几秒，不能只存 count）。 */
+    private ItemStack pickupcard$magnetBefore;
+    private int pickupcard$magnetEntityId = -1;
+
+    @Inject(method = "handleSetEntityData",
+            at = @At(value = "INVOKE",
+                    target = "Lnet/minecraft/network/protocol/PacketUtils;ensureRunningOnSameThread(Lnet/minecraft/network/protocol/Packet;Lnet/minecraft/network/PacketListener;Lnet/minecraft/util/thread/BlockableEventLoop;)V",
+                    shift = At.Shift.AFTER))
+    private void pickupcard$magnetCaptureBefore(ClientboundSetEntityDataPacket packet, CallbackInfo ci) {
+        if (this.level.getEntity(packet.id()) instanceof ItemEntity itemEntity) {
+            this.pickupcard$magnetBefore = itemEntity.getItem().copy();
+            this.pickupcard$magnetEntityId = packet.id();
+        }
+    }
+
+    @Inject(method = "handleSetEntityData", at = @At("TAIL"))
+    private void pickupcard$magnetProbeAfter(ClientboundSetEntityDataPacket packet, CallbackInfo ci) {
+        if (packet.id() != this.pickupcard$magnetEntityId || this.pickupcard$magnetBefore == null) {
+            return;
+        }
+        ItemStack before = this.pickupcard$magnetBefore;
+        this.pickupcard$magnetBefore = null;
+        this.pickupcard$magnetEntityId = -1;
+        if (this.level.getEntity(packet.id()) instanceof ItemEntity itemEntity) {
+            int after = itemEntity.getItem().getCount();
+            if (after != before.getCount()) {
+                PickupCard.LOGGER.info("[magnet-probe] ItemEntity #{} count {} -> {} ({}), item={}",
+                        packet.id(), before.getCount(), after,
+                        after < before.getCount() ? "SHRUNK=吸收信号" : "grown=非吸收",
+                        before.getItem());
+            } else {
+                PickupCard.LOGGER.debug("[magnet-probe] ItemEntity #{} count unchanged ({})",
+                        packet.id(), after);
+            }
+        }
+    }
 
     @Inject(method = "handleTakeItemEntity",
             at = @At(value = "INVOKE",
