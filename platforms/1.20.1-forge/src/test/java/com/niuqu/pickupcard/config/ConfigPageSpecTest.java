@@ -95,16 +95,42 @@ class ConfigPageSpecTest {
         }
     }
 
-    /** 动画页恢复 = 九项（含搬进来的「展开方式」）—— 界面上那句"重置本页 N 项"的 N 是现算的。 */
+    /** 动画页恢复 = 十项（含搬进来的「展开方式」与 0.2.3 的「停留摇摆」）—— 界面上那句"重置本页 N 项"的 N 是现算的。 */
     @Test
-    void animPageRestoresNineItems() {
+    void animPageRestoresTenItems() {
         long n = rows().stream()
                 .filter(r -> r.page() == ConfigPageSpec.Page.ANIM && r.restorable())
                 .count();
-        assertEquals(9L, n);
+        assertEquals(10L, n);
                 // 数字经 %s 进语言文件措辞；这里钉"动画页走重置句式"的接线
         assertTrue(ConfigPageSpec.restoreHint(ConfigPageSpec.Page.ANIM, (int) n)
                 .contains("pickupcard.config.restore.count"));
+    }
+
+    /**
+     * 0.2.3 新档的名字映射：每个枚举常量都必须有自己的界面叫法 —— 出现过两档共用一条
+     * （旧 exitName 的 default 把 FALL/SCALE 显示成「淡出」），这里钉死不让复发。
+     * 测试环境 I18n 原样返回 key，所以钉的是 key 接线，措辞归语言文件。
+     */
+    @Test
+    void everyAnimationModeHasItsOwnDisplayName() {
+        for (LayoutSettings.Appear a : LayoutSettings.Appear.values()) {
+            String key = ConfigPageSpec.appearName(a);
+            assertTrue(key.startsWith("pickupcard.config.value.appear."), a + " 的显示名不在 appear 组: " + key);
+        }
+        assertEquals("pickupcard.config.value.appear.train", ConfigPageSpec.appearName(LayoutSettings.Appear.SLIDE));
+        assertEquals("pickupcard.config.value.appear.clip", ConfigPageSpec.appearName(LayoutSettings.Appear.CLIP));
+        assertEquals("pickupcard.config.value.appear.bounce", ConfigPageSpec.appearName(LayoutSettings.Appear.BOUNCE));
+        assertEquals("pickupcard.config.value.appear.drop", ConfigPageSpec.appearName(LayoutSettings.Appear.DROP));
+        for (LayoutSettings.Exit e : LayoutSettings.Exit.values()) {
+            String key = ConfigPageSpec.exitName(e);
+            assertTrue(key.startsWith("pickupcard.config.value.exit."), e + " 的显示名不在 exit 组: " + key);
+        }
+        assertEquals("pickupcard.config.value.exit.fade", ConfigPageSpec.exitName(LayoutSettings.Exit.FADE));
+        assertEquals("pickupcard.config.value.exit.trainBack", ConfigPageSpec.exitName(LayoutSettings.Exit.TRAIN));
+        assertEquals("pickupcard.config.value.exit.wipe", ConfigPageSpec.exitName(LayoutSettings.Exit.WIPE));
+        assertEquals("pickupcard.config.value.exit.fall", ConfigPageSpec.exitName(LayoutSettings.Exit.FALL));
+        assertEquals("pickupcard.config.value.exit.scale", ConfigPageSpec.exitName(LayoutSettings.Exit.SCALE));
     }
 
     /** 过滤页是动态行，注册表里不该有它 —— 恢复走 FilterPageBuilder 自己那条路。 */

@@ -30,7 +30,9 @@ import java.util.List;
  */
 public final class PickupCardConfig {
 
-    private static final ForgeConfigSpec SPEC;
+    /** 包级可见：同 {@link #VALUES} 的理由 —— 离线单测要把解析出的 TOML 挂到 spec 上（acceptConfig）
+     *  才能钉住"未知档名回落默认、sway 往返保真"这些读写行为；生产代码只经 {@link #register} 走 FML。 */
+    static final ForgeConfigSpec SPEC;
     /** 包级可见：配置界面在同一个包里直接读写它 —— 界面不另存一份值，否则迟早出现
      *  "界面显示 5、实际画 9"这种两处都"对"的 bug。 */
     static final Values VALUES;
@@ -69,15 +71,27 @@ public final class PickupCardConfig {
      * 比喻、内部代号、黑话在那里就是 bug。
      */
     public static LayoutSettings layoutSnapshot() {
+        // 实参提成精确的基本类型：Forge 的 get() 返回装箱值（Integer/Double/Boolean），
+        // 直接内联会让整个调用落进"允许装箱"的重载解析阶段 —— 九参 boolean 构造器与
+        // Boolean 桥接互不更具体，编译器报歧义。全部精确匹配后只剩 canonical 一条路。
+        int scalePercent = VALUES.scalePercent.get();
+        float separation = VALUES.separation.get().floatValue();
+        float anchorX = VALUES.anchorX.get().floatValue();
+        float anchorY = VALUES.anchorY.get().floatValue();
+        // 0.2.3 起把停留摇摆接进 TOML：从前走八参 overload，这个开关在配置里永远是关的。
+        // Boolean 桥接的语义：为 null 一律视为关（缺键安全落 false）
+        boolean mirror = VALUES.mirrorCard.get();
+        boolean sway = Boolean.TRUE.equals(VALUES.swayEnabled.get());
         return new LayoutSettings(
                 VALUES.appearMode.get(),
                 VALUES.exitMode.get(),
                 VALUES.align.get(),
-                VALUES.separation.get().floatValue(),
-                VALUES.scalePercent.get(),
-                VALUES.anchorX.get().floatValue(),
-                VALUES.anchorY.get().floatValue(),
-                VALUES.mirrorCard.get()).sanitized();
+                separation,
+                scalePercent,
+                anchorX,
+                anchorY,
+                mirror,
+                sway).sanitized();
     }
 
     /** 采样过滤三表。列表元素不做校验——坏规则由 FilterRule.parse 静默跳过。 */
@@ -215,6 +229,7 @@ public final class PickupCardConfig {
         final ForgeConfigSpec.ConfigValue<List<? extends String>> muteList;
         final ForgeConfigSpec.EnumValue<LayoutSettings.Appear> appearMode;
         final ForgeConfigSpec.EnumValue<LayoutSettings.Exit> exitMode;
+        final ForgeConfigSpec.BooleanValue swayEnabled;
         final ForgeConfigSpec.EnumValue<LayoutSettings.Side> align;
         final ForgeConfigSpec.BooleanValue mirrorCard;
         final ForgeConfigSpec.DoubleValue separation;
@@ -311,16 +326,25 @@ public final class PickupCardConfig {
 
             appearMode = builder
                     .comment("卡片出现时怎么展开（内容从竖条右侧出现的那一下）。",
-                            "  SLIDE = 火车：内容保持原样，从竖条后面平移出来；数字端先进视野。",
-                            "  CLIP  = 拉幕：内容不动，可见范围从左往右展开；图标端先露。")
+                            "  SLIDE  = 火车：内容保持原样，从竖条后面平移出来；数字端先进视野。",
+                            "  CLIP   = 拉幕：内容不动，可见范围从左往右展开；图标端先露。",
+                            "  BOUNCE = 弹出回弹：沿火车路线滑出，冲过终点再弹回来。",
+                            "  DROP   = 掉落：从锚线上方掉下来，落地带一记小弹。")
                     .defineEnum("appearMode", LayoutSettings.Appear.SLIDE);
 
             exitMode = builder
-                    .comment("卡片怎么消失。三种都叠加透明度下降，不会硬切。",
+                    .comment("卡片怎么消失。各种都叠加透明度下降，不会硬切。",
                             "  TRAIN = 火车退回：内容整块平移回竖条后面，与火车入场对称（默认）。",
                             "  FADE  = 淡出：原地变透明。",
-                            "  WIPE  = 拉幕收拢：可见范围从右往左收窄，与拉幕入场对称。")
+                            "  WIPE  = 拉幕收拢：可见范围从右往左收窄，与拉幕入场对称。",
+                            "  FALL  = 下坠：向下坠落，同时变透明。",
+                            "  SCALE = 缩放消失：整卡缩小到消失。")
                     .defineEnum("exitMode", LayoutSettings.Exit.TRAIN);
+
+            swayEnabled = builder
+                    .comment("停留摇摆：卡片停留期间轻微摇摆呼吸，多一点活物感。",
+                            "  默认关 —— 新档位只加选项不改默认；只在停留期起效，入场与退场不受它影响。")
+                    .define("swayEnabled", false);
 
             align = builder
                     .comment("水平对齐：锚线（anchorX）管的是卡的哪一条边。",

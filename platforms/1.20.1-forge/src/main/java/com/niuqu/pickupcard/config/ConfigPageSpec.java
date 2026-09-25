@@ -181,6 +181,11 @@ public final class ConfigPageSpec {
         rows.add(new Row(Page.ANIM, tr("pickupcard.config.row.holdMs.name"),
                 tr("pickupcard.config.row.holdMs.hint"),
                 () -> time(v.holdMs, eff.holdMs(), 500, 10_000, 250), restore(v.holdMs)));
+        // 停留摇摆：0.2.3 的新选项，默认关 —— 只加选项不改默认观感（LayoutSettings.defaults 同款纪律）。
+        rows.add(new Row(Page.ANIM, tr("pickupcard.config.row.sway.name"),
+                tr("pickupcard.config.row.sway.hint"),
+                () -> bool(v.swayEnabled, PickupCardConfig.layoutSnapshot().swayEnabled()),
+                restore(v.swayEnabled)));
         rows.add(new Row(Page.ANIM, tr("pickupcard.config.row.exitMode.name"),
                 tr("pickupcard.config.row.exitMode.hint"),
                 () -> cycle(v.exitMode, LayoutSettings.Exit.values(), ConfigPageSpec::exitName),
@@ -431,19 +436,27 @@ public final class ConfigPageSpec {
                 ? "pickupcard.config.value.align.right" : "pickupcard.config.value.align.barLeft");
     }
 
-    /** 界面上的叫法：火车＝平移，拉幕＝展开可见范围。 */
-    private static String appearName(LayoutSettings.Appear appear) {
-        return tr(appear == LayoutSettings.Appear.CLIP
-                ? "pickupcard.config.value.appear.clip" : "pickupcard.config.value.appear.train");
+    /** 界面上的叫法：火车＝平移，拉幕＝展开可见范围，弹出回弹＝冲过终点再弹回，掉落＝从锚线上方落下。
+     *  <p>【穷举 switch】不用 default：枚举再扩档时编译器会逼着这里补映射，
+     *  新档就不会因为落到 default 而在界面上显示成别人的名字或英文枚举名。 */
+    static String appearName(LayoutSettings.Appear appear) {
+        return tr(switch (appear) {
+            case SLIDE -> "pickupcard.config.value.appear.train";
+            case CLIP -> "pickupcard.config.value.appear.clip";
+            case BOUNCE -> "pickupcard.config.value.appear.bounce";
+            case DROP -> "pickupcard.config.value.appear.drop";
+        });
     }
 
-    /** 与入场对称的那一半：淡出 / 火车退回 / 拉幕收拢。 */
-    private static String exitName(LayoutSettings.Exit exit) {
-        return switch (exit) {
-            case TRAIN -> tr("pickupcard.config.value.exit.trainBack");
-            case WIPE -> tr("pickupcard.config.value.exit.wipe");
-            default -> tr("pickupcard.config.value.exit.fade");
-        };
+    /** 与入场对称的那一半：火车退回 / 淡出 / 拉幕收拢 / 下坠 / 缩放消失。穷举 switch，理由同上。 */
+    static String exitName(LayoutSettings.Exit exit) {
+        return tr(switch (exit) {
+            case FADE -> "pickupcard.config.value.exit.fade";
+            case TRAIN -> "pickupcard.config.value.exit.trainBack";
+            case WIPE -> "pickupcard.config.value.exit.wipe";
+            case FALL -> "pickupcard.config.value.exit.fall";
+            case SCALE -> "pickupcard.config.value.exit.scale";
+        });
     }
 
     private static String countName(CountFormat format) {
