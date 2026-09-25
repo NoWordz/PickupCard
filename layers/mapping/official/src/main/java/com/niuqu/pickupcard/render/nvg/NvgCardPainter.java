@@ -735,6 +735,10 @@ public final class NvgCardPainter {
      * <p>经验卡与白名单强调卡维持满强度——那是玩家已经看惯的参考观感，不为阶梯让路；
      * 物品卡从 rare(3) 起步、每升一档亮一截。阶梯落在统一档位尺（{@link RarityAccent#tierOf}）
      * 上，vanilla 的 epic(4) 与 RC 的 legendary(5) 自然各就各位。
+     * <p>【2026-09-25 拉陡】旧阶梯（0.3+0.15×(tier−2)，rare 0.45 / epic 0.6）叠上三连乘
+     * （glowAlpha 0.18 × 呼吸 0.4~1.0 × 本值）后 epic 峰值只有 ~11%，真机上约等于没有
+     * （用户反馈"不明显"）。改成 0.5+0.17×(tier−2)：rare 0.67 / epic 0.84 / tier5+ 1.0，
+     * 配合 glowAlpha 46→72，epic 峰值到 ~24%、呼吸谷值也有 ~10%。
      */
     private static float glowStrengthOf(Inbox.Card card) {
         if (card.content() instanceof CardContent.Experience || card.emphasized()) {
@@ -742,7 +746,7 @@ public final class NvgCardPainter {
         }
         if (card.content() instanceof CardContent.Item item) {
             int tier = RarityAccent.tierOf(item.stack());
-            return tier >= 3 ? Math.min(1f, 0.3f + 0.15f * (tier - 2)) : 0f;
+            return tier >= 3 ? Math.min(1f, 0.5f + 0.17f * (tier - 2)) : 0f;
         }
         return 0f;
     }

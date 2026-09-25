@@ -41,7 +41,7 @@ class MagnetConfirmTest {
         FakeTotals totals = new FakeTotals();
         totals.advance("stone", 10);           // tick 99：背包 10
         totals.advance("stone", 14);           // tick 100：信号与背包同步同到（14，含吸收 4）
-        MagnetConfirm<String, String> m = new MagnetConfirm<>(totals::current, totals::previous);
+        MagnetConfirm<String, String> m = new MagnetConfirm<>(totals::current, totals::previous, () -> -1);
         m.pending("stone", "stone-stack", 4, 100);
         var out = m.confirm(100);
         assertEquals(1, out.size());
@@ -54,7 +54,7 @@ class MagnetConfirmTest {
         FakeTotals totals = new FakeTotals();
         totals.advance("stone", 10);           // tick 99
         totals.advance("stone", 10);           // tick 100：信号到，背包还没同步
-        MagnetConfirm<String, String> m = new MagnetConfirm<>(totals::current, totals::previous);
+        MagnetConfirm<String, String> m = new MagnetConfirm<>(totals::current, totals::previous, () -> -1);
         m.pending("stone", "stone-stack", 4, 100);
         assertTrue(m.confirm(100).isEmpty());
         totals.advance("stone", 14);           // tick 101：背包到了
@@ -69,7 +69,7 @@ class MagnetConfirmTest {
         FakeTotals totals = new FakeTotals();
         totals.advance("stone", 10);
         totals.advance("stone", 10);           // tick 100：信号到，我的背包纹丝不动
-        MagnetConfirm<String, String> m = new MagnetConfirm<>(totals::current, totals::previous);
+        MagnetConfirm<String, String> m = new MagnetConfirm<>(totals::current, totals::previous, () -> -1);
         m.pending("stone", "stone-stack", 4, 100);
         assertTrue(m.confirm(100).isEmpty());
         assertTrue(m.confirm(101).isEmpty());
@@ -86,7 +86,7 @@ class MagnetConfirmTest {
         FakeTotals totals = new FakeTotals();
         totals.advance("stone", 10);
         totals.advance("stone", 12);           // 信号 tick：只涨 2 < 4
-        MagnetConfirm<String, String> m = new MagnetConfirm<>(totals::current, totals::previous);
+        MagnetConfirm<String, String> m = new MagnetConfirm<>(totals::current, totals::previous, () -> -1);
         m.pending("stone", "stone-stack", 4, 100);
         assertTrue(m.confirm(100).isEmpty());
         assertTrue(m.confirm(103).isEmpty());  // 到超时也没涨够
@@ -101,7 +101,7 @@ class MagnetConfirmTest {
         totals.advance("stone", 10);
         totals.advance("stone", 10);           // tick 100
         totals.advance("iron", 0);
-        MagnetConfirm<String, String> m = new MagnetConfirm<>(totals::current, totals::previous);
+        MagnetConfirm<String, String> m = new MagnetConfirm<>(totals::current, totals::previous, () -> -1);
         m.pending("stone", "stone-stack", 4, 100);
         m.pending("iron", "iron-stack", 8, 100);
         totals.advance("iron", 8);             // tick 101：iron 到了、stone 没到
@@ -118,10 +118,39 @@ class MagnetConfirmTest {
         FakeTotals totals = new FakeTotals();
         totals.advance("stone", 10);
         totals.advance("stone", 10);
-        MagnetConfirm<String, String> m = new MagnetConfirm<>(totals::current, totals::previous);
+        MagnetConfirm<String, String> m = new MagnetConfirm<>(totals::current, totals::previous, () -> -1);
         m.pending("stone", "stone-stack", 4, 100);
         assertTrue(m.confirm(200).isEmpty());  // 一次跳到 100 tick 后
         totals.advance("stone", 99);
         assertTrue(m.confirm(201).isEmpty());
+    }
+
+    @Test
+    @DisplayName("背包 NBT 容器场景（SB）：数量不变，但押注后我的背包槽被服务端改写 → 确认")
+    void containerWrittenConfirmsEvenWithoutCountGrowth() {
+        FakeTotals totals = new FakeTotals();
+        totals.advance("stone", 10);
+        totals.advance("stone", 10);           // 信号 tick：背包数量纹丝不动（进了背包 NBT）
+        long[] written = {-1};
+        MagnetConfirm<String, String> m = new MagnetConfirm<>(
+                totals::current, totals::previous, () -> written[0]);
+        m.pending("stone", "stone-stack", 1, 100);
+        assertTrue(m.confirm(100).isEmpty());  // 还没被写
+        written[0] = 101;                      // 服务端同步背包槽（SetSlot containerId=0）
+        var out = m.confirm(101);
+        assertEquals(1, out.size());
+        assertEquals("stone-stack", out.get(0).payload());
+    }
+
+    @Test
+    @DisplayName("别人的磁铁：数量不涨、我的背包也没被写 → 超时丢弃")
+    void foreignAbsorptionHasNoConfirmationPath() {
+        FakeTotals totals = new FakeTotals();
+        totals.advance("stone", 10);
+        totals.advance("stone", 10);
+        MagnetConfirm<String, String> m = new MagnetConfirm<>(
+                totals::current, totals::previous, () -> -1);
+        m.pending("stone", "stone-stack", 4, 100);
+        assertTrue(m.confirm(103).isEmpty());
     }
 }

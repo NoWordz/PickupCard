@@ -10,6 +10,7 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.client.player.AbstractClientPlayer;
 import net.minecraft.client.player.LocalPlayer;
+import net.minecraft.network.protocol.game.ClientboundContainerSetSlotPacket;
 import net.minecraft.network.protocol.game.ClientboundTakeItemEntityPacket;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.ExperienceOrb;
@@ -127,9 +128,31 @@ public final class PickupRelay {
         MAGNET_CONFIRM.pending(before.getItem(), before, amount, self.tickCount);
     }
 
-    /** 磁铁押注的对账器：键=物品，负载=押注时的原 ItemStack；总量喂 InventoryTotals（当前/上一 tick）。 */
+    /** 最近一次"我的背包（containerId=0）被服务端改写"的玩家 tick —— 背包 NBT 容器的确认源。 */
+    private static volatile long containerWrittenTick = -1;
+
+    /**
+     * 磁铁押注的对账器：键=物品，负载=押注时的原 ItemStack；总量喂 InventoryTotals（当前/上一 tick），
+     * 第三条确认路 = 背包槽被服务端改写（{@link #onContainerSync} 记录）—— SB 这类背包 NBT
+     * 容器场景数量不变，全靠它。
+     */
     private static final MagnetConfirm<Item, ItemStack> MAGNET_CONFIRM =
-            new MagnetConfirm<>(InventoryTotals::of, InventoryTotals::previousOf);
+            new MagnetConfirm<>(InventoryTotals::of, InventoryTotals::previousOf,
+                    () -> containerWrittenTick);
+
+    /**
+     * 客户端收到容器同步包（mixin TAIL 调来，已在主线程）。
+     * <p>【只认自己的背包】containerId = PLAYER_INVENTORY(0) 才标记 —— 打开着的箱子/工作台
+     * （id &gt; 0）被漏斗填满不该给磁铁记账；玩家背包的 SetSlot/SetContent 在拾取、合成、
+     * 背包 NBT 更新时都会来，作为"我这边被写过"的通用信号足够便宜。
+     */
+    public static void onContainerSync(int containerId) {
+        if (containerId != ClientboundContainerSetSlotPacket.PLAYER_INVENTORY) return;
+        LocalPlayer self = Minecraft.getInstance().player;
+        if (self != null) {
+            containerWrittenTick = self.tickCount;
+        }
+    }
 
     /** 换世界/总开关：上个世界的押注全部作废（基线是旧世界的背包，留着只会对错账）。 */
     public static void resetMagnetPending() {

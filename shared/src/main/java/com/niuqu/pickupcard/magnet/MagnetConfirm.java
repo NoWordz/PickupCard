@@ -3,6 +3,7 @@ package com.niuqu.pickupcard.magnet;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
+import java.util.function.LongSupplier;
 import java.util.function.ToIntFunction;
 
 /**
@@ -54,11 +55,15 @@ public final class MagnetConfirm<T, V> {
 
     private final ToIntFunction<T> current;
     private final ToIntFunction<T> previous;
+    /** 最近一次"自己的背包被服务端改写"的 tick（背包 NBT 容器场景的唯一确认源），-1 = 从未。 */
+    private final LongSupplier containerWrittenTick;
     private final List<Entry<T, V>> pending = new ArrayList<>();
 
-    public MagnetConfirm(ToIntFunction<T> current, ToIntFunction<T> previous) {
+    public MagnetConfirm(ToIntFunction<T> current, ToIntFunction<T> previous,
+                         LongSupplier containerWrittenTick) {
         this.current = current;
         this.previous = previous;
+        this.containerWrittenTick = containerWrittenTick;
     }
 
     /** 信号到达（tick = 玩家 tickCount）：先押注（带上弹卡要的原件），不当场弹卡。 */
@@ -86,7 +91,11 @@ public final class MagnetConfirm<T, V> {
             // 每吸一次，我随手捡一次同物品就误弹一次。
             if (tick - e.pendingTick > WINDOW_TICKS) {
                 it.remove();
-            } else if (current.applyAsInt(e.item) - e.baseline >= e.amount) {
+            } else if (containerWrittenTick.getAsLong() >= e.pendingTick
+                    || current.applyAsInt(e.item) - e.baseline >= e.amount) {
+                // 【两条确认路，满足其一】① 押注后（含同 tick）我的背包被服务端改写过 ——
+                // 背包 NBT 容器（SB 这类）场景的唯一证据：物品进了背包内部，41 格数量不变；
+                // ② 数量增量达标 —— 物品直接进原版背包的强确认。别人的磁铁两条都不满足。
                 out.add(new Confirmed<>(e.item, e.payload, e.amount));
                 it.remove();
             }

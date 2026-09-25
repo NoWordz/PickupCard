@@ -4,6 +4,8 @@ import com.niuqu.pickupcard.pickup.PickupRelay;
 import com.niuqu.pickupcard.pickup.PickupSoundGate;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.client.multiplayer.ClientPacketListener;
+import net.minecraft.network.protocol.game.ClientboundContainerSetContentPacket;
+import net.minecraft.network.protocol.game.ClientboundContainerSetSlotPacket;
 import net.minecraft.network.protocol.game.ClientboundSetEntityDataPacket;
 import net.minecraft.network.protocol.game.ClientboundTakeItemEntityPacket;
 import net.minecraft.sounds.SoundEvent;
@@ -111,6 +113,28 @@ public abstract class ClientPacketListenerMixin {
                     shift = At.Shift.AFTER))
     private void pickupcard$onTakeItemEntity(ClientboundTakeItemEntityPacket packet, CallbackInfo ci) {
         PickupRelay.onTakeItem(level, packet);
+    }
+
+    // =====================================================================
+    // 【磁铁确认的第二信号（2026-09-25）】"我的背包槽被服务端改写过"。
+    // 【为什么需要它】磁铁吸收信号的归属确认靠"背包增量"，但 SB 这类背包 mod 把物品
+    // 吸进的是<b>背包容器的 NBT</b>（挂在玩家背包某个槽上）—— 原版 41 格里"背包还是
+    // 那一个背包"，数量永远不变，增量确认永远等不到（真机全灭的根因）。而服务端改完
+    // 背包 NBT 必然把那个槽同步下来（{@code handleContainerSetSlot} / 整包
+    // {@code handleContainerContent}，containerId = PLAYER_INVENTORY）—— 它就是
+    // "有东西进了我这边"的通用客户端信号。
+    // 【注入点】TAIL：ensureRunningOnSameThread 之后才是主线程，且原版已把内容应用
+    // （此时标记得更晚一拍也无妨 —— 确认看的是 tick 号不是内容）。
+    // =====================================================================
+
+    @Inject(method = "handleContainerSetSlot", at = @At("TAIL"))
+    private void pickupcard$onContainerSetSlot(ClientboundContainerSetSlotPacket packet, CallbackInfo ci) {
+        PickupRelay.onContainerSync(packet.getContainerId());
+    }
+
+    @Inject(method = "handleContainerContent", at = @At("TAIL"))
+    private void pickupcard$onContainerContent(ClientboundContainerSetContentPacket packet, CallbackInfo ci) {
+        PickupRelay.onContainerSync(packet.getContainerId());
     }
 
     /**
