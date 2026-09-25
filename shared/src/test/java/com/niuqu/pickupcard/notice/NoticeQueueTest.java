@@ -36,6 +36,13 @@ class NoticeQueueTest {
         return q.absorb(key, "l", "s", n, true, now, MergeMode.SAME_NBT, cap, queueSize);
     }
 
+    /** 带屏满策略的那次拾取走 10 参 {@code absorb}：fullPolicy 说的是"屏满了怎么办"。 */
+    private static NoticeQueue.Outcome<String> add(NoticeQueue<String> q, String key, int n,
+                                                   long now, int cap, int queueSize,
+                                                   FullPolicy fullPolicy) {
+        return q.absorb(key, "l", "s", n, true, now, MergeMode.SAME_NBT, cap, queueSize, fullPolicy);
+    }
+
     @Test
     @DisplayName("同一物品合并：数量累加，代数 +1")
     void mergesSameItem() {
@@ -349,5 +356,78 @@ class NoticeQueueTest {
         assertEquals(1, promoted.size());
         assertEquals("a", promoted.get(0).key(), "退回时排在队头的 a 先补位");
         assertEquals(1_000L, promoted.get(0).bornAt(), "补位那张从此刻重新出生（bornAt = 补位时刻）");
+    }
+
+    // ------------------------------------------------------------------
+    // 顶卡（FullPolicy.REPLACE）：屏满之后新卡立刻上屏，顶掉最老的正常卡
+    // ------------------------------------------------------------------
+
+    @Test
+    @DisplayName("REPLACE 档：屏满之后新卡立刻上屏，顶掉最老的正常卡")
+    void replacePolicyEvictsTheOldestCardWhenScreenIsFull() {
+        NoticeQueue<String> q = queue();
+        add(q, "a", 1, 0L, 2, QUEUE);
+        add(q, "b", 1, 100L, 2, QUEUE);
+
+        // a 更老（touchedAt 更小）：REPLACE 下新卡 c 立刻上屏，顶掉 a
+        var outcome = add(q, "c", 1, 200L, 2, QUEUE, FullPolicy.REPLACE);
+
+        assertEquals(NoticeQueue.Change.ADDED, outcome.change());
+        assertEquals(1, outcome.evicted().size());
+        assertEquals("a", outcome.evicted().get(0).key(), "被顶的是最老的那张");
+        assertTrue(q.find("c").isPresent(), "新卡不用等，立刻上屏");
+        assertTrue(q.isLeaving("a"), "被顶的卡进 leaving：退场动画期间可救回");
+        assertEquals(0, q.pendingSize(), "REPLACE 档不排队");
+    }
+
+    /**
+     * 【执行注记】计划原稿的造法（maxOnScreen=1、queueSize=0 的两次 absorb）造不出溢出卡 ——
+     * 溢出卡只能由调用方 {@code absorbOverflow} 造，absorb 满了只会排队或丢。按计划注记改写：
+     * queue(2,0) + absorbOverflow 造溢出卡，断言 REPLACE 的牺牲者不是它。
+     */
+    @Test
+    @DisplayName("REPLACE 档不顶溢出卡：牺牲者永远是正常卡里最老的那张")
+    void replacePolicyNeverEvictsTheOverflowCard() {
+        NoticeQueue<String> q = queue();
+        add(q, "a", 1, 0L, 2, 0);
+        add(q, "b", 1, 100L, 2, 0);
+        q.absorbOverflow("~overflow", "~overflow", "spill", 1, 150L);   // 溢出卡在屏但不占名额
+
+        // realSize=2 已满：REPLACE 顶最老的正常卡 a —— 溢出卡不占名额，也不配被顶
+        var outcome = add(q, "c", 1, 200L, 2, 0, FullPolicy.REPLACE);
+
+        assertEquals(NoticeQueue.Change.ADDED, outcome.change());
+        assertEquals(1, outcome.evicted().size());
+        assertEquals("a", outcome.evicted().get(0).key(), "牺牲者是最老的正常卡，不是溢出卡");
+        assertTrue(q.find("~overflow").isPresent(), "溢出卡不该被顶");
+    }
+
+    @Test
+    @DisplayName("QUEUE 档：旧行为一字不动 —— 屏满照样排队，谁也不顶")
+    void queuePolicyKeepsTheOldBehavior() {
+        NoticeQueue<String> q = queue();
+        add(q, "a", 1, 0L, 2, QUEUE);
+        add(q, "b", 1, 100L, 2, QUEUE);
+
+        var outcome = add(q, "c", 1, 200L, 2, QUEUE, FullPolicy.QUEUE);
+
+        assertEquals(NoticeQueue.Change.QUEUED, outcome.change());
+        assertTrue(outcome.evicted().isEmpty(), "排队不该产生退场");
+        assertEquals(1, q.pendingSize());
+    }
+
+    @Test
+    @DisplayName("REPLACE 档照样先合并：屏满时捡到已有的东西，并进去而不是顶卡")
+    void replacePolicyStillPrefersMerging() {
+        NoticeQueue<String> q = queue();
+        add(q, "a", 1, 0L, 2, QUEUE);
+        add(q, "b", 1, 100L, 2, QUEUE);
+
+        // 屏满，但来的是已有的 a：合并优先，不顶任何卡
+        var outcome = add(q, "a", 5, 200L, 2, QUEUE, FullPolicy.REPLACE);
+
+        assertEquals(NoticeQueue.Change.MERGED, outcome.change());
+        assertTrue(outcome.evicted().isEmpty(), "合并不该挤掉任何卡");
+        assertEquals(6, outcome.notice().count(), "数量累加到已有那张身上");
     }
 }

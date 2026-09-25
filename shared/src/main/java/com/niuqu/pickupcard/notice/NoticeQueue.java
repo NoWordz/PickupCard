@@ -67,7 +67,7 @@ public final class NoticeQueue<T> {
     private String overflowKey;
 
     /**
-     * 收下一次拾取。
+     * 收下一次拾取（屏满按旧行为排队 —— {@link FullPolicy#QUEUE} 档）。
      *
      * @param mergeMode    合并粒度（哪些拾取算同一件东西）；{@link MergeMode#NEVER} = 从不合并
      * @param maxOnScreen  同时在屏上限；满了就排队，不再顶掉别人
@@ -77,6 +77,24 @@ public final class NoticeQueue<T> {
     public Outcome<T> absorb(String key, String lookKey, T payload, int amount,
                              boolean firstTime, long now,
                              MergeMode mergeMode, int maxOnScreen, int queueSize) {
+        return absorb(key, lookKey, payload, amount, firstTime, now,
+                mergeMode, maxOnScreen, queueSize, FullPolicy.QUEUE);
+    }
+
+    /**
+     * 收下一次拾取，并指定屏满之后的策略。
+     *
+     * @param mergeMode    合并粒度（哪些拾取算同一件东西）；{@link MergeMode#NEVER} = 从不合并
+     * @param maxOnScreen  同时在屏上限
+     * @param queueSize    排队上限；0 = 不排队（超出的直接丢）
+     * @param fullPolicy   屏满了怎么办：{@link FullPolicy#REPLACE} 顶掉最老的正常卡、新卡立刻上屏；
+     *                     {@link FullPolicy#QUEUE} 排到队尾等位（旧行为）
+     * @return 发生的改动；被淘汰的那张卡会作为结果返回（调用方据此让它播退场）
+     */
+    public Outcome<T> absorb(String key, String lookKey, T payload, int amount,
+                             boolean firstTime, long now,
+                             MergeMode mergeMode, int maxOnScreen, int queueSize,
+                             FullPolicy fullPolicy) {
         List<Notice<T>> evicted = new ArrayList<>();
         Notice<T> existing = alive.get(key);
         if (existing == null) {
@@ -119,7 +137,25 @@ public final class NoticeQueue<T> {
 
         Notice<T> fresh = new Notice<>(key, lookKey, payload, amount, firstTime, now, now, 0);
         if (realSize() >= maxOnScreen) {
-            // 屏上满了：排到队尾。排队也满 → 丢掉这次拾取（0.1.0 的语义就是这样）。
+            if (fullPolicy == FullPolicy.REPLACE) {
+                // 【顶谁】touchedAt 最老的那张"正常卡"——溢出卡不占名额，也不配被顶
+                //（realSize() 把它排除在外，这里必须一致，否则会把名额挤成负数）。
+                Notice<T> victim = null;
+                for (Notice<T> candidate : alive.values()) {
+                    if (candidate.key().equals(overflowKey)) continue;
+                    if (victim == null || candidate.touchedAt() < victim.touchedAt()) {
+                        victim = candidate;
+                    }
+                }
+                if (victim != null) {
+                    alive.remove(victim.key());
+                    leaving.put(victim.key(), victim);   // 与 sweep 同一条离场路：退场期间同名拾取能救回
+                    evicted.add(victim);
+                }
+                alive.put(key, fresh);
+                return new Outcome<>(Change.ADDED, fresh, evicted);
+            }
+            // QUEUE 档：旧行为一字不动 —— 屏上满了：排到队尾。排队也满 → 丢掉这次拾取（0.1.0 的语义就是这样）。
             if (queueSize > 0 && pending.size() < queueSize) {
                 pending.addLast(fresh);
                 return new Outcome<>(Change.QUEUED, fresh, evicted);
