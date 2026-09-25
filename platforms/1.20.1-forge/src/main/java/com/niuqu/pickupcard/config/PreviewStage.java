@@ -491,7 +491,7 @@ public final class PreviewStage {
         int limit = s.nameMaxWidth() > 0 ? Math.min(s.nameMaxWidth(), room) : room;
         return new PickupCardSettings(s.holdMs(), s.exitMs(), s.mergeMode(), s.maxOnScreen(),
                 s.queueSize(), s.countFormat(), s.enabled(), s.showItemName(), s.showItemId(),
-                limit);
+                limit, s.fullPolicy(), s.countMode());
     }
 
     /** 一张样例在当前缩放下的实际宽度 —— 走真卡的 {@code CardMetrics}，不另写一份公式。 */

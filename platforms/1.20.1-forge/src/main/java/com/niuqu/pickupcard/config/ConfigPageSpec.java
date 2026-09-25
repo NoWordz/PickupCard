@@ -13,6 +13,7 @@ import dev.e33.trellis.ui.widget.Widget;
 import com.niuqu.pickupcard.style.StyleModel;
 import com.niuqu.pickupcard.style.StyleOverrides;
 import com.niuqu.pickupcard.text.CountFormat;
+import com.niuqu.pickupcard.text.CountMode;
 import net.minecraft.client.resources.language.I18n;
 import net.minecraftforge.common.ForgeConfigSpec;
 
@@ -145,6 +146,12 @@ public final class ConfigPageSpec {
                 tr("pickupcard.config.row.countFormat.hint"),
                 () -> cycle(v.countFormat, CountFormat.values(), ConfigPageSpec::countName),
                 restore(v.countFormat)));
+        // 数字含义：0.2.3 的新选项，紧跟「数量写法」—— 写法管"长什么样"，含义管"数的是哪笔账"，
+        // 玩家看到数字不对时这两个设置要一起看
+        rows.add(new Row(Page.GENERAL, tr("pickupcard.config.row.countMode.name"),
+                tr("pickupcard.config.row.countMode.hint"),
+                () -> cycle(v.countMode, CountMode.values(), ConfigPageSpec::countModeName),
+                restore(v.countMode)));
         rows.add(new Row(Page.GENERAL, tr("pickupcard.config.section.behavior"), null, null, null));
         // 间距没有"-1=没改"的哨兵（范围 0..32），shown 永远不会用到 —— 传默认值即可
         rows.add(new Row(Page.GENERAL, tr("pickupcard.config.row.separation.name"),
@@ -481,5 +488,13 @@ public final class ConfigPageSpec {
     private static String fullPolicyName(FullPolicy policy) {
         return tr(policy == FullPolicy.QUEUE
                 ? "pickupcard.config.value.full.queue" : "pickupcard.config.value.full.replace");
+    }
+
+    /** 数字含义的两档：本次拾取数（带进账符号）/ 背包持有总数（实时跟随物品栏）。穷举 switch，理由同 appearName。 */
+    static String countModeName(CountMode mode) {
+        return tr(switch (mode) {
+            case PICKUP -> "pickupcard.config.value.countmode.pickup";
+            case TOTAL -> "pickupcard.config.value.countmode.total";
+        });
     }
 }

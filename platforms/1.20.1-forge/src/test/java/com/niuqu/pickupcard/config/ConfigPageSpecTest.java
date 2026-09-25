@@ -6,6 +6,7 @@ import com.niuqu.pickupcard.notice.MergeMode;
 import com.niuqu.pickupcard.notice.PickupCardSettings;
 import com.niuqu.pickupcard.style.StyleModel;
 import com.niuqu.pickupcard.text.CountFormat;
+import com.niuqu.pickupcard.text.CountMode;
 import org.junit.jupiter.api.Test;
 
 import java.util.HashSet;
@@ -133,6 +134,34 @@ class ConfigPageSpecTest {
         assertEquals("pickupcard.config.value.exit.scale", ConfigPageSpec.exitName(LayoutSettings.Exit.SCALE));
     }
 
+    /** 数字含义两档的名字映射接线：穷举 switch 钉住，新档不许落进"显示成别人的名字"。 */
+    @Test
+    void everyCountModeHasItsOwnDisplayName() {
+        for (CountMode mode : CountMode.values()) {
+            String key = ConfigPageSpec.countModeName(mode);
+            assertTrue(key.startsWith("pickupcard.config.value.countmode."),
+                    mode + " 的显示名不在 countmode 组: " + key);
+        }
+        assertEquals("pickupcard.config.value.countmode.pickup", ConfigPageSpec.countModeName(CountMode.PICKUP));
+        assertEquals("pickupcard.config.value.countmode.total", ConfigPageSpec.countModeName(CountMode.TOTAL));
+    }
+
+    /** 「数字含义」归通用页、紧跟「数量写法」—— 玩家看到数字不对时这两行要一起看。 */
+    @Test
+    void countModeRowLivesNextToCountFormatOnTheGeneralPage() {
+        List<ConfigPageSpec.Row> rows = rows();
+        int countFormatAt = -1;
+        int countModeAt = -1;
+        for (int i = 0; i < rows.size(); i++) {
+            String label = rows.get(i).label();
+            if ("pickupcard.config.row.countFormat.name".equals(label)) countFormatAt = i;
+            if ("pickupcard.config.row.countMode.name".equals(label)) countModeAt = i;
+        }
+        assertEquals(ConfigPageSpec.Page.GENERAL, row(rows, "pickupcard.config.row.countMode.name").page());
+        assertTrue(countModeAt == countFormatAt + 1,
+                "数字含义行应紧跟数量写法行（实际 " + countFormatAt + " → " + countModeAt + "）");
+    }
+
     /** 过滤页是动态行，注册表里不该有它 —— 恢复走 FilterPageBuilder 自己那条路。 */
     @Test
     void filterPageIsDynamicAndNotInTheRegistry() {
@@ -157,5 +186,7 @@ class ConfigPageSpecTest {
         assertEquals(9, PickupCardConfig.VALUES.queueSize.getDefault());
         assertEquals(FullPolicy.REPLACE, PickupCardConfig.VALUES.fullPolicy.getDefault(),
                 "2026-09-20 定案：屏满顶掉最老（新默认），排队是可选项");
+        assertEquals(CountMode.PICKUP, PickupCardConfig.VALUES.countMode.getDefault(),
+                "数字含义默认本次拾取数（0.2.2 及以前的口径）");
     }
 }

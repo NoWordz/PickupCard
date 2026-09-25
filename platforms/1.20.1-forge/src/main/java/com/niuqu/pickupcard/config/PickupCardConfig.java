@@ -7,6 +7,7 @@ import com.niuqu.pickupcard.notice.PickupCardSettings;
 import com.niuqu.pickupcard.style.StyleOverrides;
 import com.niuqu.pickupcard.style.Theme;
 import com.niuqu.pickupcard.text.CountFormat;
+import com.niuqu.pickupcard.text.CountMode;
 import net.minecraftforge.common.ForgeConfigSpec;
 import net.minecraftforge.fml.ModLoadingContext;
 import net.minecraftforge.fml.config.ModConfig;
@@ -63,7 +64,8 @@ public final class PickupCardConfig {
                 VALUES.showItemName.get(),
                 VALUES.showItemId.get(),
                 VALUES.nameMaxWidth.get(),
-                VALUES.fullPolicy.get()).sanitized();
+                VALUES.fullPolicy.get(),
+                VALUES.countMode.get()).sanitized();
     }
 
     /**
@@ -224,6 +226,7 @@ public final class PickupCardConfig {
         final ForgeConfigSpec.IntValue queueSize;
         final ForgeConfigSpec.EnumValue<FullPolicy> fullPolicy;
         final ForgeConfigSpec.EnumValue<CountFormat> countFormat;
+        final ForgeConfigSpec.EnumValue<CountMode> countMode;
         final ForgeConfigSpec.ConfigValue<List<? extends String>> blacklist;
         final ForgeConfigSpec.ConfigValue<List<? extends String>> whitelist;
         final ForgeConfigSpec.ConfigValue<List<? extends String>> muteList;
@@ -388,6 +391,13 @@ public final class PickupCardConfig {
                     .comment("数量的写法。PLUS = +64（默认），X_PREFIX = ×64，",
                             "PLAIN = 64，ABBREVIATED = +1.2K。")
                     .defineEnum("format", CountFormat.PLUS);
+            countMode = builder
+                    .comment("卡上的数字数的是哪笔账。",
+                            "  PICKUP = 本次拾取进账多少（默认；写法里的 + 号只有这一档才带）。",
+                            "  TOTAL  = 背包里现在持有多少：实时跟随物品栏，捡了会涨、用了会掉。",
+                            "  注意：总数只算原版 41 格（主背包、盔甲、副手），Curios 等 mod 扩展槽不算；",
+                            "  经验卡和「还有 N 项」溢出卡没有总数可言，仍显示各自的累计数量。")
+                    .defineEnum("mode", CountMode.PICKUP);
             builder.pop();
 
             builder.comment("外观：这里只放玩家改过的项。-1 / 空串 = 没改过，用主题里的值。",
