@@ -61,6 +61,10 @@
   "pickupcard.config.row.separation.hint": "两张卡上下之间的空隙。卡内「框与框」的距离是另一回事，归主题 JSON",
   "pickupcard.config.row.mergeMode.name": "合并粒度",
   "pickupcard.config.row.mergeMode.hint": "「同一种」的判定宽度，点一下换下一种：同名同附魔才并 → 同名就并 → 同名就并但改名不并 → 从不合并",
+  "pickupcard.config.row.magnet.name": "磁铁检测",
+  "pickupcard.config.row.magnet.hint": "磁铁升级、漏斗这类东西把地上的物品直接吸进容器时也弹卡。它检测的是「物品实体的数量被服务端改小」这个通用信号：Sophisticated Backpacks 等磁铁会触发；原版漏斗把一整组吸空走的是直接移除，检测不到；经验被吸走同样检测不到",
+  "pickupcard.config.row.magnetRadius.name": "磁铁半径",
+  "pickupcard.config.row.magnetRadius.hint": "只记录离你多远以内的吸取；放太宽容易把别人的收获记到你头上",
   "pickupcard.config.row.enterMs.name": "入场时长",
   "pickupcard.config.row.enterMs.hint": "新卡从竖条后面滑出来到就位一共多久；调它预览会当场重演一遍",
   "pickupcard.config.row.enterToggle.name": "入场动画",
@@ -137,6 +141,7 @@
   "pickupcard.config.value.color.invalid": "无效",
   "pickupcard.config.value.auto": "自动",
   "pickupcard.config.unit.cards": " 张",
+  "pickupcard.config.unit.blocks": " 格",
   "pickupcard.config.toggle.on": "开",
   "pickupcard.config.toggle.off": "关",
 

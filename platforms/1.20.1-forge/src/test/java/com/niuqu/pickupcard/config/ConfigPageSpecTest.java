@@ -162,6 +162,23 @@ class ConfigPageSpecTest {
                 "数字含义行应紧跟数量写法行（实际 " + countFormatAt + " → " + countModeAt + "）");
     }
 
+    /** 磁铁半径行紧跟磁铁开关行 —— 半径是开关的参数，分开两处玩家会找不到。 */
+    @Test
+    void magnetRadiusRowFollowsTheMagnetSwitchOnTheGeneralPage() {
+        List<ConfigPageSpec.Row> rows = rows();
+        int magnetAt = -1;
+        int radiusAt = -1;
+        for (int i = 0; i < rows.size(); i++) {
+            String label = rows.get(i).label();
+            if ("pickupcard.config.row.magnet.name".equals(label)) magnetAt = i;
+            if ("pickupcard.config.row.magnetRadius.name".equals(label)) radiusAt = i;
+        }
+        assertEquals(ConfigPageSpec.Page.GENERAL, row(rows, "pickupcard.config.row.magnet.name").page());
+        assertTrue(magnetAt >= 0, "通用页缺磁铁开关行");
+        assertTrue(radiusAt == magnetAt + 1,
+                "磁铁半径行应紧跟磁铁开关行（实际 " + magnetAt + " → " + radiusAt + "）");
+    }
+
     /** 过滤页是动态行，注册表里不该有它 —— 恢复走 FilterPageBuilder 自己那条路。 */
     @Test
     void filterPageIsDynamicAndNotInTheRegistry() {
@@ -188,5 +205,9 @@ class ConfigPageSpecTest {
                 "2026-09-20 定案：屏满顶掉最老（新默认），排队是可选项");
         assertEquals(CountMode.PICKUP, PickupCardConfig.VALUES.countMode.getDefault(),
                 "数字含义默认本次拾取数（0.2.2 及以前的口径）");
+        assertEquals(true, PickupCardConfig.VALUES.magnetEnabled.getDefault(),
+                "磁铁检测默认开");
+        assertEquals(4.0, PickupCardConfig.VALUES.magnetRadius.getDefault(),
+                "磁铁半径默认 4 格（与 PickupCardSettings.DEFAULT_MAGNET_RADIUS 互为镜像）");
     }
 }

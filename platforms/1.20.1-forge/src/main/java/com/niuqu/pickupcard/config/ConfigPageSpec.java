@@ -162,6 +162,14 @@ public final class ConfigPageSpec {
                 tr("pickupcard.config.row.mergeMode.hint"),
                 () -> cycle(v.mergeMode, MergeMode.values(), ConfigPageSpec::mergeName),
                 restore(v.mergeMode)));
+        // 磁铁检测：0.2.3 的新选项，放「行为与合并」节尾 —— 它改的也是"什么算我得到的东西"
+        rows.add(new Row(Page.GENERAL, tr("pickupcard.config.row.magnet.name"),
+                tr("pickupcard.config.row.magnet.hint"),
+                () -> bool(v.magnetEnabled, eff.magnetEnabled()), restore(v.magnetEnabled)));
+        rows.add(new Row(Page.GENERAL, tr("pickupcard.config.row.magnetRadius.name"),
+                tr("pickupcard.config.row.magnetRadius.hint"),
+                () -> radius(v.magnetRadius, 1, 16),
+                restore(v.magnetRadius)));
     }
 
     // ------------------------------------------------------------------
@@ -360,6 +368,22 @@ public final class ConfigPageSpec {
                     changed();
                 },
                 value -> Math.round(value) + "px");
+    }
+
+    /**
+     * 磁铁半径（格）：半格步进 —— 单位是方块不是像素，4.5 格是有意义的档；
+     * 与 {@link #decimal}（整数像素 + "px" 后缀）分两处，谁也别挤谁。
+     * <p>【没有 -1 哨兵】半径不存在"跟随主题/自动"的第三态，{@code shown} 因此不传 ——
+     * 与 separation 那行实际行为一致（它的 {@code shown} 也永远用不到）。
+     */
+    private static Slider radius(ForgeConfigSpec.DoubleValue config, double min, double max) {
+        return new Slider("", min, max, 0.5,
+                () -> config.get(),
+                value -> {
+                    config.set(Math.round(value * 2) / 2.0);
+                    changed();
+                },
+                value -> Math.round(value * 2) / 2.0 + tr("pickupcard.config.unit.blocks"));
     }
 
     private static Slider time(ForgeConfigSpec.LongValue config, long shown, long min, long max, long step) {

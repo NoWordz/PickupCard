@@ -1,6 +1,5 @@
 package com.niuqu.pickupcard.mixin;
 
-import com.niuqu.pickupcard.PickupCard;
 import com.niuqu.pickupcard.pickup.PickupRelay;
 import com.niuqu.pickupcard.pickup.PickupSoundGate;
 import net.minecraft.client.multiplayer.ClientLevel;
@@ -39,6 +38,10 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
  * 【这个类为什么不带 @OnlyIn】它住在映射层，要同时编给 Forge 与 NeoForge —— 而
  * {@code @OnlyIn} 的包名在两边不同（{@code net.minecraftforge...} / {@code net.neoforged...}）。
  * 客户端专属由 mixin 配置只在客户端加载来保证，不靠这个注解。
+ * <p>
+ * 【磁铁检测的注入同住这个类】{@code handleSetEntityData} 上的一对 @Inject（见下方
+ * 磁铁段注释）盯的是"实体数据同步把物品数量改小"这个信号，与拾取包那条路互不干扰；
+ * 判定与弹卡都在 {@link PickupRelay#onMagnetSync}。
  */
 @Mixin(ClientPacketListener.class)
 public abstract class ClientPacketListenerMixin {
@@ -47,13 +50,18 @@ public abstract class ClientPacketListenerMixin {
     private ClientLevel level;
 
     // =====================================================================
-    // 【磁铁探针（Phase D / Task D1，临时插桩）】ItemEntity 的实体数据同步前后值。
-    // 目的：验证"磁铁/漏斗把物品实体数量改小"在客户端可见（DATA_ITEM 槽同步），
-    // 给 D3 的正式 mixin 落证据。探针结论出来后本段由 D3 正式化改写。
-    // 【签名与注入点为何长这样（2026-09-25 javap 47.4.10 核实）】
+    // 【磁铁检测（Phase D）】别的 mod（磁铁升级、漏斗等）把地上物品吸进容器时，
+    // 服务端走的是 ItemEntity.setItem(remaining) —— 客户端收到一次实体数据同步
+    // （DATA_ITEM 槽），数量被改小。这里捕获同步前后的数量，交给 {@link PickupRelay}
+    // 判断该不该弹卡。正常拾取走另一个包（上面的注入），despawn/岩浆/爆炸是直接
+    // discard 实体、不发数据 —— 信号区分度就是这么来的。
+    // 【签名与注入点为何长这样（2026-09-25 javap 47.4.10 核实，D1 探针定案）】
     // handleSetEntityData 开头 ensureRunningOnSameThread（字节码指令 6），随后
-    // level.getEntity(packet.id())——所以 before 必须挂在同款 INVOKE+shift=AFTER 上
-    // （HEAD 是网络线程，碰不得 level）；after 在 TAIL（原版已把 packedItems 应用进实体）。
+    // level.getEntity(packet.id())（指令 17）——所以 before 必须挂在同款 INVOKE+shift=AFTER 上
+    // （HEAD 是网络线程，碰不得 level）；after 在 TAIL（原版已把 packedItems 应用进实体，
+    // 此时实体现值就是同步后的数量）。
+    // 【首同步不是吸取】实体刚生成时客户端 getItem() 为 EMPTY，第一包同步看到的是
+    // 0 -> N —— MagnetMath.absorbed(0, x)=0 在 relay 侧正好挡住，这里不用特判。
     // =====================================================================
 
     /** 同步前的 ItemStack 副本（卡要带 NBT/名字活几秒，不能只存 count）。 */
@@ -71,8 +79,21 @@ public abstract class ClientPacketListenerMixin {
         }
     }
 
+    /**
+     * 消费端：把"同步前的完整副本 + 同步后的数量"交给 relay。
+     * <p>
+     * 【id 不匹配就放弃】两次同步之间可能插进别的实体的包（同一次方法调用只碰一个实体，
+     * 但 before 捕获是"最后一个 ItemEntity 同步"留下的）—— id 对不上说明这份 before 不是
+     * 这个实体的，宁可漏报不可误报。
+     * <p>
+     * 【消费即复位】两个状态字段不管 relay 要不要弹卡都必须清掉：字段挂在 listener 实例上
+     * 跟着连接走，残留的旧 before 会让下一次无关同步撞上过期数据。
+     * <p>
+     * 【实体不在就不弹】TAIL 时实体已被移除（网络竞态）读不到 after —— 与
+     * {@link PickupRelay#onTakeItem} 同一条纪律：宁可漏报不可误报。
+     */
     @Inject(method = "handleSetEntityData", at = @At("TAIL"))
-    private void pickupcard$magnetProbeAfter(ClientboundSetEntityDataPacket packet, CallbackInfo ci) {
+    private void pickupcard$magnetRelayAfter(ClientboundSetEntityDataPacket packet, CallbackInfo ci) {
         if (packet.id() != this.pickupcard$magnetEntityId || this.pickupcard$magnetBefore == null) {
             return;
         }
@@ -80,16 +101,7 @@ public abstract class ClientPacketListenerMixin {
         this.pickupcard$magnetBefore = null;
         this.pickupcard$magnetEntityId = -1;
         if (this.level.getEntity(packet.id()) instanceof ItemEntity itemEntity) {
-            int after = itemEntity.getItem().getCount();
-            if (after != before.getCount()) {
-                PickupCard.LOGGER.info("[magnet-probe] ItemEntity #{} count {} -> {} ({}), item={}",
-                        packet.id(), before.getCount(), after,
-                        after < before.getCount() ? "SHRUNK=吸收信号" : "grown=非吸收",
-                        before.getItem());
-            } else {
-                PickupCard.LOGGER.debug("[magnet-probe] ItemEntity #{} count unchanged ({})",
-                        packet.id(), after);
-            }
+            PickupRelay.onMagnetSync(this.level, packet.id(), before, itemEntity.getItem().getCount());
         }
     }
 

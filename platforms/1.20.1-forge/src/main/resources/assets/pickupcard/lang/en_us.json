@@ -61,6 +61,10 @@
   "pickupcard.config.row.separation.hint": "Vertical gap between cards; the gaps inside a card are theme territory",
   "pickupcard.config.row.mergeMode.name": "Merge granularity",
   "pickupcard.config.row.mergeMode.hint": "What counts as \"the same item\". Click to cycle: name + enchants → name → name, but renamed splits → never merge",
+  "pickupcard.config.row.magnet.name": "Magnet detection",
+  "pickupcard.config.row.magnet.hint": "Also pops a card when magnets (Sophisticated Backpacks upgrades, funnels) pull ground items into a container. It watches the generic signal of \"an item entity's count being shrunk by the server\": magnet mods trigger it; a vanilla hopper emptying a whole stack removes the entity directly and cannot be detected; XP absorbed by magnets can't be detected either",
+  "pickupcard.config.row.magnetRadius.name": "Magnet radius",
+  "pickupcard.config.row.magnetRadius.hint": "Only absorptions within this distance count as yours; too wide and other players' pickups land on your screen",
   "pickupcard.config.row.enterMs.name": "Enter duration",
   "pickupcard.config.row.enterMs.hint": "How long a new card takes to slide out and settle; changing it replays the preview",
   "pickupcard.config.row.enterToggle.name": "Enter animation",
@@ -137,6 +141,7 @@
   "pickupcard.config.value.color.invalid": "Invalid",
   "pickupcard.config.value.auto": "Auto",
   "pickupcard.config.unit.cards": " cards",
+  "pickupcard.config.unit.blocks": " blocks",
   "pickupcard.config.toggle.on": "On",
   "pickupcard.config.toggle.off": "Off",
 

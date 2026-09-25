@@ -23,6 +23,8 @@ import com.niuqu.pickupcard.text.CountMode;
  * @param nameMaxWidth  物品名最大宽度（像素）；0 = 按屏宽比例自动（{@code CardMetrics}）
  * @param fullPolicy    屏满之后的新拾取怎么办（顶掉最老 / 排队），见 {@link FullPolicy}
  * @param countMode     卡上数字回答哪个问题（本次拾取数 / 背包持有总数），见 {@link CountMode}
+ * @param magnetEnabled 磁铁检测：别的 mod（磁铁升级等）把地上的物品吸进容器时也弹卡
+ * @param magnetRadius  磁铁检测的生效半径（格）：只记录离玩家这么近的吸取
  */
 public record PickupCardSettings(long holdMs,
                                  long exitMs,
@@ -35,11 +37,35 @@ public record PickupCardSettings(long holdMs,
                                  boolean showItemId,
                                  int nameMaxWidth,
                                  FullPolicy fullPolicy,
-                                 CountMode countMode) {
+                                 CountMode countMode,
+                                 boolean magnetEnabled,
+                                 float magnetRadius) {
+
+    /** 磁铁检测的默认半径（格）。与 TOML 键 {@code [magnet] radius} 的默认值互为镜像 —— 改一处必看另一处。 */
+    public static final float DEFAULT_MAGNET_RADIUS = 4.0f;
 
     public static PickupCardSettings defaults() {
         return new PickupCardSettings(2_600L, 320L, MergeMode.defaults(), 5, 9, CountFormat.PLUS,
-                true, true, false, 0, FullPolicy.REPLACE, CountMode.PICKUP);
+                true, true, false, 0, FullPolicy.REPLACE, CountMode.PICKUP,
+                true, DEFAULT_MAGNET_RADIUS);
+    }
+
+    /** 旧 12 参签名：磁铁两项缺省开 / {@link #DEFAULT_MAGNET_RADIUS}，旧调用点零改动。 */
+    public PickupCardSettings(long holdMs,
+                              long exitMs,
+                              MergeMode mergeMode,
+                              int maxOnScreen,
+                              int queueSize,
+                              CountFormat countFormat,
+                              boolean enabled,
+                              boolean showItemName,
+                              boolean showItemId,
+                              int nameMaxWidth,
+                              FullPolicy fullPolicy,
+                              CountMode countMode) {
+        this(holdMs, exitMs, mergeMode, maxOnScreen, queueSize, countFormat, enabled,
+                showItemName, showItemId, nameMaxWidth, fullPolicy, countMode,
+                true, DEFAULT_MAGNET_RADIUS);
     }
 
     /** 旧 11 参签名：{@code countMode} 缺省 {@link CountMode#PICKUP}（本次拾取数），旧调用点零改动。 */
@@ -88,6 +114,11 @@ public record PickupCardSettings(long holdMs,
                 // 0 = 自动；给了正数就别小于 24px —— 比一个字符还窄的"最大宽度"不是设置，是 bug
                 nameMaxWidth <= 0 ? 0 : Math.max(24, Math.min(600, nameMaxWidth)),
                 fullPolicy == null ? FullPolicy.REPLACE : fullPolicy,
-                countMode == null ? CountMode.PICKUP : countMode);
+                countMode == null ? CountMode.PICKUP : countMode,
+                magnetEnabled,
+                // float 是这里第一个非整数项：TOML 手写 nan 能一路解析进来（合法 TOML），
+                // 而 max/min 对 NaN 都原样放行 —— 夹逼对它形同虚设，得先挡
+                Float.isNaN(magnetRadius) ? DEFAULT_MAGNET_RADIUS
+                        : Math.max(1f, Math.min(16f, magnetRadius)));
     }
 }

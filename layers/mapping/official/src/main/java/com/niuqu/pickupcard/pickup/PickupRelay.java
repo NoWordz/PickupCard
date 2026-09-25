@@ -2,6 +2,8 @@ package com.niuqu.pickupcard.pickup;
 
 import com.niuqu.pickupcard.PickupCard;
 import com.niuqu.pickupcard.filter.FilterRules;
+import com.niuqu.pickupcard.magnet.MagnetMath;
+import com.niuqu.pickupcard.notice.PickupCardSettings;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.client.player.AbstractClientPlayer;
@@ -78,6 +80,46 @@ public final class PickupRelay {
                                 + "看它前后的日志（首张卡引擎初始化、联动解析、过滤规则现查）",
                         micros, SLOW_PICKUP_MICROS);
             }
+        }
+    }
+
+    /**
+     * 磁铁/漏斗把某个物品实体的数量改小了（实体数据同步信号），before 是同步前的完整副本。
+     * <p>
+     * 【过滤链，从严到松】数量没变少（{@link MagnetMath#absorbed} = 0，含首同步 0->N）→
+     * 磁铁开关 → 距离：先便宜后贵，绝大多数同步包（玩家、怪、盔甲架的元数据）在第一格
+     * 就出局。距离用的是平方比较，省一次开方。
+     * <p>
+     * 【总开关为什么不在这里查】与 {@link #onTakeItem} 同一条分工：{@code enabled} 归渲染层
+     * （{@code CardStage.renderInto}）管 —— 关掉时屏上清卡、账本重置，账本这边照常记账，
+     * 两层各管各的。磁铁开关是本功能的独立闸门，才归这里。
+     * <p>
+     * 【为什么不 arm 静音闸门】{@code offer} 返回的判定这里原样丢弃：磁铁这条路不经过
+     * {@code handleTakeItemEntity} 的放音点，闸门里写什么都不会被读 —— 写了反而留一份
+     * 会被下一次拾取误读的状态。原版那声拾取音本来也不会响（没有拾取发生）。
+     * <p>
+     * 【过滤在 offer 里做】黑名单/白名单/静音名单照常生效：磁铁吸进来的也是"我得到的
+     * 东西"，玩家对它配的规则应该跟亲手捡的一样。
+     */
+    public static void onMagnetSync(@Nullable ClientLevel level, int entityId,
+                                    ItemStack before, int afterCount) {
+        if (level == null) return;
+        int amount = MagnetMath.absorbed(before.getCount(), afterCount);
+        if (amount <= 0) return;
+        PickupCardSettings settings = Inbox.INSTANCE.settingsSnapshot();
+        if (!settings.magnetEnabled()) return;
+        LocalPlayer self = Minecraft.getInstance().player;
+        Entity entity = level.getEntity(entityId);
+        if (self == null || entity == null) return;
+        if (self.distanceToSqr(entity) > settings.magnetRadius() * settings.magnetRadius()) return;
+        // 【before 不用再 copy】mixin 捕获时已经复制过一份（实体身上的栈随时会被服务端
+        // 改写），relay 只是所有权的中转站 —— 再 copy 一次是白付的钱
+        long t0 = System.nanoTime();
+        Inbox.INSTANCE.offer(new CardContent.Item(before), amount);
+        long micros = (System.nanoTime() - t0) / 1_000L;
+        if (micros >= SLOW_PICKUP_MICROS) {
+            PickupCard.LOGGER.warn("[磁铁] 这次记账花了 {}us（阈值 {}）—— 会直接算进掉帧",
+                    micros, SLOW_PICKUP_MICROS);
         }
     }
 

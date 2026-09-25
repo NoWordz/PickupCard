@@ -76,6 +76,42 @@ class PickupCardSettingsTest {
         assertTrue(off.showItemId());
     }
 
+    @Test
+    void magnetDefaultsToOnWithinFourBlocks() {
+        PickupCardSettings d = PickupCardSettings.defaults();
+        assertTrue(d.magnetEnabled(), "磁铁检测默认开");
+        assertEquals(PickupCardSettings.DEFAULT_MAGNET_RADIUS, d.magnetRadius(), 1e-6f, "默认半径 4 格");
+        // 12 参旧签名（0.2.2 的 canonical）：磁铁两项缺省 = 开 / 4 格
+        PickupCardSettings viaTwelveArgs = new PickupCardSettings(1_000L, 100L, MergeMode.SAME_NBT,
+                3, 9, CountFormat.PLUS, true, true, false, 0, FullPolicy.QUEUE, CountMode.TOTAL);
+        assertTrue(viaTwelveArgs.magnetEnabled(), "12 参旧签名缺省开");
+        assertEquals(PickupCardSettings.DEFAULT_MAGNET_RADIUS, viaTwelveArgs.magnetRadius(), 1e-6f,
+                "12 参旧签名缺省 4 格");
+    }
+
+    /** 半径夹进 1..16：0 不是"关"（关归开关管），是手滑，夹到下限。 */
+    @Test
+    void magnetRadiusIsClampedToOneToSixteen() {
+        assertEquals(1f, magnetWithRadius(0f).magnetRadius(), 1e-6f, "0 夹到下限 1");
+        assertEquals(1f, magnetWithRadius(-3f).magnetRadius(), 1e-6f, "负数夹到下限 1");
+        assertEquals(16f, magnetWithRadius(20f).magnetRadius(), 1e-6f, "上限 16");
+        assertEquals(16f, magnetWithRadius(200f).magnetRadius(), 1e-6f, "远超上限也夹到 16");
+        assertEquals(4.5f, magnetWithRadius(4.5f).magnetRadius(), 1e-6f, "半格档原样保留");
+    }
+
+    @Test
+    void nanRadiusSanitizesToDefault() {
+        // TOML 手写 nan 是合法值，而 max/min 对 NaN 原样放行 —— 不挡的话夹逼形同虚设
+        assertEquals(PickupCardSettings.DEFAULT_MAGNET_RADIUS,
+                magnetWithRadius(Float.NaN).magnetRadius(), 1e-6f, "NaN 回默认 4 格");
+    }
+
+    private static PickupCardSettings magnetWithRadius(float radius) {
+        return new PickupCardSettings(1_000L, 100L, MergeMode.SAME_NBT, 3, 9,
+                CountFormat.PLUS, true, true, false, 0, FullPolicy.REPLACE, CountMode.PICKUP,
+                true, radius).sanitized();
+    }
+
     private static PickupCardSettings settingsWithNameWidth(int width) {
         return new PickupCardSettings(1_000L, 100L, MergeMode.SAME_NBT, 3, 9,
                 CountFormat.PLUS, true, true, false, width).sanitized();

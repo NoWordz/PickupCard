@@ -65,7 +65,9 @@ public final class PickupCardConfig {
                 VALUES.showItemId.get(),
                 VALUES.nameMaxWidth.get(),
                 VALUES.fullPolicy.get(),
-                VALUES.countMode.get()).sanitized();
+                VALUES.countMode.get(),
+                VALUES.magnetEnabled.get(),
+                VALUES.magnetRadius.get().floatValue()).sanitized();
     }
 
     /**
@@ -227,6 +229,8 @@ public final class PickupCardConfig {
         final ForgeConfigSpec.EnumValue<FullPolicy> fullPolicy;
         final ForgeConfigSpec.EnumValue<CountFormat> countFormat;
         final ForgeConfigSpec.EnumValue<CountMode> countMode;
+        final ForgeConfigSpec.BooleanValue magnetEnabled;
+        final ForgeConfigSpec.DoubleValue magnetRadius;
         final ForgeConfigSpec.ConfigValue<List<? extends String>> blacklist;
         final ForgeConfigSpec.ConfigValue<List<? extends String>> whitelist;
         final ForgeConfigSpec.ConfigValue<List<? extends String>> muteList;
@@ -398,6 +402,20 @@ public final class PickupCardConfig {
                             "  注意：总数只算原版 41 格（主背包、盔甲、副手），Curios 等 mod 扩展槽不算；",
                             "  经验卡和「还有 N 项」溢出卡没有总数可言，仍显示各自的累计数量。")
                     .defineEnum("mode", CountMode.PICKUP);
+            builder.pop();
+
+            builder.comment("磁铁检测：磁铁升级、漏斗这类东西把地上的物品直接吸进容器时，也弹一张卡。",
+                            "【它检测的是什么】「物品实体的数量被服务端改小」这个通用信号 ——",
+                            "磁铁 mod 会触发；原版漏斗把一整组吸空时走的是直接移除实体，检测不到；",
+                            "经验被磁铁吸走同样检测不到（也是直接移除）。").push("magnet");
+            magnetEnabled = builder
+                    .comment("开关。开启后，附近物品被磁铁吸进容器时也会像捡起来一样弹卡。",
+                            "数量按真正被吸走的算：整组被吸走弹整组的数，吸走一半弹一半。")
+                    .define("enabled", true);
+            magnetRadius = builder
+                    .comment("只记录离你多远（格）以内的吸取。放太宽容易把别人的收获记到你头上 ——",
+                            "同屏其他玩家附近的吸取也一样看得见，靠距离把它挡掉。")
+                    .defineInRange("radius", PickupCardSettings.DEFAULT_MAGNET_RADIUS, 1.0, 16.0);
             builder.pop();
 
             builder.comment("外观：这里只放玩家改过的项。-1 / 空串 = 没改过，用主题里的值。",
