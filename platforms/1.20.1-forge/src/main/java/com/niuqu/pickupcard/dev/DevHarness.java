@@ -240,6 +240,9 @@ public final class DevHarness {
         private static final boolean PROBE_ONLY = "probe".equalsIgnoreCase(MODE);
         private static int probeTicks;
         private static boolean probeControlDropped;
+        /** spawn 时记下的漏斗/玩家坐标（dump 用同一坐标——当下玩家位置会漂，见 tickProbe 注释）。 */
+        private static net.minecraft.core.BlockPos probeHopperPos;
+        private static net.minecraft.core.BlockPos probePlayerPos;
 
         /**
          * {@code -PharnessAuto=grid}：第三个形态（网格，A-19）→ 截图 + 读数 → 退出。
@@ -1259,8 +1262,12 @@ public final class DevHarness {
                     var sLevel = server.overworld();
                     var player = sLevel.getPlayerByUUID(mc.player.getUUID());
                     if (player == null) return;
-                    // 漏斗放在玩家东侧两格：漏斗从上方区域吸物品实体（原版行为）
+                    // 漏斗放在玩家东侧两格：漏斗从上方区域吸物品实体（原版行为）。
+                    // 【坐标记进静态字段】dump 用的是同一个 pos —— 第一版 dump 用"当下玩家位置"
+                    // 重算，玩家挪了 5 格就查了个空地，白跑一轮才学到这条。
                     var hopperPos = player.blockPosition().offset(2, 0, 0);
+                    probeHopperPos = hopperPos;
+                    probePlayerPos = player.blockPosition();
                     sLevel.setBlockAndUpdate(hopperPos,
                             net.minecraft.world.level.block.Blocks.HOPPER.defaultBlockState());
                     var stack = new net.minecraft.world.item.ItemStack(
@@ -1281,8 +1288,8 @@ public final class DevHarness {
                 server.execute(() -> {
                     var sLevel = server.overworld();
                     var player = sLevel.getPlayerByUUID(mc.player.getUUID());
-                    if (player == null) return;
-                    var awayPos = player.blockPosition().offset(-4, 0, 0);
+                    if (player == null || probePlayerPos == null) return;
+                    var awayPos = probePlayerPos.offset(-4, 0, 0);
                     var stack = new net.minecraft.world.item.ItemStack(
                             net.minecraft.world.item.Items.STONE, 64);
                     var item = new net.minecraft.world.entity.item.ItemEntity(
@@ -1294,8 +1301,35 @@ public final class DevHarness {
                 });
                 return;
             }
-            // 漏斗 8gt 吸 1 个：64→63 的 SHRUNK 最早在 ~1-2s 出现；给 10s 余量足够证据落地
-            if (probeTicks >= WARMUP_TICKS + 200) {
+            // 漏斗 8gt 吸 1 个：64→63 的 SHRUNK 最早在 ~1-2s 出现；等 30s，收工前 dump 现场
+            // （漏斗里进了几个、漏斗上方实体还剩几个、各 count 多少）—— 吸收没发生时这份
+            // dump 就是"为什么"的直接证据（第一轮探针局 0 条 SHRUNK，就是靠它定案的）。
+            if (probeTicks >= WARMUP_TICKS + 600) {
+                server.execute(() -> {
+                    var sLevel = server.overworld();
+                    if (probeHopperPos == null) return;
+                    var hopper = sLevel.getBlockEntity(probeHopperPos);
+                    if (hopper instanceof net.minecraft.world.level.block.entity.HopperBlockEntity h) {
+                        StringBuilder slots = new StringBuilder();
+                        for (int i = 0; i < h.getContainerSize(); i++) {
+                            var s = h.getItem(i);
+                            if (!s.isEmpty()) slots.append(i).append('=').append(s.getCount()).append(' ');
+                        }
+                        PickupCard.LOGGER.info("[harness-auto] probe dump：漏斗 {} 非空槽 [{}]", probeHopperPos, slots);
+                    } else {
+                        PickupCard.LOGGER.info("[harness-auto] probe dump：{} 处没有漏斗 blockEntity（={}）", probeHopperPos, hopper);
+                    }
+                    var box = new net.minecraft.world.phys.AABB(probeHopperPos).inflate(8);
+                    var items = sLevel.getEntitiesOfClass(net.minecraft.world.entity.item.ItemEntity.class, box);
+                    for (var e : items) {
+                        PickupCard.LOGGER.info("[harness-auto] probe dump：ItemEntity {} count={} item={} alive={} age={}",
+                                e.position(), e.getItem().getCount(), e.getItem().getItem(),
+                                e.isAlive(), e.getAge());
+                    }
+                    if (items.isEmpty()) {
+                        PickupCard.LOGGER.info("[harness-auto] probe dump：漏斗周围 8 格内没有 ItemEntity");
+                    }
+                });
                 PickupCard.LOGGER.info("[harness-auto] probe 收工：查 latest.log 里 [magnet-probe] 的 SHRUNK 记录，退出客户端");
                 mc.stop();
             }
