@@ -430,4 +430,58 @@ class NoticeQueueTest {
         assertTrue(outcome.evicted().isEmpty(), "合并不该挤掉任何卡");
         assertEquals(6, outcome.notice().count(), "数量累加到已有那张身上");
     }
+
+    @Test
+    @DisplayName("REPLACE 救回守恒：顶卡后名额立刻被新卡占走，捡回淡出中的同名卡要连带顶掉最老的一张")
+    void rescueBeyondCapacityEvictsTheOldestCardInstead() {
+        NoticeQueue<String> q = queue();
+        add(q, "a", 1, 0L, 2, QUEUE);
+        add(q, "b", 1, 100L, 2, QUEUE);
+        add(q, "c", 1, 200L, 2, QUEUE, FullPolicy.REPLACE);   // 顶 a 上 c，realSize 仍 = 2
+
+        // a 还在退场（leaving）：立刻再捡 a。免费拉回的话 realSize 就永久停在 max+1 ——
+        // 必须同帧把最老的正常卡（b，不是救回的 a 自己、也不是最新的 c）顶出去。
+        var rescue = add(q, "a", 3, 300L, 2, QUEUE, FullPolicy.REPLACE);
+
+        assertEquals(NoticeQueue.Change.MERGED, rescue.change());
+        assertEquals(1, rescue.evicted().size(), "超限的救回要连带顶一张");
+        assertEquals("b", rescue.evicted().get(0).key());
+        assertEquals(2, q.size(), "名额守恒：救回的 a + 先来的 c");
+        assertTrue(q.find("a").isPresent());
+        assertTrue(q.isLeaving("b"), "b 走与 sweep 同一条离场路");
+    }
+
+    @Test
+    @DisplayName("REPLACE 档 maxOnScreen=1：救回连带顶卡与 NEVER 全新拾取都只留一张")
+    void replaceCyclesAtCapacityOne() {
+        NoticeQueue<String> q = queue();
+        add(q, "a", 1, 0L, 1, QUEUE, FullPolicy.REPLACE);
+
+        var second = add(q, "b", 1, 100L, 1, QUEUE, FullPolicy.REPLACE);
+        assertEquals(NoticeQueue.Change.ADDED, second.change());
+        assertEquals("a", second.evicted().get(0).key());
+
+        // a 在 leaving：SAME_NBT 走救回 —— 名额被 b 占着，救回连带顶掉 b
+        var rescue = add(q, "a", 1, 200L, 1, QUEUE, FullPolicy.REPLACE);
+        assertEquals(NoticeQueue.Change.MERGED, rescue.change());
+        assertEquals("b", rescue.evicted().get(0).key());
+        assertEquals(1, q.size(), "循环顶替不积累");
+
+        // b 还在 leaving，但 NEVER 档不救回：再捡 b 是一次全新拾取，顶掉 a
+        var fresh = q.absorb("b", "l", "s", 1, true, 300L, MergeMode.NEVER, 1, QUEUE, FullPolicy.REPLACE);
+        assertEquals(NoticeQueue.Change.ADDED, fresh.change());
+        assertEquals("a", fresh.evicted().get(0).key());
+        assertEquals(1, q.size());
+    }
+
+    @Test
+    @DisplayName("REPLACE 档容量为 0：选不出牺牲者就不上账，落去排队，与 QUEUE 档同结局")
+    void replaceWithZeroCapacityDoesNotForceACardOnScreen() {
+        NoticeQueue<String> q = queue();
+
+        var outcome = add(q, "a", 1, 0L, 0, QUEUE, FullPolicy.REPLACE);
+
+        assertEquals(NoticeQueue.Change.QUEUED, outcome.change());
+        assertEquals(0, q.size(), "几何上连一张都放不下时，REPLACE 不能硬塞一张上账");
+    }
 }

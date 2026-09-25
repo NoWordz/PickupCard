@@ -101,9 +101,20 @@ public final class NoticeQueue<T> {
             Notice<T> returning = leaving.get(key);
             if (returning != null
                     && MergeWindow.shouldMerge(true, returning.lookKey().equals(lookKey), mergeMode)) {
-                // 救回：搬回活表、数量累加，**不查上限** —— 它本来就在屏幕上，没多占位置
                 leaving.remove(key);
                 Notice<T> merged = returning.mergeInto(amount, now);
+                // 【名额守恒】救回不查上限的老前提是"名额是 sweep 腾出来的"——REPLACE 顶卡不是：
+                // 顶那一刻名额就被新卡占走，这时把它免费拉回来，realSize 就永久停在 max+1。
+                // 超限就同帧把最老的一张正常卡顶出去：救回与顶卡一起完成，realSize 恒不超 max
+                //（QUEUE 档下 alive 只会经 sweep 减员后再救回，天然守恒，这个分支不触发）。
+                if (realSize() >= maxOnScreen) {
+                    Notice<T> victim = oldestNormalCard();
+                    if (victim != null) {
+                        alive.remove(victim.key());
+                        leaving.put(victim.key(), victim);   // 与 sweep 同一条离场路
+                        evicted.add(victim);
+                    }
+                }
                 alive.put(key, merged);
                 return new Outcome<>(Change.MERGED, merged, evicted);
             }
@@ -140,20 +151,15 @@ public final class NoticeQueue<T> {
             if (fullPolicy == FullPolicy.REPLACE) {
                 // 【顶谁】touchedAt 最老的那张"正常卡"——溢出卡不占名额，也不配被顶
                 //（realSize() 把它排除在外，这里必须一致，否则会把名额挤成负数）。
-                Notice<T> victim = null;
-                for (Notice<T> candidate : alive.values()) {
-                    if (candidate.key().equals(overflowKey)) continue;
-                    if (victim == null || candidate.touchedAt() < victim.touchedAt()) {
-                        victim = candidate;
-                    }
-                }
+                // 选不出来（几何容量 0、alive 里只剩溢出卡）就不上账，落去排队：与 QUEUE 档同结局。
+                Notice<T> victim = oldestNormalCard();
                 if (victim != null) {
                     alive.remove(victim.key());
                     leaving.put(victim.key(), victim);   // 与 sweep 同一条离场路：退场期间同名拾取能救回
                     evicted.add(victim);
+                    alive.put(key, fresh);
+                    return new Outcome<>(Change.ADDED, fresh, evicted);
                 }
-                alive.put(key, fresh);
-                return new Outcome<>(Change.ADDED, fresh, evicted);
             }
             // QUEUE 档：旧行为一字不动 —— 屏上满了：排到队尾。排队也满 → 丢掉这次拾取（0.1.0 的语义就是这样）。
             if (queueSize > 0 && pending.size() < queueSize) {
@@ -175,6 +181,22 @@ public final class NoticeQueue<T> {
      */
     private int realSize() {
         return alive.size() - (overflowKey != null && alive.containsKey(overflowKey) ? 1 : 0);
+    }
+
+    /**
+     * alive 里 touchedAt 最老的一张「正常卡」（溢出卡不占名额，也不配被顶）；一张都没有就是 null。
+     * <p>【谁在用】REPLACE 顶卡与救回超限的连带顶卡 —— 两个"要挤掉一个人"的场合必须选同一个受害者，
+     * 各写一遍迟早漂成两套口径。
+     */
+    private Notice<T> oldestNormalCard() {
+        Notice<T> victim = null;
+        for (Notice<T> candidate : alive.values()) {
+            if (candidate.key().equals(overflowKey)) continue;
+            if (victim == null || candidate.touchedAt() < victim.touchedAt()) {
+                victim = candidate;
+            }
+        }
+        return victim;
     }
 
     /**
