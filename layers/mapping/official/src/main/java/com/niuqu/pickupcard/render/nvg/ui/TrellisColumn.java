@@ -164,8 +164,12 @@ public final class TrellisColumn {
         Component root = new Box(columnStyle(topInset, pad, rowGap), false);
         for (Widget control : controls) {
             Component line = new Box(Style.row().withGap(gap).withHeight(Sizing.fixed(rowH)), false);
+            // 【label 格不画悬停底】它是文字的定位格，不是交互物：grow 让它占行的大半宽度，
+            // overlay 开着的话，指针飘在文字右侧的大片空白上也是"亮着一条"（0.2.3 真机反馈
+            // "空白也有 hover"的残留就在这）。悬停底只跟控件格走（WidgetSlot 的基类叠加，
+            // 且命中已被 Widget.hitArea 收窄到本体）。
             line.add(new Box(Style.row().withGrow(1f).withWidth(Sizing.atLeast(labelMin))
-                    .withHeight(Sizing.fixed(rowH)), true));
+                    .withHeight(Sizing.fixed(rowH)), false));
             if (control != null) {
                 line.add(new WidgetSlot(control, Style.row()
                         .withWidth(Sizing.fraction(controlMin,
