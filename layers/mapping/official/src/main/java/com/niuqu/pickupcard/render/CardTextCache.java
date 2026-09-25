@@ -67,7 +67,8 @@ public final class CardTextCache {
      */
     public void update(CardCanvas canvas, Font font, CardView view) {
         Inbox.Card current = view.notice().payload();
-        int nowCount = view.notice().count();
+        // 数量口径在这里定：拾取数走账本，总数走物品栏实时表（经验/溢出卡在 displayCount 里回账本数）
+        int nowCount = canvas.displayCount(view);
         int oldCount = view.prevCount();
         float nowScale = canvas.scale();
         int nowWidth = canvas.guiWidth();
@@ -91,7 +92,9 @@ public final class CardTextCache {
 
         name = rawName(current, nowCount, nowShowId);
         countText = canvas.countText(nowCount);
-        prevText = oldCount == nowCount ? null : canvas.countText(oldCount);
+        // 旧值从 canvas.prevCountText 同源取：总数口径下它恒 null —— 账本不知道"上一次合并前
+        // 背包里有几个"，硬凑旧值会从旧拾取数滚到新总数，两个口径接不上、画出来就是错数
+        prevText = canvas.prevCountText(view);
         countTextWidth = font.width(countText);
         countWidth = prevText == null ? countTextWidth : Math.max(countTextWidth, font.width(prevText));
 

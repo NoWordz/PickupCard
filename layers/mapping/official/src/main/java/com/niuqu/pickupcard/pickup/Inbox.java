@@ -9,6 +9,7 @@ import com.niuqu.pickupcard.notice.Notice;
 import com.niuqu.pickupcard.notice.NoticeQueue;
 import com.niuqu.pickupcard.notice.PickupCardSettings;
 import com.niuqu.pickupcard.notice.SeenItems;
+import com.niuqu.pickupcard.render.InventoryTotals;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.world.item.ItemStack;
 
@@ -274,6 +275,9 @@ public final class Inbox {
         pending.clear();
         // 静音闸门也算"这一次拾取"的在途状态：换世界时清零，免得残留跨越世界边界
         PickupSoundGate.arm(false);
+        // 持有总数表同理：不清的话新世界的第 1 tick 会撞上旧表的 tick 号，
+        // 总数口径的卡会画出上一个世界背包里剩的东西
+        InventoryTotals.reset();
     }
 
     private static FilterSubject subjectOf(ItemStack stack) {

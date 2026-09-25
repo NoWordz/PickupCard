@@ -2,9 +2,12 @@ package com.niuqu.pickupcard.render;
 
 import com.niuqu.pickupcard.layout.LayoutSettings;
 import com.niuqu.pickupcard.notice.PickupCardSettings;
+import com.niuqu.pickupcard.pickup.CardContent;
 import com.niuqu.pickupcard.style.CardTimeline;
 import com.niuqu.pickupcard.style.Easing;
 import com.niuqu.pickupcard.style.StyleModel;
+import com.niuqu.pickupcard.text.CountFormat;
+import com.niuqu.pickupcard.text.CountMode;
 
 import javax.annotation.Nullable;
 
@@ -53,6 +56,22 @@ public record CardCanvas(long now,
         return timeline.content(now, view.notice().bornAt());
     }
 
+    /**
+     * 卡上数字该显示的量：拾取口径 = 账本数量；总数口径 = 物品栏持有总数。
+     * <p>【为什么经验卡与溢出卡回账本数量】它们没有"背包里的那个物品"可数 ——
+     * 经验卡数的是经验点，溢出卡数的是"第几项"，总数口径对两者没有定义。
+     * <p>【为什么 CardTextCache 不需要新失效机制】这里返回的数就是文本缓存的键之一
+     * —— 总数一变键就变，缓存自然重算；粒度是 tick（{@link InventoryTotals}），
+     * 对"实时跟随"足够。
+     */
+    public int displayCount(CardView view) {
+        if (settings.countMode() == CountMode.TOTAL
+                && view.notice().payload().content() instanceof CardContent.Item item) {
+            return InventoryTotals.of(item.stack().getItem());
+        }
+        return view.notice().count();
+    }
+
     /** 数字跳动进度 ∈ [0,1]，1 = 无缩放。 */
     public float bumpOf(CardView view) {
         return timeline.bump(now, view.lastBumpAt());
@@ -76,9 +95,17 @@ public record CardCanvas(long now,
         return bumpOf(view);
     }
 
-    /** 滚动中要画的那个"旧数字"；没在滚动时返回 null。 */
+    /**
+     * 滚动中要画的那个"旧数字"；没在滚动时返回 null。
+     * <p>【总数口径恒 null】账本只记得"这次合并前捡了几个"，不知道"合并前背包里有几个"
+     * —— 硬拿账本旧值凑，数字滚动会从旧<b>拾取数</b>滚到新<b>总数</b>，画出来的两个数
+     * 口径不同，看着就是数错了。滚动禁掉，跳动 bump（由合并事件驱动）照旧。
+     */
     @Nullable
     public String prevCountText(CardView view) {
+        if (settings.countMode() == CountMode.TOTAL) {
+            return null;
+        }
         if (view.prevCount() == view.notice().count()) {
             return null;
         }
@@ -133,8 +160,12 @@ public record CardCanvas(long now,
         return 1f - Easing.easeOutCubic(exitOf(view));
     }
 
-    /** 数量该怎么写（`+64` / `×64` / `+1.2K`…）。 */
+    /**
+     * 数量该怎么写：拾取口径带进账符号（`+64` / `×64` / `+1.2K`…），总数口径不带
+     * （`64` / `1.2K`…）—— 符号说的是"进账"，持有量不是进账。
+     */
     public String countText(int count) {
-        return settings.countFormat().gain(count);
+        CountFormat format = settings.countFormat();
+        return settings.countMode() == CountMode.TOTAL ? format.hold(count) : format.gain(count);
     }
 }
