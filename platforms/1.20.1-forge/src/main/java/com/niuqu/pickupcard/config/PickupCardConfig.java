@@ -287,7 +287,7 @@ public final class PickupCardConfig {
             builder.comment("布局").push("layout");
 
             maxOnScreen = builder
-                    .comment("同时在屏最多几张。满了之后新的拾取先排队，不再顶掉别人。")
+                    .comment("同时在屏最多几张。放满之后怎么办看下面的 fullPolicy：顶掉最老（默认）或排队。")
                     .defineInRange("maxOnScreen", 5, 1, 16);
 
             queueSize = builder

@@ -1370,11 +1370,12 @@ public final class DevHarness {
                         mc.getMainRenderTarget(),
                         m -> PickupCard.LOGGER.info("[harness-auto] 截图: {} -> {}", shot, m.getString()));
             } else if (age == EXIT_PUSH_AFTER) {
-                // 再推一张（钻石，跟这一页那五件都不是同一样东西）：③a 之后屏满**不再顶掉旧卡**
-                // 而是排队 —— 这一步因此从"触发淘汰"变成了"验证排队"。
+                // 再推一张（跟这一页那五件都不是同一样东西）：屏满这一下发生什么，
+                // 由 fullPolicy 决定 —— REPLACE（新默认）立刻顶掉最老的一张，QUEUE 排队等位。
+                // harness 不改配置，两档都能用这一步验证：看日志里是顶卡退场还是 [排队]。
                 CardFixtures.Fixture extra = CardFixtures.all().get(6);
                 CardFixtures.inject(extra);
-                PickupCard.LOGGER.info("[harness-auto] 推第 6 张（{}）：屏满，应该排队", extra.label());
+                PickupCard.LOGGER.info("[harness-auto] 推第 6 张（{}）：屏满，行为看 fullPolicy", extra.label());
             } else if (!exitSeen && anyExiting()) {
                 // 【为什么不再用固定 tick】退场什么时候发生取决 holdMs / 同屏上限 / 排队上限，
                 // 写死 tick 就会在改了配置之后拍空。改成"看见第一帧退场就记录"，之后按帧数推进。
