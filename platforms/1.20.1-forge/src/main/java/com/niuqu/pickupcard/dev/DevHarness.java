@@ -1232,6 +1232,14 @@ public final class DevHarness {
                 if (mc.getOverlay() != null || mc.screen != null || mc.level == null) return;
                 clearOldShots(mc);
                 CardFixtures.clear();
+                // 【TOTAL 验证夹具（Phase C）】给背包塞 12 个石头：countMode=TOTAL 时石头卡
+                // 该显示 12（InventoryTotals 扫背包）而不是账本上的 1 —— 稳态帧截图断言用。
+                // PICKUP 模式下这批库存不影响卡面（displayCount 回账本数量），两模式共用剧本。
+                if (mc.player != null) {
+                    mc.player.getInventory().add(new net.minecraft.world.item.ItemStack(
+                            net.minecraft.world.item.Items.STONE, 12));
+                    PickupCard.LOGGER.info("[harness-auto] TOTAL 验证夹具：背包塞 12 个石头");
+                }
                 for (CardFixtures.Fixture fixture : PAGES.get(0)) {
                     CardFixtures.inject(fixture);
                 }
