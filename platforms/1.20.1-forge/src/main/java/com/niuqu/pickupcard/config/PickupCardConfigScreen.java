@@ -529,9 +529,6 @@ public final class PickupCardConfigScreen extends Screen {
     private final Animated tabAccentAnim = Animated.of(0f);
     /** 树外控件（页签/样例钮）的悬停缓动 —— 每颗一个，参数与树内组件同源（motion.Hover）。 */
     private final java.util.Map<Widget, Hover> chipHovers = new java.util.HashMap<>();
-    // 【临时插桩状态】hunt-hover 用，验证完连日志一起删
-    private String lastHuntKey = "";
-    private float lastHuntAmt = -1f;
 
     private Hover chipHover(Widget w) {
         return chipHovers.computeIfAbsent(w, k -> new Hover());
@@ -1076,17 +1073,6 @@ public final class PickupCardConfigScreen extends Screen {
             drawPreview(gui);
         }
         previewNanos = System.nanoTime() - previewStart;
-        // 【临时插桩：hunt"滑条/开关本体描边不亮"】读树真实的悬停目标与缓动量，
-        // 值或目标变化才打 —— 部署验证完整段删（标记：hunt-hover）。
-        dev.e33.trellis.ui.Component hvd = trellisColumn().hovered();
-        String hk = hvd == null ? "null" : hvd.getClass().getSimpleName();
-        float ha = hvd == null ? -1f : hvd.hoverAmount();
-        if (!hk.equals(lastHuntKey) || Math.abs(ha - lastHuntAmt) > 0.1f) {
-            lastHuntKey = hk;
-            lastHuntAmt = ha;
-            PickupCard.LOGGER.info("[hunt-hover] hovered={} amount={}", hk,
-                    String.format(java.util.Locale.ROOT, "%.2f", ha));
-        }
         if (!modalOpen) {
             drawHint(gui, mouseX, mouseY);
         }
