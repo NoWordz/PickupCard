@@ -244,8 +244,15 @@ class TrellisWidgetSlotTest {
         f.canvas.clear();
         f.paint();
 
+        assertEquals(0, f.canvas.countStrokesWith(f.palette.focusRing),
+                "指针点击拿到的焦点不画环 —— 点击本来就看得见，环只属于键盘导航（真机反馈：点击后蓝框不是设计）");
+
+        f.ui.focusNext();
+        f.canvas.clear();
+        f.paint();
+
         assertEquals(1, f.canvas.countStrokesWith(f.palette.focusRing),
-                "拿到焦点之后该画一圈焦点环，颜色来自调色板的 focusRing 角色");
+                "键盘导航拿到的焦点该画一圈焦点环，颜色来自调色板的 focusRing 角色");
         float half = Tokens.Size.HAIRLINE / 2f;
         assertEquals(Math.max(0f, f.palette.radius - half), f.canvas.lastStrokeRadius(), 1e-4,
                 "环的圆角取调色板的 radius（与控件自己那条 outline 同一个形状口径）");
