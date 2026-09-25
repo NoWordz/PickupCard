@@ -6,10 +6,13 @@ package com.niuqu.pickupcard.layout;
  * 质感，不该让卡片突然跳到屏幕另一边（那会被当成 bug）。
  *
  * @param appearMode   卡片出现时怎么展开。{@link Appear#SLIDE} = 内容保持原样从竖条后面平移出来；
- *                     {@link Appear#CLIP} = 内容不动、可见范围从左往右展开。
+ *                     {@link Appear#CLIP} = 内容不动、可见范围从左往右展开；
+ *                     {@link Appear#BOUNCE} = 沿火车路线滑出、冲过终点再弹回（过冲回弹）；
+ *                     {@link Appear#DROP} = 从锚线上方掉落、落地带一记小弹。
  * @param exitMode     卡片怎么消失。{@link Exit#FADE} = 原地淡出；{@link Exit#TRAIN} = 内容整块
  *                     平移回竖条后面（与火车入场的逆放）；{@link Exit#WIPE} = 可见范围从右往左
- *                     收拢（与拉幕入场的逆放）。三种都叠加透明度下降。
+ *                     收拢（与拉幕入场的逆放）；{@link Exit#FALL} = 向下坠 + 淡出；
+ *                     {@link Exit#SCALE} = 整卡缩到竖条侧消失。各档都叠加透明度下降。
  * @param align        水平对齐基准。{@link Side#LEFT} = 竖条左缘贴锚线（一摞卡的竖条成一条线）；
  *                     {@link Side#RIGHT} = 卡片右缘贴锚线（设计里的「右边缘对齐」预设，
  *                     卡宽不齐时左缘参差、右缘齐）。
@@ -25,6 +28,8 @@ package com.niuqu.pickupcard.layout;
  *                     卡堆<b>向上生长</b>：新卡永远出现在锚线上、旧的被顶上去（2026-09-19 定案，
  *                     第三次回到"新卡固定一点"——前两次为顶锚下挤，这次连生长方向一起定死）。
  *                     {@link #AUTO_ANCHOR} = 自动：贴着 HUD 带上方（见 {@link #anchorTop}）。
+ * @param swayEnabled  摇摆呼吸开关：停留期间整卡轻微摇摆的「活着」感。默认关 —— 0.2.3 的
+ *                     新档位只加选项不改默认，老玩家的观感不因更新而变（有测试钉死）。
  *
  * <p>【为什么锚点是分数而不是像素】画布宽随 GUI 缩放剧烈变化（1280×720 上 guiScale 3 是 426 宽、
  * guiScale 5 只剩 256 宽）。写死绝对坐标的话，换一档缩放锚点就被边界夹住 ——
@@ -41,7 +46,28 @@ package com.niuqu.pickupcard.layout;
  * 它们管的事现在全部由 {@code anchorX}/{@code anchorY} 表达。
  */
 public record LayoutSettings(Appear appearMode, Exit exitMode, Side align, float separation,
-                             int scalePercent, float anchorX, float anchorY, boolean mirrorCard) {
+                             int scalePercent, float anchorX, float anchorY, boolean mirrorCard,
+                             boolean swayEnabled) {
+
+    /**
+     * 八参快捷构造：sway 缺省关。canonical 尾上加组件后把旧签名留成 overload，
+     * 现有调用（配置采样、测试）一个字不用改 —— 「现有调用零破坏」就靠它。
+     */
+    public LayoutSettings(Appear appearMode, Exit exitMode, Side align, float separation,
+                          int scalePercent, float anchorX, float anchorY, boolean mirrorCard) {
+        this(appearMode, exitMode, align, separation, scalePercent, anchorX, anchorY, mirrorCard, false);
+    }
+
+    /**
+     * Boolean 桥接：TOML 解析层缺键拿到 null 时走这里。null 一律视为关 ——
+     * 宁可少一档效果，也不把"没填"猜成"要开"。
+     */
+    public LayoutSettings(Appear appearMode, Exit exitMode, Side align, float separation,
+                          int scalePercent, float anchorX, float anchorY, boolean mirrorCard,
+                          Boolean swayEnabled) {
+        this(appearMode, exitMode, align, separation, scalePercent, anchorX, anchorY, mirrorCard,
+                Boolean.TRUE.equals(swayEnabled));
+    }
 
     /** 七参快捷构造（不镜像）：镜像默认关，测试与"只关心水平语义"的调用少写一个 false。 */
     public LayoutSettings(Appear appearMode, Exit exitMode, Side align, float separation,
@@ -71,17 +97,25 @@ public record LayoutSettings(Appear appearMode, Exit exitMode, Side align, float
         /** 内容保持原样，从竖条后面平移到最终位置（界面上的「火车」档）。 */
         SLIDE,
         /** 内容位置不动，可见范围从左往右慢慢展开（界面上的「拉幕」档）。 */
-        CLIP
+        CLIP,
+        /** 滑出 + 过冲回弹：与火车同路线，但冲过终点一截再被拉回来（easeOutBack 的过冲）。 */
+        BOUNCE,
+        /** 掉落：从锚线上方掉下来，落地时带一记小弹。 */
+        DROP
     }
 
-    /** 卡片的消失方式：和入场对称的那一半。三种都叠加透明度下降，不会硬切。 */
+    /** 卡片的消失方式：和入场对称的那一半。各档都叠加透明度下降，不会硬切。 */
     public enum Exit {
         /** 原地淡出。 */
         FADE,
         /** 内容整块平移回竖条后面 —— 火车入场的逆放。 */
         TRAIN,
         /** 可见范围从右往左收拢 —— 拉幕入场的逆放。 */
-        WIPE
+        WIPE,
+        /** 下坠：向下加速坠落 + 淡出。 */
+        FALL,
+        /** 缩放消失：整卡缩到竖条侧消失。 */
+        SCALE
     }
 
     /** 水平对齐基准：锚线管的是卡的哪一条边。 */
@@ -111,10 +145,10 @@ public record LayoutSettings(Appear appearMode, Exit exitMode, Side align, float
 
     /** 默认：火车入场、<b>火车退回</b>（与入场对称的退场，2026-09-19 用户定案）、右缘对齐
      *  （2026-09-20 用户定案：卡宽随名字参差时，齐的该是靠屏幕边的那一侧）、锚点自动
-     *  （右下贴 HUD 带）、卡片不镜像。 */
+     *  （右下贴 HUD 带）、卡片不镜像、摇摆呼吸关（0.2.3 定案：新档只加选项，默认观感不变）。 */
     public static LayoutSettings defaults() {
         return new LayoutSettings(Appear.SLIDE, Exit.TRAIN, Side.RIGHT, DEFAULT_SEPARATION,
-                AUTO_SCALE, AUTO_ANCHOR, AUTO_ANCHOR, false);
+                AUTO_SCALE, AUTO_ANCHOR, AUTO_ANCHOR, false, false);
     }
 
     /**
@@ -150,7 +184,9 @@ public record LayoutSettings(Appear appearMode, Exit exitMode, Side align, float
                         : Math.max(MIN_SCALE_PERCENT, Math.min(MAX_SCALE_PERCENT, scalePercent)),
                 sanitizeAnchor(anchorX),
                 sanitizeAnchor(anchorY),
-                mirrorCard);
+                // 布尔组件没有 null 可防，原样放行；新枚举值走上面的 == null 分支自然原样通过
+                mirrorCard,
+                swayEnabled);
     }
 
     /** 锚点只许两种值：自动哨兵，或者 0..1 的比例。别的统统回自动 —— 宁可回默认也不猜。 */

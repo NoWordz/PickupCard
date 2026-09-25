@@ -123,4 +123,42 @@ class LayoutSettingsTest {
                         .sanitized().scalePercent());
         assertTrue(half.anchorTop(240f, 20f, 75) > 0f, "顺带守一下：构造不再需要已删除的 Side/leftEdge");
     }
+
+    @Test
+    @DisplayName("0.2.3 新档位只是加选项：默认观感钉死不变（火车进、火车退、摇摆关）")
+    void defaultsKeepCurrentVisuals() {
+        LayoutSettings ls = LayoutSettings.defaults();
+        assertEquals(LayoutSettings.Appear.SLIDE, ls.appearMode(), "入场默认仍是火车 —— 新档只加选项不改默认");
+        assertEquals(LayoutSettings.Exit.TRAIN, ls.exitMode(), "退场默认仍是火车退回");
+        assertFalse(ls.swayEnabled(), "摇摆呼吸默认关 —— 老玩家的观感不该被一次更新改掉");
+    }
+
+    @Test
+    @DisplayName("sway 的 Boolean 桥接：null（TOML 缺键）视为关，TRUE 视为开")
+    void nullSwaySanitizesToFalse() {
+        LayoutSettings missing = new LayoutSettings(LayoutSettings.Appear.SLIDE, LayoutSettings.Exit.TRAIN,
+                LayoutSettings.Side.RIGHT, 4f, LayoutSettings.AUTO_SCALE,
+                LayoutSettings.AUTO_ANCHOR, LayoutSettings.AUTO_ANCHOR, false, (Boolean) null);
+        assertFalse(missing.swayEnabled(), "null = 缺键 = 关");
+        assertFalse(missing.sanitized().swayEnabled(), "关穿过 sanitized 还是关");
+        LayoutSettings on = new LayoutSettings(LayoutSettings.Appear.SLIDE, LayoutSettings.Exit.TRAIN,
+                LayoutSettings.Side.RIGHT, 4f, LayoutSettings.AUTO_SCALE,
+                LayoutSettings.AUTO_ANCHOR, LayoutSettings.AUTO_ANCHOR, false, Boolean.TRUE);
+        assertTrue(on.sanitized().swayEnabled(), "显式开穿过 sanitized 还是开");
+    }
+
+    @Test
+    @DisplayName("新枚举值原样穿过 sanitized：不认识的档不会被悄悄换回默认")
+    void newModesPassThroughSanitized() {
+        LayoutSettings a = new LayoutSettings(LayoutSettings.Appear.BOUNCE, LayoutSettings.Exit.SCALE,
+                LayoutSettings.Side.RIGHT, 4f, LayoutSettings.AUTO_SCALE,
+                LayoutSettings.AUTO_ANCHOR, LayoutSettings.AUTO_ANCHOR).sanitized();
+        assertEquals(LayoutSettings.Appear.BOUNCE, a.appearMode(), "BOUNCE 放行");
+        assertEquals(LayoutSettings.Exit.SCALE, a.exitMode(), "SCALE 放行");
+        LayoutSettings b = new LayoutSettings(LayoutSettings.Appear.DROP, LayoutSettings.Exit.FALL,
+                LayoutSettings.Side.LEFT, 4f, LayoutSettings.AUTO_SCALE,
+                LayoutSettings.AUTO_ANCHOR, LayoutSettings.AUTO_ANCHOR).sanitized();
+        assertEquals(LayoutSettings.Appear.DROP, b.appearMode(), "DROP 放行");
+        assertEquals(LayoutSettings.Exit.FALL, b.exitMode(), "FALL 放行");
+    }
 }
