@@ -1,6 +1,7 @@
 package com.niuqu.pickupcard.config;
 
 import com.niuqu.pickupcard.layout.LayoutSettings;
+import com.niuqu.pickupcard.notice.FullPolicy;
 import com.niuqu.pickupcard.notice.MergeMode;
 import com.niuqu.pickupcard.notice.PickupCardSettings;
 import com.niuqu.pickupcard.style.StyleModel;
@@ -60,6 +61,7 @@ class ConfigPageSpecTest {
         assertEquals(ConfigPageSpec.Page.LAYOUT, row(rows, "pickupcard.config.row.align.name").page());
         assertEquals(ConfigPageSpec.Page.LAYOUT, row(rows, "pickupcard.config.row.scale.name").page());
         assertEquals(ConfigPageSpec.Page.LAYOUT, row(rows, "pickupcard.config.row.maxOnScreen.name").page());
+        assertEquals(ConfigPageSpec.Page.LAYOUT, row(rows, "pickupcard.config.row.fullPolicy.name").page());
     }
 
     /** 同一页里标签不许重名 —— harness 按标签找控件点，重名就会点错行。 */
@@ -127,5 +129,7 @@ class ConfigPageSpecTest {
         assertEquals(480L, PickupCardConfig.VALUES.exitMs.getDefault());
         assertEquals(5, PickupCardConfig.VALUES.maxOnScreen.getDefault());
         assertEquals(9, PickupCardConfig.VALUES.queueSize.getDefault());
+        assertEquals(FullPolicy.REPLACE, PickupCardConfig.VALUES.fullPolicy.getDefault(),
+                "2026-09-20 定案：屏满顶掉最老（新默认），排队是可选项");
     }
 }

@@ -2,6 +2,7 @@ package com.niuqu.pickupcard.config;
 
 import com.niuqu.pickupcard.filter.FilterSettings;
 import com.niuqu.pickupcard.layout.LayoutSettings;
+import com.niuqu.pickupcard.notice.FullPolicy;
 import com.niuqu.pickupcard.notice.PickupCardSettings;
 import com.niuqu.pickupcard.style.StyleOverrides;
 import com.niuqu.pickupcard.style.Theme;
@@ -59,7 +60,8 @@ public final class PickupCardConfig {
                 VALUES.enabled.get(),
                 VALUES.showItemName.get(),
                 VALUES.showItemId.get(),
-                VALUES.nameMaxWidth.get()).sanitized();
+                VALUES.nameMaxWidth.get(),
+                VALUES.fullPolicy.get()).sanitized();
     }
 
     /**
@@ -206,6 +208,7 @@ public final class PickupCardConfig {
         final ForgeConfigSpec.EnumValue<com.niuqu.pickupcard.notice.MergeMode> mergeMode;
         final ForgeConfigSpec.IntValue maxOnScreen;
         final ForgeConfigSpec.IntValue queueSize;
+        final ForgeConfigSpec.EnumValue<FullPolicy> fullPolicy;
         final ForgeConfigSpec.EnumValue<CountFormat> countFormat;
         final ForgeConfigSpec.ConfigValue<List<? extends String>> blacklist;
         final ForgeConfigSpec.ConfigValue<List<? extends String>> whitelist;
@@ -289,8 +292,15 @@ public final class PickupCardConfig {
 
             queueSize = builder
                     .comment("排队上限：屏满时最多先排几张（先来先上屏）。",
-                            "0 = 不排队 —— 这时屏满之后的拾取会直接丢掉（0.1.0 的语义）。")
+                            "0 = 不排队 —— 这时屏满之后的拾取会直接丢掉（0.1.0 的语义）。",
+                            "注意：只有屏满策略选「排队等位」时它才生效。")
                     .defineInRange("queueSize", 9, 0, 128);
+
+            fullPolicy = builder
+                    .comment("屏放满之后再来新拾取：顶掉最老的旧卡立刻显示（REPLACE），还是排队等位（QUEUE）。",
+                            "  REPLACE = 新卡立刻上屏，最老的旧卡顶出去播正常退场动画（默认）。",
+                            "  QUEUE   = 旧行为：新卡先排队等补位；「排队上限」和「还有 N 项」溢出卡只在这一档生效。")
+                    .defineEnum("fullPolicy", FullPolicy.REPLACE);
 
             scalePercent = builder
                     .comment("卡片缩放（百分比）。0 = 自动：一摞卡塞不进 HUD 带之上就按比例缩小，",

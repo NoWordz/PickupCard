@@ -191,7 +191,7 @@ public final class Inbox {
         // 【闸门 = min(意愿, 物理)】几何放不下的不上屏，走同一条排队/溢出路径
         int capacity = Math.min(settings().maxOnScreen(), geometryCapacity);
         NoticeQueue.Outcome<Card> outcome = queue.absorb(key, look, card, count, firstTime, now,
-                settings().mergeMode(), capacity, settings().queueSize());
+                settings().mergeMode(), capacity, settings().queueSize(), settings().fullPolicy());
 
         for (Notice<Card> evicted : outcome.evicted()) {
             pending.add(new Event.Evicted(evicted));

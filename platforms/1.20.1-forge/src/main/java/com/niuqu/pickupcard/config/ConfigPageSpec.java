@@ -1,6 +1,7 @@
 package com.niuqu.pickupcard.config;
 
 import com.niuqu.pickupcard.layout.LayoutSettings;
+import com.niuqu.pickupcard.notice.FullPolicy;
 import com.niuqu.pickupcard.notice.MergeMode;
 import com.niuqu.pickupcard.notice.PickupCardSettings;
 import com.niuqu.pickupcard.render.CardStage;
@@ -231,6 +232,12 @@ public final class ConfigPageSpec {
                 tr("pickupcard.config.row.queueSize.hint"),
                 () -> number(v.queueSize, eff.queueSize(), 0, 32, 1, tr("pickupcard.config.unit.cards")),
                 restore(v.queueSize)));
+        // 屏满策略：REPLACE = 新卡顶掉最老的旧卡立刻上屏（2026-09-20 定案的新默认）；
+        // QUEUE = 旧行为，「排队上限」「溢出卡」只在这一档才用得上，所以紧跟在它们后面。
+        rows.add(new Row(Page.LAYOUT, tr("pickupcard.config.row.fullPolicy.name"),
+                tr("pickupcard.config.row.fullPolicy.hint"),
+                () -> cycle(v.fullPolicy, FullPolicy.values(), ConfigPageSpec::fullPolicyName),
+                restore(v.fullPolicy)));
     }
 
     // ------------------------------------------------------------------
@@ -455,5 +462,11 @@ public final class ConfigPageSpec {
             case NEVER -> tr("pickupcard.config.value.merge.never");
             default -> tr("pickupcard.config.value.merge.strict");
         };
+    }
+
+    /** 屏满策略的两档：顶掉最老的旧卡 / 排队等位（旧行为）。 */
+    private static String fullPolicyName(FullPolicy policy) {
+        return tr(policy == FullPolicy.QUEUE
+                ? "pickupcard.config.value.full.queue" : "pickupcard.config.value.full.replace");
     }
 }
