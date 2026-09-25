@@ -179,7 +179,12 @@ public final class NvgCardPainter {
                 float pulse = canvas.pulseOf(slot.view());
                 float w0 = slot.width() / cardScale;
                 float h0 = slot.height() / cardScale;
-                nvgTranslate(vg, slot.x() + slot.width() / 2f, slot.y() + slot.height() / 2f);
+                // 【纵向位移单点出处】DROP 入场 / FALL 退场的竖向位移由 verticalShiftOf 一处给出，
+                // 加在"卡心平移"这层（缩放之前）= 屏幕逻辑 px，不随布局缩放变形。
+                // 内容路（NvgCardContent#paint 的 pose.translate）同吃这一个数 ——
+                // 两份实现必有一份错（2026-09-20 镜像 bug 的教训）。
+                nvgTranslate(vg, slot.x() + slot.width() / 2f,
+                        slot.y() + slot.height() / 2f + verticalShiftOf(canvas, slot));
                 nvgScale(vg, cardScale * pulse, cardScale * pulse);
                 paintShell(vg, style, -w0 / 2f, -h0 / 2f, w0, h0,
                         accentOf(card, style.accents()), canvas.barOf(slot.view()),
@@ -255,15 +260,16 @@ public final class NvgCardPainter {
             // （中文走 Unicode 图集、量一次贵一次，这里按量级覆盖 ASCII —— 英文名占大头。）
             warmFontMetrics(font);
         } else {
+            ItemStack[] icons = warmIcons();
             int from = (warmStep - 3) * ICONS_PER_STEP;
-            for (int i = from; i < Math.min(WARM_ICONS.length, from + ICONS_PER_STEP); i++) {
-                FadingItemBuffers.drawIcon(gui, WARM_ICONS[i], -20_000f, -20_000f,
+            for (int i = from; i < Math.min(icons.length, from + ICONS_PER_STEP); i++) {
+                FadingItemBuffers.drawIcon(gui, icons[i], -20_000f, -20_000f,
                         style.iconSize(), 1f, true);
             }
         }
         warmStep++;
         warmTotalUs += (System.nanoTime() - t0) / 1_000L;
-        int totalSteps = 3 + (WARM_ICONS.length + ICONS_PER_STEP - 1) / ICONS_PER_STEP;
+        int totalSteps = 3 + (warmIcons().length + ICONS_PER_STEP - 1) / ICONS_PER_STEP;
         if (warmStep < totalSteps) {
             return true;
         }
@@ -348,17 +354,28 @@ public final class NvgCardPainter {
      * 以及经验卡固定用的下界之星。
      * <p>每类在驱动里都是"第一次画才编管线 + 现烘焙模型"，所以只热其中一类，另一类照样
      * 把账留到第一次拾取那一帧（实测漏掉三类时首帧仍要 27ms）。
+     * <p>【为什么不在类加载期就建】这里任何一个 {@code new ItemStack} 都会经 codec 拖出
+     * 注册表初始化（Not bootstrapped）：游戏进程里无感（类加载时引导早已完成），但本类的
+     * 几个纯时间函数因此没法被无头单元测试加载。预热本来就在进世界后才用 —— 按预热自己的
+     * 哲学"账进世界后付"，推迟到第一次预热再建。
      */
-    private static final ItemStack[] WARM_ICONS = {
-            new ItemStack(net.minecraft.world.item.Items.STONE),
-            new ItemStack(net.minecraft.world.item.Items.COMMAND_BLOCK),
-            new ItemStack(net.minecraft.world.item.Items.DIAMOND_SWORD),
-            new ItemStack(net.minecraft.world.item.Items.ELYTRA),
-            new ItemStack(net.minecraft.world.item.Items.BEACON),
-            new ItemStack(net.minecraft.world.item.Items.DRAGON_EGG),
-            new ItemStack(net.minecraft.world.item.Items.ENCHANTED_BOOK),
-            new ItemStack(net.minecraft.world.item.Items.NETHER_STAR),
-    };
+    private static ItemStack[] warmIcons() {
+        if (WARM_ICONS == null) {
+            WARM_ICONS = new ItemStack[] {
+                    new ItemStack(net.minecraft.world.item.Items.STONE),
+                    new ItemStack(net.minecraft.world.item.Items.COMMAND_BLOCK),
+                    new ItemStack(net.minecraft.world.item.Items.DIAMOND_SWORD),
+                    new ItemStack(net.minecraft.world.item.Items.ELYTRA),
+                    new ItemStack(net.minecraft.world.item.Items.BEACON),
+                    new ItemStack(net.minecraft.world.item.Items.DRAGON_EGG),
+                    new ItemStack(net.minecraft.world.item.Items.ENCHANTED_BOOK),
+                    new ItemStack(net.minecraft.world.item.Items.NETHER_STAR),
+            };
+        }
+        return WARM_ICONS;
+    }
+
+    private static ItemStack[] WARM_ICONS;
 
     /** 每个预热帧画几个图标：一个个错开付，避免一次 50ms 的集中卡顿。 */
     private static final int ICONS_PER_STEP = 2;
@@ -580,14 +597,47 @@ public final class NvgCardPainter {
         // 【镜像=方向因子】非镜像内容从竖条（左）后面往右冒，位移是负的；镜像竖条在右，
         // 内容往左冒，位移取正。退场「火车退回」同样乘这个因子，一份公式两种朝向。
         int dir = mirror ? 1 : -1;
+        // 【BOUNCE 与 SLIDE 同路线不同曲线】位移公式一模一样，只把进度换成 easeOutBack(enterOf)：
+        // easeOutBack 会越过 1（峰值≈1.1），(1-p) 随之翻负 —— 内容冲过终点再被拉回来，就是过冲回弹。
+        // 不能吃 rise（contentOf 已套 CONTENT_CURVE），BOUNCE 要的是原始入场钟（enterOf）自己套曲线。
+        // 窗口 windowOf 不跟着动：仍按 rise 展开，过冲的内容在满宽窗口内不会被裁掉。
+        float progress = canvas.layout().appearMode() == LayoutSettings.Appear.BOUNCE
+                ? Easing.easeOutBack(canvas.enterOf(slot.view())) : rise;
         float shift = canvas.layout().appearMode() == LayoutSettings.Appear.CLIP
-                ? 0f : dir * (1f - rise) * bodyW;
+                ? 0f : dir * (1f - progress) * bodyW;
         // 【消失方式＝火车退回】内容整块平移回竖条后面：火车入场的逆放。窗口把靠竖条
         // 那侧裁住，视觉就是"倒车回隧道"。
         if (canvas.layout().exitMode() == LayoutSettings.Exit.TRAIN && slot.view().exiting()) {
             shift += dir * canvas.exitOf(slot.view()) * bodyW;
         }
         return shift;
+    }
+
+    /**
+     * 这一帧卡片的纵向位移（屏幕逻辑 px，正 = 向下）：DROP 入场从锚线上方掉落，
+     * FALL 退场向下加速坠。两个分支相加 —— 一张卡理论上可以边落边坠。
+     * <p>
+     * 【为什么必须是这一个函数】2026-09-20 镜像 bug 的教训：同一份几何写两遍必有一份错。
+     * 纵向位移有两路消费者 —— 外壳（NanoVG 的 {@code nvgTranslate}）与内容（原版批次 pose，
+     * {@code NvgCardContent#paint}）—— 两边<b>必须同吃这一个数</b>：都调用本函数，
+     * 谁也不许自己另算一份。位移加在"卡心平移"那一层（缩放之前），所以单位是屏幕逻辑 px，
+     * 不随布局缩放变形。
+     * <p>
+     * 【DROP 为什么吃 enterOf 而不是 rise】同 BOUNCE：contentOf 已套过内容曲线，
+     * 掉落要的是原始入场钟自己套 easeOutBack —— 越过 1 的那截就是落地小弹。
+     * FALL 只在真的退场时给（easeInQuad：慢起快收 = 加速下坠）；未入场完/未退场恒为 0。
+     */
+    static float verticalShiftOf(CardCanvas canvas, CardSlot slot) {
+        LayoutSettings ls = canvas.layout();
+        float drop = 24f;
+        float s = 0f;
+        if (ls.appearMode() == LayoutSettings.Appear.DROP) {
+            s -= (1f - Easing.easeOutBack(canvas.enterOf(slot.view()))) * drop; // 上方落下 + 过冲小弹
+        }
+        if (ls.exitMode() == LayoutSettings.Exit.FALL && slot.view().exiting()) {
+            s += Easing.easeInQuad(canvas.exitOf(slot.view())) * drop;          // 加速下坠
+        }
+        return s;
     }
 
     /**

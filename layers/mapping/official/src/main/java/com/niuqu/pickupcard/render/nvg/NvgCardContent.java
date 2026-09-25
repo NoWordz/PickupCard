@@ -82,7 +82,11 @@ public final class NvgCardContent {
         gui.pose().pushPose();
         // 与外壳同一个变换：以卡心为原点、按 S·p 缩放（脉冲内外一致）
         float effScale = cardScale * canvas.pulseOf(view);
-        gui.pose().translate(slot.x() + slot.width() / 2f, slot.y() + slot.height() / 2f, 0f);
+        // 【纵向位移与外壳同吃一个数】DROP 入场 / FALL 退场的竖向位移由
+        // NvgCardPainter#verticalShiftOf 一处给出（2026-09-20 镜像 bug 的教训：
+        // 两份实现必有一份错）—— 外壳的 nvgTranslate 加的就是同一个函数的返回值。
+        gui.pose().translate(slot.x() + slot.width() / 2f,
+                slot.y() + slot.height() / 2f + NvgCardPainter.verticalShiftOf(canvas, slot), 0f);
         if (effScale != 1f) {
             gui.pose().scale(effScale, effScale, 1f);
         }
