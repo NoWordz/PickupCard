@@ -317,6 +317,10 @@ public final class ConfirmModal {
         Box(Style style, Surface surface) {
             style(style);
             surface(surface);
+            // 【面板也不是交互物】悬停/按下叠加层画的是整块面板：指针在正文留白上，
+            // 整板白雾、点一下 24% 白压满全板（pickupcard 0.2.3 真机）。底色（Surface）
+            // 照画 —— 关的只是基类那层状态叠加，与无底色构造器同一口径。
+            stateOverlay(false);
         }
 
         @Override

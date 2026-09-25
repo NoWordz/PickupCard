@@ -375,6 +375,9 @@ public final class AnchorEditScreen extends Screen {
         // 拖拽因此是"每帧按当前位置更新"，而不是靠 mouseDragged 那一串事件。
         tree.layout(new Rect(0f, 0f, this.width, this.height), 1f / guiScale());
         treeLaidOut = true;
+        // 【tick 必须每帧喂】悬停缓动量的推进（hoverEase.at）读树里这份时刻 ——
+        // 从前没喂，缓动冻在 0，编辑场按钮的悬停反馈整体消失（2026-09-25 真机）。
+        tree.tick(now * 1_000_000L);
         tree.pointerMove(mouseX, mouseY);
         TrellisColumn.syncHover(tree);
 
