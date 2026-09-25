@@ -612,7 +612,10 @@ public final class NvgCardPainter {
         // 【BOUNCE 与 SLIDE 同路线不同曲线】位移公式一模一样，只把进度换成 easeOutBack(enterOf)：
         // easeOutBack 会越过 1（峰值≈1.1），(1-p) 随之翻负 —— 内容冲过终点再被拉回来，就是过冲回弹。
         // 不能吃 rise（contentOf 已套 CONTENT_CURVE），BOUNCE 要的是原始入场钟（enterOf）自己套曲线。
-        // 窗口 windowOf 不跟着动：仍按 rise 展开，过冲的内容在满宽窗口内不会被裁掉。
+        // 窗口 windowOf 不跟着动：仍按 rise 展开。⚠ 过冲段内容会探出卡右缘约
+        // `0.10·bodyW − paddingH`（bodyW≈100px 时 ~6px），被内容路 scissor 与外壳 nvgScissor
+        // 裁掉（评审 Y2 的几何核算，2026-09-25）—— 观感是"顶到卡缘"，量小可接受；
+        // 要完全不裁得给 BOUNCE 特判放宽窗口右缘，属设计决定，先如实记录。
         float progress = canvas.layout().appearMode() == LayoutSettings.Appear.BOUNCE
                 ? Easing.easeOutBack(canvas.enterOf(slot.view())) : rise;
         float shift = canvas.layout().appearMode() == LayoutSettings.Appear.CLIP
@@ -654,7 +657,10 @@ public final class NvgCardPainter {
 
     /**
      * 这一帧整卡的缩放因子：SCALE 退场时 1 → 0.15（easeInQuad 收敛，慢起快收地缩没），
-     * 其余恒 1。终点 0.15 而不是 0：缩成竖条那么细再随 alpha 消失，比缩到无更"收起"。
+     * 其余恒 1。终点 0.15 而不是 0：缩成一张小卡再随 alpha 消失，比缩到无更"收起"。
+     * 【与"缩到竖条侧"的区别（评审 Y3，2026-09-25）】实现是绕卡心的<b>各向同性等比</b>
+     * 缩小，没有朝竖条方向的位移、也不单轴收窄 —— 观感是"原地缩成小卡淡出"。
+     * 若想要"向竖条侧收拢"得另加位移分量，属设计决定，先如实记录。
      * <p>
      * 【与画布缩放的关系】乘法，不是替代：外壳 {@code nvgScale(S·p)}/{@code nvgScale(S·p·本值)}、
      * 内容 {@code effScale = S·p·本值} —— 不新增变换栈，只是把现成的缩放因子多乘一个。

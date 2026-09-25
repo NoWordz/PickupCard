@@ -95,11 +95,11 @@ public final class NvgCardContent {
         // 【sway 与外壳同吃一个数、同枢轴，但取负】角度由 swayAngleOf 一处给出；当前原点
         // 在卡心（位移之后、回到左上角之前），与外壳 nvgRotate 的枢轴一致。sway 非 0 时
         // clipped 必为 false（入场完且非退场），旋转不会跟 scissor 打架。
-        // 【为什么取负 —— 两个坐标系手性相反】NanoVG 是 y-down，nvgRotate 的正角把 +x
-        // 转向 +y，屏幕上看是顺时针；PoseStack 的 +Z 朝观察者，ZP.rotationDegrees 正角
-        // 按右手定则从观察者看是逆时针。同一个数直接喂两边，内容会跟底板反向扭
-        // （相对角 2×sway）—— 视觉同向才是"同吃一个数"的本意。平移与缩放无手性，
-        // 全文件只有这一处需要翻转。
+        // 【为什么取负 —— 两条渲染路的旋转视觉方向相反，实测定案】dev harness 把幅度
+        // 临时放大到 ±20° 截图（2026-09-25）：取负时每张卡的文字/图标与卡框**平行**
+        // （视觉同向）；不取负则内容相对底板扭 2×sway=40°。桌面推理两路都该是"y-down
+        // 顺时针"（评审 R1 的推理链），与实测矛盾 —— 以实测为准，这条注释不再复述
+        // 推理，只钉事实。平移与缩放无手性，全文件只有这一处需要翻转。
         float sway = NvgCardPainter.swayAngleOf(canvas, slot);
         if (sway != 0f) {
             gui.pose().mulPose(com.mojang.math.Axis.ZP.rotationDegrees(-sway));

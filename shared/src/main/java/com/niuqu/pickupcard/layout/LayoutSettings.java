@@ -12,7 +12,7 @@ package com.niuqu.pickupcard.layout;
  * @param exitMode     卡片怎么消失。{@link Exit#FADE} = 原地淡出；{@link Exit#TRAIN} = 内容整块
  *                     平移回竖条后面（与火车入场的逆放）；{@link Exit#WIPE} = 可见范围从右往左
  *                     收拢（与拉幕入场的逆放）；{@link Exit#FALL} = 向下坠 + 淡出；
- *                     {@link Exit#SCALE} = 整卡缩到竖条侧消失。各档都叠加透明度下降。
+ *                     {@link Exit#SCALE} = 整卡绕卡心等比缩小 + 淡出。各档都叠加透明度下降。
  * @param align        水平对齐基准。{@link Side#LEFT} = 竖条左缘贴锚线（一摞卡的竖条成一条线）；
  *                     {@link Side#RIGHT} = 卡片右缘贴锚线（设计里的「右边缘对齐」预设，
  *                     卡宽不齐时左缘参差、右缘齐）。
@@ -114,7 +114,7 @@ public record LayoutSettings(Appear appearMode, Exit exitMode, Side align, float
         WIPE,
         /** 下坠：向下加速坠落 + 淡出。 */
         FALL,
-        /** 缩放消失：整卡缩到竖条侧消失。 */
+        /** 缩放消失：整卡绕卡心等比缩小 + 淡出（不位移、不单轴收窄）。 */
         SCALE
     }
 
