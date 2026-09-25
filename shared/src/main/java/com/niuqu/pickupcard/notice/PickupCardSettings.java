@@ -45,7 +45,7 @@ public record PickupCardSettings(long holdMs,
     public static final float DEFAULT_MAGNET_RADIUS = 4.0f;
 
     public static PickupCardSettings defaults() {
-        return new PickupCardSettings(2_600L, 320L, MergeMode.defaults(), 5, 9, CountFormat.PLUS,
+        return new PickupCardSettings(3_200L, 320L, MergeMode.defaults(), 5, 9, CountFormat.PLUS,
                 true, true, false, 0, FullPolicy.REPLACE, CountMode.PICKUP,
                 true, DEFAULT_MAGNET_RADIUS);
     }

@@ -386,13 +386,17 @@ public final class ConfigPageSpec {
                 value -> Math.round(value * 2) / 2.0 + tr("pickupcard.config.unit.blocks"));
     }
 
+    /**
+     * 时间滑条：底层一律 ms（TOML 兼容），<b>显示一律秒</b>（2026-09-25 用户反馈：
+     * 玩家对 2600ms 没有直觉）。两位小数同时照顾 holdMs（3.20s）与 exitMs（0.32s）。
+     */
     private static Slider time(ForgeConfigSpec.LongValue config, long shown, long min, long max, long step) {
         return new Slider("", min, max, step,
                 () -> (double) currentLong(config, shown), value -> {
             config.set(Math.round(value));
             changed();
         },
-                value -> Math.round(value) + "ms");
+                value -> String.format(java.util.Locale.ROOT, "%.2fs", value / 1000.0));
     }
 
     private static Slider styleTime(ForgeConfigSpec.LongValue config, long shown, long min, long max, long step) {

@@ -124,8 +124,41 @@ public final class PickupRelay {
         if (self.distanceToSqr(entity) > settings.magnetRadius() * settings.magnetRadius()) return;
         // 【before 不用再 copy】mixin 捕获时已经复制过一份（实体身上的栈随时会被服务端
         // 改写），relay 只是所有权的中转站 —— 再 copy 一次是白付的钱。
+        // 【独处直弹（2026-09-25 用户真机反馈"确认制全灭"后的定案）】确认制的两条路
+        // （背包增量 / 背包槽被写）对 SB 这类"吸进背包 NBT"的容器在**背包没打开时**
+        // 都拿不到证据（客户端根本不知道 NBT 变了）—— 严格确认把合法吸收全杀了。
+        // 但"别人的磁铁误弹"只可能发生在**附近有别的玩家**时：单人世界 level 里
+        // 只有自己，信号原理上必是自己的（或漏斗的，漏斗不该弹另说）——直接弹。
+        // 有别的玩家在场才押注走严格确认：宁可多人场景漏弹（README 写明），不误弹。
+        if (isAlone(level, self)) {
+            offerMagnet(before, amount, "独处直弹");
+            return;
+        }
         // 押注带原件：确认后弹的是这一份（同物品不同 NBT 不能拿错栈）。
         MAGNET_CONFIRM.pending(before.getItem(), before, amount, self.tickCount);
+        PickupCard.LOGGER.info("[磁铁] 信号押注 {} 个（{}）—— 附近有玩家，等背包确认", amount, before.getItem());
+    }
+
+    /** 独处判定：16 格内没有其他玩家。单人世界恒真 —— 那里"别人的磁铁"不存在。 */
+    private static boolean isAlone(ClientLevel level, LocalPlayer self) {
+        for (var p : level.players()) {
+            if (p != self && p.distanceToSqr(self) < 16 * 16) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    /** 弹卡入账（独处直弹与确认放行共用的出口），带一次性可观测日志与慢账告警。 */
+    private static void offerMagnet(ItemStack before, int amount, String via) {
+        long t0 = System.nanoTime();
+        Inbox.INSTANCE.offer(new CardContent.Item(before), amount);
+        long micros = (System.nanoTime() - t0) / 1_000L;
+        PickupCard.LOGGER.info("[磁铁] {}，弹卡 {} 个（{}）", via, amount, before.getItem());
+        if (micros >= SLOW_PICKUP_MICROS) {
+            PickupCard.LOGGER.warn("[磁铁] 这次记账花了 {}us（阈值 {}）—— 会直接算进掉帧",
+                    micros, SLOW_PICKUP_MICROS);
+        }
     }
 
     /** 最近一次"我的背包（containerId=0）被服务端改写"的玩家 tick —— 背包 NBT 容器的确认源。 */
@@ -152,6 +185,15 @@ public final class PickupRelay {
         if (self != null) {
             containerWrittenTick = self.tickCount;
         }
+        // 【有押注才说话】容器同步包很频繁（每次拾取/合成都有），常开 INFO 必刷屏；
+        // 只有磁铁押注在等确认时这一条才是关键证据（"SB 到底发不发背包槽同步"）。
+        if (hasPending()) {
+            PickupCard.LOGGER.info("[磁铁] 窗口内背包槽被写（押注待确认中）");
+        }
+    }
+
+    private static boolean hasPending() {
+        return MAGNET_CONFIRM.hasPending();
     }
 
     /** 换世界/总开关：上个世界的押注全部作废（基线是旧世界的背包，留着只会对错账）。 */
@@ -159,20 +201,18 @@ public final class PickupRelay {
         MAGNET_CONFIRM.clear();
     }
 
-    /** 每客户端 tick 调一次：对磁铁押注对账，确认的当场弹卡（Caller 保持与拾取同一条入账路）。 */
+    /** 每客户端 tick 调一次：对磁铁押注对账，确认的当场弹卡（保持与拾取同一条入账路）。 */
     public static void onClientTick(@Nullable LocalPlayer player) {
         if (player == null) return;
-        for (MagnetConfirm.Confirmed<Item, ItemStack> c : MAGNET_CONFIRM.confirm(player.tickCount)) {
-            long t0 = System.nanoTime();
-            Inbox.INSTANCE.offer(new CardContent.Item(c.payload()), c.amount());
-            long micros = (System.nanoTime() - t0) / 1_000L;
-            // 【一次性可观测（真机定位靠它）】"这条同步被确认成了吸收"必须在日志里留痕
-            // —— 排障（漏斗/磁铁/别的 mod 乱改数量、为什么没弹）全指望这条。
-            PickupCard.LOGGER.info("[磁铁] 背包增量确认吸收，弹卡 {} 个（{}）", c.amount(), c.item());
-            if (micros >= SLOW_PICKUP_MICROS) {
-                PickupCard.LOGGER.warn("[磁铁] 这次记账花了 {}us（阈值 {}）—— 会直接算进掉帧",
-                        micros, SLOW_PICKUP_MICROS);
-            }
+        var result = MAGNET_CONFIRM.confirm(player.tickCount);
+        for (MagnetConfirm.Confirmed<Item, ItemStack> c : result.confirmed()) {
+            offerMagnet(c.payload(), c.amount(), "背包确认吸收");
+        }
+        // 【丢弃也要留痕】"为什么没弹"的另一半答案：押注超时 = 3 tick 内既没看到背包
+        // 增量、也没等到自己的背包槽被写 —— 多半不是进你的背包。
+        for (MagnetConfirm.Confirmed<Item, ItemStack> d : result.dropped()) {
+            PickupCard.LOGGER.info("[磁铁] 押注超时丢弃 {} 个（{}）—— 窗口内背包无增量也无槽写",
+                    d.amount(), d.item());
         }
     }
 

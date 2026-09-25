@@ -43,7 +43,7 @@ class MagnetConfirmTest {
         totals.advance("stone", 14);           // tick 100：信号与背包同步同到（14，含吸收 4）
         MagnetConfirm<String, String> m = new MagnetConfirm<>(totals::current, totals::previous, () -> -1);
         m.pending("stone", "stone-stack", 4, 100);
-        var out = m.confirm(100);
+        var out = m.confirm(100).confirmed();
         assertEquals(1, out.size());
         assertEquals(4, out.get(0).amount());
     }
@@ -56,9 +56,9 @@ class MagnetConfirmTest {
         totals.advance("stone", 10);           // tick 100：信号到，背包还没同步
         MagnetConfirm<String, String> m = new MagnetConfirm<>(totals::current, totals::previous, () -> -1);
         m.pending("stone", "stone-stack", 4, 100);
-        assertTrue(m.confirm(100).isEmpty());
+        assertTrue(m.confirm(100).confirmed().isEmpty());
         totals.advance("stone", 14);           // tick 101：背包到了
-        var out = m.confirm(101);
+        var out = m.confirm(101).confirmed();
         assertEquals(1, out.size());
         assertEquals(4, out.get(0).amount());
     }
@@ -71,13 +71,13 @@ class MagnetConfirmTest {
         totals.advance("stone", 10);           // tick 100：信号到，我的背包纹丝不动
         MagnetConfirm<String, String> m = new MagnetConfirm<>(totals::current, totals::previous, () -> -1);
         m.pending("stone", "stone-stack", 4, 100);
-        assertTrue(m.confirm(100).isEmpty());
-        assertTrue(m.confirm(101).isEmpty());
-        assertTrue(m.confirm(102).isEmpty());
-        assertTrue(m.confirm(103).isEmpty());  // 窗口最后一天：还是没涨
-        assertTrue(m.confirm(104).isEmpty());  // 超时已丢弃
+        assertTrue(m.confirm(100).confirmed().isEmpty());
+        assertTrue(m.confirm(101).confirmed().isEmpty());
+        assertTrue(m.confirm(102).confirmed().isEmpty());
+        assertTrue(m.confirm(103).confirmed().isEmpty());  // 窗口最后一天：还是没涨
+        assertTrue(m.confirm(104).confirmed().isEmpty());  // 超时已丢弃
         totals.advance("stone", 99);           // 之后背包怎么涨都与这条无关
-        assertTrue(m.confirm(105).isEmpty());
+        assertTrue(m.confirm(105).confirmed().isEmpty());
     }
 
     @Test
@@ -88,10 +88,10 @@ class MagnetConfirmTest {
         totals.advance("stone", 12);           // 信号 tick：只涨 2 < 4
         MagnetConfirm<String, String> m = new MagnetConfirm<>(totals::current, totals::previous, () -> -1);
         m.pending("stone", "stone-stack", 4, 100);
-        assertTrue(m.confirm(100).isEmpty());
-        assertTrue(m.confirm(103).isEmpty());  // 到超时也没涨够
+        assertTrue(m.confirm(100).confirmed().isEmpty());
+        assertTrue(m.confirm(103).confirmed().isEmpty());  // 到超时也没涨够
         totals.advance("stone", 40);           // 再涨也不复活
-        assertTrue(m.confirm(104).isEmpty());
+        assertTrue(m.confirm(104).confirmed().isEmpty());
     }
 
     @Test
@@ -105,7 +105,7 @@ class MagnetConfirmTest {
         m.pending("stone", "stone-stack", 4, 100);
         m.pending("iron", "iron-stack", 8, 100);
         totals.advance("iron", 8);             // tick 101：iron 到了、stone 没到
-        var out = m.confirm(101);
+        var out = m.confirm(101).confirmed();
         assertEquals(1, out.size());
         assertEquals("iron", out.get(0).item());
         assertEquals("iron-stack", out.get(0).payload());
@@ -120,9 +120,9 @@ class MagnetConfirmTest {
         totals.advance("stone", 10);
         MagnetConfirm<String, String> m = new MagnetConfirm<>(totals::current, totals::previous, () -> -1);
         m.pending("stone", "stone-stack", 4, 100);
-        assertTrue(m.confirm(200).isEmpty());  // 一次跳到 100 tick 后
+        assertTrue(m.confirm(200).confirmed().isEmpty());  // 一次跳到 100 tick 后
         totals.advance("stone", 99);
-        assertTrue(m.confirm(201).isEmpty());
+        assertTrue(m.confirm(201).confirmed().isEmpty());
     }
 
     @Test
@@ -135,9 +135,9 @@ class MagnetConfirmTest {
         MagnetConfirm<String, String> m = new MagnetConfirm<>(
                 totals::current, totals::previous, () -> written[0]);
         m.pending("stone", "stone-stack", 1, 100);
-        assertTrue(m.confirm(100).isEmpty());  // 还没被写
+        assertTrue(m.confirm(100).confirmed().isEmpty());  // 还没被写
         written[0] = 101;                      // 服务端同步背包槽（SetSlot containerId=0）
-        var out = m.confirm(101);
+        var out = m.confirm(101).confirmed();
         assertEquals(1, out.size());
         assertEquals("stone-stack", out.get(0).payload());
     }
@@ -151,6 +151,6 @@ class MagnetConfirmTest {
         MagnetConfirm<String, String> m = new MagnetConfirm<>(
                 totals::current, totals::previous, () -> -1);
         m.pending("stone", "stone-stack", 4, 100);
-        assertTrue(m.confirm(103).isEmpty());
+        assertTrue(m.confirm(103).confirmed().isEmpty());
     }
 }

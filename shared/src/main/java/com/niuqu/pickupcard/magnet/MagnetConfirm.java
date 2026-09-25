@@ -77,12 +77,21 @@ public final class MagnetConfirm<T, V> {
         pending.clear();
     }
 
+    /** 有没有还在等确认的押注（排障日志用它决定说不说话）。 */
+    public boolean hasPending() {
+        return !pending.isEmpty();
+    }
+
+    /** 一次对账的结果：确认的（弹卡）与超时丢弃的（日志归档用，同一形态）。 */
+    public record Result<T, V>(List<Confirmed<T, V>> confirmed, List<Confirmed<T, V>> dropped) {}
+
     /**
-     * 每 tick 调一次：对账 + 清超时。返回本 tick 确认的吸收（调用方负责弹卡）。
-     * 遍历顺序保持押注顺序；同 tick 多次调用由调用方 tick 门控保证只跑一次。
+     * 每 tick 调一次：对账 + 清超时。确认的交给调用方弹卡，丢弃的用于日志归档
+     * （"为什么没弹"的真机排障全靠这份名单）。同 tick 多次调用由调用方 tick 门控保证只跑一次。
      */
-    public List<Confirmed<T, V>> confirm(long tick) {
+    public Result<T, V> confirm(long tick) {
         List<Confirmed<T, V>> out = new ArrayList<>();
+        List<Confirmed<T, V>> dropped = new ArrayList<>();
         Iterator<Entry<T, V>> it = pending.iterator();
         while (it.hasNext()) {
             Entry<T, V> e = it.next();
@@ -90,16 +99,17 @@ public final class MagnetConfirm<T, V> {
             // （亲手捡的、别的来源），也不能把一条押注"复活"成弹卡，否则别人的磁铁
             // 每吸一次，我随手捡一次同物品就误弹一次。
             if (tick - e.pendingTick > WINDOW_TICKS) {
+                dropped.add(new Confirmed<>(e.item, e.payload, e.amount));
                 it.remove();
             } else if (containerWrittenTick.getAsLong() >= e.pendingTick
                     || current.applyAsInt(e.item) - e.baseline >= e.amount) {
                 // 【两条确认路，满足其一】① 押注后（含同 tick）我的背包被服务端改写过 ——
-                // 背包 NBT 容器（SB 这类）场景的唯一证据：物品进了背包内部，41 格数量不变；
+                // 背包 NBT 容器（SB 这类）场景的证据：物品进了背包内部，41 格数量不变；
                 // ② 数量增量达标 —— 物品直接进原版背包的强确认。别人的磁铁两条都不满足。
                 out.add(new Confirmed<>(e.item, e.payload, e.amount));
                 it.remove();
             }
         }
-        return out;
+        return new Result<>(out, dropped);
     }
 }
