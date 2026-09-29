@@ -56,8 +56,113 @@ public final class NvgCardContent {
     private NvgCardContent() {
     }
 
-    /** 画一张卡的原版内容：图标 + 名字 + 数量，带入场/退场裁剪。 */
-    public static void paint(GuiGraphics gui, CardCanvas canvas, CardSlot slot, Font font) {
+    /**
+     * 两段共用的现场：几何、变换与裁剪状态。两段各建一次 —— 纯算术重跑一遍是零钱，
+     * 而"共用一个可变现场对象"会让两段之间产生隐藏的顺序依赖。
+     * 【变换必须同源】pose 的平移/缩放/摇摆与外壳同吃一个函数（verticalShiftOf /
+     * cardScaleOf / swayAngleOf），两段各推一遍时推的还是同一批数 —— 2026-09-20
+     * 镜像 bug 的教训就是"同一套几何两份实现必有一份错"，所以这里只允许这一份实现。
+     */
+    private record ContentCtx(StyleModel style, CardView view, float h, float cardW, boolean mirror,
+                              BodyGeometry body, float shift, RevealWindow win, float alpha,
+                              int accent, boolean clipped) {
+    }
+
+    /**
+     * 第一段：画一张卡的<b>图标</b>（原版现渲 + 退场换层），带入场/退场裁剪。
+     * <p>【图标：每帧原版现渲 + 退场换层淡出（2026-09-19 治本定案）】烘焙快照路线
+     * （ItemIconCache，已删）拿到过真 alpha 淡出，但快照冻住了活的东西：附魔光
+     * 不再滚动（动效丢失）、分辨率钉死在离屏贴图（锯齿）、glint 亮条纹烘丢（变暗）、
+     * 读回行翻转账（颠倒）。根治 = 不再快照：图标永远原版 renderItem，只在退场
+     * alpha&lt;1 的帧里由 FadingItemBuffers 把 NO_BLEND 实体层换到开混合的等价层提交 ——
+     * setShaderColor 的 alpha 从此数学上有效。几何（窗口/位移/缩放/裁剪）与外壳同源，
+     * 三档退场都跟着卡走。图标格左缘 = 自然位置 + 位移。【位移一律加、不乘方向】
+     * 方向因子已经在 bodyShiftOf 里（镜像取正、常规取负），这里再取反一次等于把动画
+     * 翻回去 —— 2026-09-20 用户报的「文字动画没镜像」就是这一处。
+     * <p>【为什么图标和文字拆成两段跑】图标前要 <code>gui.flush()</code> 冲掉共享批次里
+     * <b>别的卡的文字</b>（裁剪/染色是提交时生效的，不冲就错裁错淡别人的内容，见
+     * {@link FadingItemBuffers}）。旧单段顺序（图标→文字→下一张卡的图标）让"冲别人的文字"
+     * 在每张动画卡上各发生一次，冲的还是越积越多的整批。两段式之后，图标那一段跑的时候
+     * 批次里根本没有文字（每帧开头与每枚图标后都已提交），那次冲刷冲的是空批次 ≈ 免费 ——
+     * 动画窗口里每卡省一次整批提交（2026-09-29 静态分析：动画期 flush 风暴）。
+     */
+    public static void paintIcons(GuiGraphics gui, CardCanvas canvas, CardSlot slot, Font font) {
+        ContentCtx c = begin(gui, canvas, slot);
+        StyleModel style = c.style();
+        float iconL = c.body().iconLeft() + c.shift();
+        ItemStack iconStack = iconStackOf(canvas, slot);
+        if (!iconStack.isEmpty()) {
+            long iconT0 = NvgCardPainter.profiling() ? System.nanoTime() : 0L;
+            FadingItemBuffers.drawIcon(gui, iconStack, iconL + c.h() / 2f, c.h() / 2f,
+                    style.iconSize(), c.alpha(), c.clipped());
+            if (NvgCardPainter.profiling()) {
+                profileIconUs += (System.nanoTime() - iconT0) / 1_000L;
+            }
+        }
+        // 图标后批次必空（drawIcon 自己提交），这里只剩撤销裁剪与姿态
+        if (c.clipped()) {
+            gui.disableScissor();
+        }
+        gui.pose().popPose();
+    }
+
+    /**
+     * 第二段：画一张卡的<b>文字</b>（名字 + 数量），带入场/退场裁剪与滚动框。
+     */
+    public static void paintText(GuiGraphics gui, CardCanvas canvas, CardSlot slot, Font font) {
+        ContentCtx c = begin(gui, canvas, slot);
+        StyleModel style = c.style();
+        float iconL = c.body().iconLeft() + c.shift();
+        boolean mirror = c.mirror();
+        float gap = style.gap();
+        float h = c.h();
+
+        // 【文本度量走这张卡的备忘】布局路与这里每一帧各问一次同一个名字，而它在一张卡的一生里
+        // 几乎不变 —— 从前每问一次都要新建 Component、重跑翻译模板、逐码点量宽。
+        // 2026-09-20 性能轮实测：把物品名整条关掉，稳态文字段 470~849us → 172~294us。
+        var text = c.view().text();
+        text.update(canvas, font, c.view());
+
+        // 文字：alpha 直接乘进颜色里（原版字形用的就是这个色的 alpha），不走全局色。
+        // 【alpha 字节掉到 4 以下就整段不画】原版 Font.adjustColor（1.20.1 Font.java:109）
+        // 会把 alpha 字节 0~3 的颜色强制改成完全 opaque —— 退场末尾 alpha 单调下穿这个区间，
+        // 那几帧文字会「闪回不透明」，一帧后整卡才被摘掉（用户连报两次的末帧闪就是它）。
+        long textT0 = NvgCardPainter.profiling() ? System.nanoTime() : 0L;
+        float textY = (h - font.lineHeight) / 2f;
+        if (canvas.settings().showItemName() && textVisible(style.nameColor(), c.alpha())) {
+            String name = text.fitted();
+            if (mirror) {
+                // 镜像：名字贴着图标格左侧排（右对齐），数量在信息框左端
+                float nameRight = iconL - gap - style.paddingH();
+                gui.drawString(font, name, Math.round(nameRight - text.fittedWidth()),
+                        Math.round(textY), fade(style.nameColor(), c.alpha()), true);
+            } else {
+                // 常规：名字排在图标格右侧（+ 一份水平内边距）
+                float nameX = iconL + h + gap;
+                gui.drawString(font, name, Math.round(nameX + style.paddingH()), Math.round(textY),
+                        fade(style.nameColor(), c.alpha()), true);
+            }
+        }
+        // 数量锚点：非镜像=信息框右缘（往左排），镜像=信息框左缘（往右排）
+        float countAnchor = mirror ? style.paddingH() + c.shift() : c.cardW() + c.shift() - style.paddingH();
+        drawCount(gui, canvas, c.view(), font, countAnchor, textY, c.accent(), c.alpha(), mirror);
+        if (NvgCardPainter.profiling()) {
+            profileTextUs += (System.nanoTime() - textT0) / 1_000L;
+        }
+
+        if (c.clipped()) {
+            // 原版内容还在 bufferSource 里排队：不在这里冲掉，它会在裁剪失效之后才画出来
+            BatchStats.countFlush();
+            gui.bufferSource().endBatch();
+            gui.disableScissor();
+        }
+        gui.pose().popPose();
+    }
+
+    /**
+     * 两段共用的开场：算几何、推姿态变换、按需开裁剪。pop 由各段自己负责。
+     */
+    private static ContentCtx begin(GuiGraphics gui, CardCanvas canvas, CardSlot slot) {
         StyleModel style = canvas.style();
         CardView view = slot.view();
         Inbox.Card card = view.notice().payload();
@@ -112,67 +217,7 @@ public final class NvgCardContent {
         if (clipped) {
             scissor(gui, gui.pose(), win, h);
         }
-
-        // 【图标：每帧原版现渲 + 退场换层淡出（2026-09-19 治本定案）】烘焙快照路线
-        // （ItemIconCache，本版已删）拿到过真 alpha 淡出，但快照冻住了活的东西：附魔光
-        // 不再滚动（动效丢失）、分辨率钉死在离屏贴图（锯齿）、glint 亮条纹烘丢（变暗）、
-        // 读回行翻转账（颠倒）。根治 = 不再快照：图标永远原版 renderItem，只在退场
-        // alpha<1 的帧里由 FadingItemBuffers 把 NO_BLEND 实体层换到开混合的等价层提交 ——
-        // setShaderColor 的 alpha 从此数学上有效。几何（窗口/位移/缩放/裁剪）与外壳同源，
-        // 三档退场都跟着卡走。
-        // 图标格左缘 = 自然位置 + 位移。【位移一律加、不乘方向】方向因子已经在
-        // bodyShiftOf 里（镜像取正、常规取负），这里再取反一次等于把动画翻回去 ——
-        // 2026-09-20 用户报的「文字动画没镜像」就是这一处。
-        float iconL = body.iconLeft() + shift;
-        // 【文本度量走这张卡的备忘】布局路与这里每一帧各问一次同一个名字，而它在一张卡的一生里
-        // 几乎不变 —— 从前每问一次都要新建 Component、重跑翻译模板、逐码点量宽。
-        // 2026-09-20 性能轮实测：把物品名整条关掉，稳态文字段 470~849us → 172~294us。
-        var text = view.text();
-        text.update(canvas, font, view);
-        ItemStack iconStack = iconStackOf(canvas, slot);
-        if (!iconStack.isEmpty()) {
-            long iconT0 = NvgCardPainter.profiling() ? System.nanoTime() : 0L;
-            FadingItemBuffers.drawIcon(gui, iconStack, iconL + h / 2f, h / 2f, style.iconSize(), alpha,
-                    clipped);
-            if (NvgCardPainter.profiling()) {
-                profileIconUs += (System.nanoTime() - iconT0) / 1_000L;
-            }
-        }
-
-        // 文字：alpha 直接乘进颜色里（原版字形用的就是这个色的 alpha），不走全局色。
-        // 【alpha 字节掉到 4 以下就整段不画】原版 Font.adjustColor（1.20.1 Font.java:109）
-        // 会把 alpha 字节 0~3 的颜色强制改成完全 opaque —— 退场末尾 alpha 单调下穿这个区间，
-        // 那几帧文字会「闪回不透明」，一帧后整卡才被摘掉（用户连报两次的末帧闪就是它）。
-        long textT0 = NvgCardPainter.profiling() ? System.nanoTime() : 0L;
-        float textY = (h - font.lineHeight) / 2f;
-        if (canvas.settings().showItemName() && textVisible(style.nameColor(), alpha)) {
-            String name = text.fitted();
-            if (mirror) {
-                // 镜像：名字贴着图标格左侧排（右对齐），数量在信息框左端
-                float nameRight = iconL - gap - style.paddingH();
-                gui.drawString(font, name, Math.round(nameRight - text.fittedWidth()),
-                        Math.round(textY), fade(style.nameColor(), alpha), true);
-            } else {
-                // 常规：名字排在图标格右侧（+ 一份水平内边距）
-                float nameX = iconL + h + gap;
-                gui.drawString(font, name, Math.round(nameX + style.paddingH()), Math.round(textY),
-                        fade(style.nameColor(), alpha), true);
-            }
-        }
-        // 数量锚点：非镜像=信息框右缘（往左排），镜像=信息框左缘（往右排）
-        float countAnchor = mirror ? style.paddingH() + shift : cardW + shift - style.paddingH();
-        drawCount(gui, canvas, view, font, countAnchor, textY, accent, alpha, mirror);
-        if (NvgCardPainter.profiling()) {
-            profileTextUs += (System.nanoTime() - textT0) / 1_000L;
-        }
-
-        if (clipped) {
-            // 原版内容还在 bufferSource 里排队：不在这里冲掉，它会在裁剪失效之后才画出来
-            BatchStats.countFlush();
-            gui.bufferSource().endBatch();
-            gui.disableScissor();
-        }
-        gui.pose().popPose();
+        return new ContentCtx(style, view, h, cardW, mirror, body, shift, win, alpha, accent, clipped);
     }
 
     /** 这张卡该画的图标栈：普通物品 / 溢出卡的轮换图标 / 经验卡的固定替代。 */

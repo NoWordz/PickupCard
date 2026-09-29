@@ -1,5 +1,35 @@
 # Changelog
 
+## v0.2.5
+
+**修复**
+
+- 修复 0.2.4 部分包体缺少内置组件、一按配置键就崩溃的问题；发布包的组件完整性现在由构建自动补齐并逐项校验
+- mod 列表的「配置」按钮现在能直接打开本 mod 的配置界面（此前按钮无响应，经由 Configured 打开的也是它的通用编辑器）
+- 卡片动画期间更流畅：缩放过渡不再每帧重算全部卡片的文字排版
+- 卡片动画期间更流畅：入场/退场期间的渲染批次提交次数大约减半
+
+**更改**
+
+- 竖条默认宽度 2→3 像素
+- 卡片停留时长默认 4→5 秒（已保存的配置不受影响）
+
+----
+
+**Fixed**
+
+- Fixed the 0.2.4 crash where some packages were missing built-in components and any press of the config key crashed; package completeness is now assembled and verified by the build itself
+- The config button in the mod list now opens this mod's own screen (before, it did nothing, and going through Configured showed its generic editor)
+- Smoother card animations: scale transitions no longer re-layout every card's text each frame
+- Smoother card animations: render submissions during entrance/exit are roughly halved
+
+**Changed**
+
+- Rarity bar default width 2→3 px
+- Card hold time default 4→5 s (saved configs are untouched)
+
+----
+
 ## v0.2.4
 
 **新增**

@@ -92,10 +92,12 @@ public final class FadingItemBuffers implements MultiBufferSource {
         }
         boolean fading = alpha < 0.999f;
         Minecraft mc = Minecraft.getInstance();
-        // 【先清队列】共享批次里还排着前几张卡的文字，它们会在图标的 flush 里一起上屏 ——
-        // 而此刻的 scissor/全局色是这张卡的，不清队列就会错裁、错淡别人的内容。
-        // 【清队列是有代价的】整条批次提交一次 GPU；稳态（没淡出、没裁剪）无污染可言，
-        // 免掉这一次 flush —— 一摞卡就是一帧省 N 次提交（2026-09-20 性能轮）。
+        // 【先清队列】此刻的 scissor/全局色是这一张卡的，共享批次里排着的任何内容都会
+        // 被这次提交错误地裁掉/染掉 —— 先冲掉再画。
+        // 【代价的变迁】2026-09-20 时批次里常排着前面各卡的文字，这次 flush 冲的是
+        // 整批（一摞卡一帧 N 次）；2026-09-29 起图标与文字分两段跑（NvgCardPainter.paint），
+        // 图标段里批次恒空，这次冲刷常态下 ≈ 免费 —— 调用保留着，当正确性兜底：
+        // 哪天有人在图标段之前往批次里排了东西，它还在挡着。
         if (fading || clipped) {
             BatchStats.countFlush();
             gui.flush();

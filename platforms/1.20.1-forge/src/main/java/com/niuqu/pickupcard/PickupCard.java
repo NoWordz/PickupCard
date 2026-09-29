@@ -12,11 +12,13 @@ import com.niuqu.pickupcard.render.CardStage;
 import com.niuqu.pickupcard.pickup.Inbox;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraftforge.api.distmarker.Dist;
+import net.minecraftforge.client.ConfigScreenHandler;
 import net.minecraftforge.client.event.ClientPlayerNetworkEvent;
 import net.minecraftforge.common.MinecraftForge;
 import net.minecraft.client.Minecraft;
 import net.minecraftforge.event.TickEvent;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
+import net.minecraftforge.fml.ModLoadingContext;
 import net.minecraftforge.fml.common.Mod;
 import net.minecraftforge.fml.javafmlmod.FMLJavaModLoadingContext;
 import net.minecraftforge.fml.loading.FMLEnvironment;
@@ -71,6 +73,16 @@ public final class PickupCard {
         }
 
         PickupCardConfig.register(context);
+
+        // mod 列表的「配置」按钮（原版 Forge 读同一个扩展点画按钮）与 Configured 等配置
+        // 模组的入口都走这一处。**必须自己注册**：不注册时 Configured 会替我们注册它家的
+        // 通用编辑器（实测日志 "Registering config factory for mod pickupcard"），玩家点开
+        // 看到的就不是本 mod 的卡片界面；而它的源码（multiloader/1.20.1
+        // ClientConfigured.java:46-48）明写「已有自定义 factory 的 mod 直接跳过」——
+        // 我们先注册，它就让路。关闭时回父界面（PickupCardConfigScreen#onClose 已带）。
+        ModLoadingContext.get().registerExtensionPoint(ConfigScreenHandler.ConfigScreenFactory.class,
+                () -> new ConfigScreenHandler.ConfigScreenFactory((mc, parent) ->
+                        new PickupCardConfigScreen(parent)));
 
         // 配置是懒采样的：每次真的要用时才读，玩家改完配置不用重启
         Inbox.INSTANCE.setSources(PickupCardConfig::snapshot, PickupCardConfig::filterSnapshot);

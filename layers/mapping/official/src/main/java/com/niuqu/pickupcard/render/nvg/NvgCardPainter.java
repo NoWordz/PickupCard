@@ -179,14 +179,14 @@ public final class NvgCardPainter {
                 float cardScale = canvas.scale();
                 float pulse = canvas.pulseOf(slot.view());
                 // 【退场缩放单点出处】SCALE 档的整卡收缩由 cardScaleOf 一处给出，与画布缩放、
-                // 脉冲相乘（不是替代，不新增变换栈）；内容路（NvgCardContent#paint 的
+                // 脉冲相乘（不是替代，不新增变换栈）；内容路（NvgCardContent 两段共用的 begin() 的
                 // effScale）同吃这一个数 —— 两份实现必有一份错（2026-09-20 镜像 bug 的教训）。
                 float exitScale = cardScaleOf(canvas, slot);
                 float w0 = slot.width() / cardScale;
                 float h0 = slot.height() / cardScale;
                 // 【纵向位移单点出处】DROP 入场 / FALL 退场的竖向位移由 verticalShiftOf 一处给出，
                 // 加在"卡心平移"这层（缩放之前）= 屏幕逻辑 px，不随布局缩放变形。
-                // 内容路（NvgCardContent#paint 的 pose.translate）同吃这一个数 ——
+                // 内容路（NvgCardContent 两段共用的 begin() 的 pose.translate）同吃这一个数 ——
                 // 两份实现必有一份错（2026-09-20 镜像 bug 的教训）。
                 nvgTranslate(vg, slot.x() + slot.width() / 2f,
                         slot.y() + slot.height() / 2f + verticalShiftOf(canvas, slot));
@@ -212,11 +212,18 @@ public final class NvgCardPainter {
         long shellDoneAt = profile ? System.nanoTime() : 0L;
 
         // 内容排在 NanoVG 之后：它画在卡面之上（用的是同一批屏幕坐标）。
-        // 图标与文字都在这一路 —— 图标每帧原版现渲，文字走原版字形（见 NvgCardContent）。
+        // 【图标与文字分两段跑（2026-09-29）】先全画图标、再全画文字：图标路开头那次
+        // "冲掉共享批次"的 flush（FadingItemBuffers）在图标段里冲到的永远是空批次
+        // ≈ 免费；旧单段顺序里它冲的是前面各卡越积越多的文字，动画期每卡一次整批提交。
+        // 文字段末尾对裁剪卡的 endBatch 保持原样 —— 那是"文字必须在裁剪失效前上屏"的
+        // 正确性开销，不是浪费。两段的姿态/几何都出自 NvgCardContent#begin 一份实现。
         NvgCardContent.profileIconUs = 0L;
         NvgCardContent.profileTextUs = 0L;
         for (CardSlot slot : slots) {
-            NvgCardContent.paint(gui, canvas, slot, font);
+            NvgCardContent.paintIcons(gui, canvas, slot, font);
+        }
+        for (CardSlot slot : slots) {
+            NvgCardContent.paintText(gui, canvas, slot, font);
         }
 
         if (profile) {
@@ -634,7 +641,7 @@ public final class NvgCardPainter {
      * <p>
      * 【为什么必须是这一个函数】2026-09-20 镜像 bug 的教训：同一份几何写两遍必有一份错。
      * 纵向位移有两路消费者 —— 外壳（NanoVG 的 {@code nvgTranslate}）与内容（原版批次 pose，
-     * {@code NvgCardContent#paint}）—— 两边<b>必须同吃这一个数</b>：都调用本函数，
+     * {@code NvgCardContent} 两段共用的 {@code begin()}）—— 两边<b>必须同吃这一个数</b>：都调用本函数，
      * 谁也不许自己另算一份。位移加在"卡心平移"那一层（缩放之前），所以单位是屏幕逻辑 px，
      * 不随布局缩放变形。
      * <p>

@@ -287,7 +287,7 @@ public final class PickupCardConfig {
             holdMs = builder
                     .comment("一张卡在屏上停留多久（毫秒），从最近一次被刷新算起。",
                             "连捡同一件东西会不断刷新这个计时，所以连捡时不会闪。")
-                    .defineInRange("holdMs", 4_000L, 200L, 60_000L);
+                    .defineInRange("holdMs", 5_000L, 200L, 60_000L);
 
             exitMs = builder
                     .comment("退场动画时长（毫秒）：最老的那张被顶出屏幕后淡出多久。",

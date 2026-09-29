@@ -116,6 +116,11 @@ repositories {
         }
     }
 
+    // Trellis UI 框架（dev.e33.trellis:core/nvg）：本机走 settings.gradle 的复合构建吃源码
+    // （复合构建替换优先于任何仓库）；没有源码的环境（CI）从这里提交的两颗 jar 解析。
+    // flatDir 只认 <artifact>-<version>.jar 文件名，不认 group；版本由依赖声明钉住。
+    flatDir { dirs '../../third_party/trellis' }
+
     // China mirrors last: fallback for local builds; overseas CI resolves from the canonical repos above
     maven {
         url 'https://mirrors.cloud.tencent.com/nexus/repository/maven-public/'
@@ -241,6 +246,14 @@ dependencies {
     // 钉死 3.3.1：与 MC 运行时 LWJGL 同版（绑定/native/核心三者错版本 = UnsatisfiedLinkError）。
     // 区间开放 [3.3.1,3.4) 会解析到 3.3.6 且连带嵌套第二份 LWJGL 核心（实测）。
     jarJar(implementation("org.lwjgl:lwjgl-nanovg:[3.3.1]"))
+    // Trellis UI 框架也走 JarJar（0.2.5 起）：本机开发吃 settings.gradle 的复合构建源码，
+    // 发布产物从 third_party/trellis 的 flatDir 取这两颗（single-element 区间 = 钉死版本）。
+    // 【为什么必须是 jarJar 自己嵌】商店发布链（publishMods → modrinth/curseforge 上传）
+    // 吃的就是这个任务的产物 —— 0.2.4 的事故正是"发布 jar 里没有 trellis、真机按配置键
+    // NoClassDefFoundError"。任何"构建后再补嵌"的后处理都管不到 publish job 重新构建
+    // 的那份，只有源头在这里嵌死，所有渠道拿到的才都是同一份完整产物。
+    jarJar(implementation("dev.e33.trellis:core:[0.1.0-SNAPSHOT]"))
+    jarJar(implementation("dev.e33.trellis:nvg:[0.1.0-SNAPSHOT]"))
 }
 tasks.named('jarJar', Jar).configure {
     // 主产物名归它（jar 让位成 -slim，见下）—— 部署与 CI 认的还是 pickupcard-Forge-1.20.1-<ver>.jar

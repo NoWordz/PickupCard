@@ -109,6 +109,12 @@ public final class CardStage {
     private final FramePeak peak = new FramePeak();
     /** 上一帧原版批次提交次数（{@link BatchStats} 的差值）—— 入场期它是帧开销的主要变量。 */
     private long lastFlushes;
+    /**
+     * 上一帧文本缓存两层的重算张数（内容层 / 截断层）。分层缓存的行为契约
+     * 「缩放动画期间截断层可涨、内容层必须为 0」就靠这两个数在 harness 逐帧 trace 里读。
+     */
+    private long lastContentRecomputes;
+    private long lastFitRecomputes;
     /** 上一帧主题里的入场时长与最新那张卡的展开进度，给 harness 读 —— 动画出问题时靠它定位。 */
     private long lastEnterMs;
     private float lastFirstRise = 1f;
@@ -325,10 +331,16 @@ public final class CardStage {
         layoutMicros = (System.nanoTime() - t0) / 1_000L;
         lastSlots = List.copyOf(slots);
         long flushesBefore = BatchStats.flushes();
+        long contentBefore = sumTextRecomputes(true);
+        long fitBefore = sumTextRecomputes(false);
         long t1 = System.nanoTime();
         painter.paint(gui, canvas, slots);
         paintMicros = (System.nanoTime() - t1) / 1_000L;
         lastFlushes = BatchStats.flushes() - flushesBefore;
+        // 【文本重算的帧账】缩放动画的 340ms 里「截断层在涨、内容层不动」就是分层缓存生效；
+        // 反过来（内容层跟着缩放涨）说明分层被改坏 —— harness 逐帧 trace 盯的就是这个。
+        lastContentRecomputes = sumTextRecomputes(true) - contentBefore;
+        lastFitRecomputes = sumTextRecomputes(false) - fitBefore;
         recordPeak();
     }
 
@@ -426,10 +438,10 @@ public final class CardStage {
         // 有了它，"慢帧日志"与"峰值读数"才能被对到同一帧上。
         if (total > SLOW_FRAME_MICROS && slowFrameLogs < 12) {
             slowFrameLogs++;
-            PickupCard.LOGGER.info("[慢帧] frame={} {}us（layout={} paint={} cards={} flushes={} {}）"
+            PickupCard.LOGGER.info("[慢帧] frame={} {}us（layout={} paint={} cards={} flushes={} {} {}）"
                             + "—— 阈值 {}us{}",
                     peak.frames(), total, layoutMicros, paintMicros, lastSlots.size(), lastFlushes,
-                    describeFrameShape(), SLOW_FRAME_MICROS,
+                    describeFrameShape(), textRecomputeShape(), SLOW_FRAME_MICROS,
                     slowFrameLogs >= 12 ? "（本会话已报满 12 条）" : "");
         }
     }
@@ -447,6 +459,23 @@ public final class CardStage {
             }
         }
         return "进场=" + entering + " 退场=" + exiting;
+    }
+
+    /** 慢帧日志的文本重算上下文：内容层/截断层这一帧各重算了几张卡。 */
+    private String textRecomputeShape() {
+        return "文重算=" + lastContentRecomputes + "/" + lastFitRecomputes;
+    }
+
+    /**
+     * 屏上所有卡的文本缓存重算累计值。{@code content} 选层：true = 内容层（名字/数量文本），
+     * false = 截断层。活着的卡是权威集合（{@link #live}），被摘掉的卡连同缓存一起没了。
+     */
+    private long sumTextRecomputes(boolean content) {
+        long sum = 0L;
+        for (CardView view : live.values()) {
+            sum += content ? view.text().contentRecomputes : view.text().fitRecomputes;
+        }
+        return sum;
     }
 
     /** 慢帧探针的阈值（微秒）：60fps 一帧 16667us，取 1/4 帧 —— 到这一线玩家已经能察觉。 */
@@ -564,6 +593,7 @@ public final class CardStage {
     public record Stats(int live, int painted, long layoutMicros, long paintMicros,
                         long enterMs, float firstRise,
                         long flushes, long maxFlushes,
+                        long textContentRecomputes, long textFitRecomputes,
                         long peakFrameNo, long peakFrames, long peakMicros,
                         long peakLayoutMicros, long peakPaintMicros,
                         int peakCards, long peakFlushes, String peakShape) {
@@ -572,6 +602,7 @@ public final class CardStage {
     public Stats stats() {
         return new Stats(live.size(), lastSlots.size(), layoutMicros, paintMicros,
                 lastEnterMs, lastFirstRise, lastFlushes, peak.maxFlushes(),
+                lastContentRecomputes, lastFitRecomputes,
                 peak.worstFrameNo(), peak.frames(), peak.worstMicros(),
                 peak.worstLayoutMicros(), peak.worstPaintMicros(),
                 peak.worstCards(), peak.worstFlushes(), peak.worstShape());

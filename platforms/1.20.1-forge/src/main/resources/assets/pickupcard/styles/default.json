@@ -6,7 +6,7 @@
     "paddingV": 2,
     "gap": 3,
     "iconSize": 16,
-    "barWidth": 2,
+    "barWidth": 3,
     "barInsetY": 1,
     "borderWidth": 1
   },

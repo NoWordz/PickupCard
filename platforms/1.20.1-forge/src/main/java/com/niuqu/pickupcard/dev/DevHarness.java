@@ -112,13 +112,15 @@ public final class DevHarness {
         /**
          * 拍完基础那张之后还跑多少 tick 再退出。
          * <p>
-         * 【为什么是 70 而不是 40】卡的自然退场由 holdMs 决定（默认 4000ms = 80 tick），
-         * 而 ③a 之后「屏满」只排队、不再淘汰旧卡 —— 从前是「推第 6 张」制造退场，现在退场
-         * 只剩自然到点这一条路。窗口必须把这 80 tick 那一下包进去，否则「看见退场」永远不成立
-         * （第一版就是这么空跑的：日志里 `退场/淡回` 一行都没有）。
+         * 【为什么是 95 而不是 40】卡的自然退场由 holdMs 决定（出厂默认 5000ms = 100 tick，
+         * 2026-09-29 从 4000 调上来，这里跟着 +15），而 ③a 之后「屏满」只排队、不再淘汰旧卡
+         * —— 从前是「推第 6 张」制造退场，现在退场只剩自然到点这一条路。窗口必须把这
+         * 100 tick 那一下包进去，否则「看见退场」永远不成立（第一版就是这么空跑的：
+         * 日志里 `退场/淡回` 一行都没有）。⚠️ holdMs 再改默认值时这里必须跟着算 ——
+         * 它不红、只是拍不到，属于最会静默失效的那种。
          */
         private static final int QUIT_AFTER_SHOT =
-                Integer.getInteger("pickupcard.harness.quitAfter", 70);
+                Integer.getInteger("pickupcard.harness.quitAfter", 95);
         /**
          * 退场淡出：稳态那张拍完之后再推一张把最老的挤掉，隔 3 tick（约 150ms）拍中段。
          * <p>
@@ -1395,9 +1397,12 @@ public final class DevHarness {
             // 只看稳态那一个抽样数，永远看不到这一段。
             if (age <= ENTER_TRACE_TICKS) {
                 CardStage.Stats trace = CardStage.INSTANCE.stats();
+                // 【文重算=内容/截断】分层文本缓存的行为契约就在这两个数里：缩放档位切换的
+                // 340ms 里截断层可以逐帧涨，内容层必须恒 0 —— 涨了就是分层被改坏。
                 PickupCard.LOGGER.info("[harness-auto] 入场逐帧 age={} cards={} layout={}us paint={}us"
-                                + " flushes={} rise={}",
+                                + " flushes={} 文重算={}/{} rise={}",
                         age, trace.live(), trace.layoutMicros(), trace.paintMicros(), trace.flushes(),
+                        trace.textContentRecomputes(), trace.textFitRecomputes(),
                         String.format(java.util.Locale.ROOT, "%.2f", trace.firstRise()));
             }
 

@@ -197,7 +197,8 @@ class ConfigPageSpecTest {
                 "2026-09-20 起出厂默认右缘对齐（齐的是靠屏幕边那侧）");
         assertEquals(false, PickupCardConfig.VALUES.mirrorCard.getDefault());
         assertEquals(0, PickupCardConfig.VALUES.scalePercent.getDefault());
-        assertEquals(4_000L, PickupCardConfig.VALUES.holdMs.getDefault());
+        assertEquals(5_000L, PickupCardConfig.VALUES.holdMs.getDefault(),
+                "2026-09-29 用户选定：出厂停留 4s → 5s（已保存的 TOML 不迁移）");
         assertEquals(480L, PickupCardConfig.VALUES.exitMs.getDefault());
         assertEquals(5, PickupCardConfig.VALUES.maxOnScreen.getDefault());
         assertEquals(9, PickupCardConfig.VALUES.queueSize.getDefault());

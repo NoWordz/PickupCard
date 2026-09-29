@@ -21,6 +21,8 @@ ROOT = Path(__file__).resolve().parents[1]
 # 与 build.gradle 里 jarJar 的版本区间必须一致：钉死单元素区间，否则会解析到别的版本
 # （错版本 = 首次调用 UnsatisfiedLinkError，见 docs/architecture.md 的「打包」一节）
 NANOVG_VERSION = "3.3.1"
+# Trellis（dev.e33.trellis）与 gradle 的 jarJar 区间 / third_party 提交的文件名三处同源这一份
+TRELLIS_VERSION = "0.1.0-SNAPSHOT"
 
 # 四平台 native 必须留在主 jar：它们是资源不是类，不产生 JPMS 包导出
 NATIVE_FILES = [
@@ -75,9 +77,12 @@ def main() -> int:
             fail(f"主 jar 里有 {len(leaked)} 个摊平的 org/lwjgl/nanovg 类（例：{leaked[0]}）"
                  f" —— 与 UI Deck 同装会 JPMS ResolutionException")
 
-        # 2. JarJar 嵌套必须成对且同版
+        # 2. JarJar 嵌套必须成对且同版（三颗库都由构建期的 jarJar 任务嵌：nanovg 与
+        #    Trellis core/nvg，嵌套文件名按 FG 规则 = <artifact>-<version>.jar）
         for nested in (f"META-INF/jarjar/lwjgl-{NANOVG_VERSION}.jar",
-                       f"META-INF/jarjar/lwjgl-nanovg-{NANOVG_VERSION}.jar"):
+                       f"META-INF/jarjar/lwjgl-nanovg-{NANOVG_VERSION}.jar",
+                       f"META-INF/jarjar/core-{TRELLIS_VERSION}.jar",
+                       f"META-INF/jarjar/nvg-{TRELLIS_VERSION}.jar"):
             if nested not in names:
                 fail(f"缺少 JarJar 嵌套产物 {nested}")
 
@@ -147,6 +152,40 @@ def main() -> int:
             if authors and authors not in manifest:
                 fail(f"MANIFEST.MF 里的 Vendor 对不上 mod_authors（{authors}）—— "
                      f"署名没写进去，或者编码写成了非 UTF-8")
+
+        # 10. JarJar metadata 必须如实：解析得了、每个嵌套 jar 都有条目、每个条目的文件都在、
+        # schema 关键字段（path/artifactVersion）非空。2026-09-25 两次真机 NoClassDefFoundError
+        # （手拼 schema 错字段 / deploy 脚本丢 nanovg 嵌套）全发生在"嵌套文件在但 metadata 说错"
+        # 或反过来 —— 文件数对不上≠条目对得上，所以两边都查。
+        import json as _json
+        meta_name = "META-INF/jarjar/metadata.json"
+        if meta_name not in names:
+            fail("缺少 META-INF/jarjar/metadata.json —— Forge 读不到任何嵌套库")
+        else:
+            try:
+                meta = _json.loads(zf.read(meta_name))
+                entries = meta.get("jars", [])
+                declared = set()
+                for j in entries:
+                    path = j.get("path", "")
+                    declared.add(path)
+                    if not path or not j.get("version", {}).get("artifactVersion"):
+                        fail(f"JarJar metadata 条目缺关键字段（path/artifactVersion）：{j}")
+                    elif path not in names:
+                        fail(f"JarJar metadata 声明了 {path}，但 jar 里没有这个文件")
+                nested_jars = {n for n in names
+                               if n.startswith("META-INF/jarjar/") and n.endswith(".jar")}
+                # 【只查"声明→文件"，不查"文件→声明"】FG 的 jarJar 产物里一直有一颗没进
+                # metadata 的 lwjgl-3.3.1.jar（MC 自带 LWJGL，它不加载，0.2.2 起的原生形态）。
+                for n in sorted(nested_jars - declared):
+                    if "lwjgl" not in n:
+                        fail(f"嵌套 jar {n} 没有对应的 metadata 条目 —— Forge 会静默不加载它")
+                for must in ("lwjgl-nanovg", "core", "nvg"):
+                    if not any(j.get("identifier", {}).get("artifact") == must
+                               for j in entries):
+                        fail(f"JarJar metadata 里没有 {must} 的条目")
+            except ValueError as e:
+                fail(f"JarJar metadata.json 解析失败：{e}")
 
     print(f"verify_jars: {jar.name}（{len(names)} 个条目）")
     return report()

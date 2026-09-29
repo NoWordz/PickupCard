@@ -1,5 +1,33 @@
 # Release Notes
 
+## v0.2.5
+
+**这一版把 0.2.4 的崩溃修干净，mod 列表从此能一键打开配置界面，卡片动画也更流畅。**
+
+**修复**
+
+- 修复 0.2.4 部分包体一按配置键就崩溃的问题（组件完整性由构建自动补齐并校验）
+- mod 列表的「配置」按钮直接打开本 mod 的配置界面，不再落到 Configured 的通用编辑器
+- 动画期间更流畅：缩放过渡不再每帧重算全部卡片文字，入场/退场的渲染提交大约减半
+
+**更改**
+
+- 竖条默认宽度 2→3 像素；卡片停留时长默认 4→5 秒（已保存的配置不受影响）
+
+----
+
+**This release fixes the 0.2.4 crash for good, makes the mod list config button open our own screen, and smooths the animations.**
+
+**Fixed**
+
+- Fixed the 0.2.4 crash on opening the config screen (package completeness is now assembled and verified by the build itself)
+- The config button in the mod list opens this mod's own screen instead of Configured's generic editor
+- Smoother animations: scale transitions no longer re-layout every card's text per frame, and render submissions during entrance/exit are roughly halved
+
+**Changed**
+
+- Rarity bar default width 2→3 px; card hold time default 4→5 s (saved configs are untouched)
+
 ## v0.2.4
 
 **这一版把「捡东西」补全成「得到东西」：磁铁吸进背包的也弹卡，屏满了新卡直接顶旧卡，数字还能数背包里的总数。**
