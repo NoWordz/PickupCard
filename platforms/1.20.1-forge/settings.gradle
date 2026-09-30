@@ -22,7 +22,11 @@ rootProject.name = 'pickupcard'
 // 2. 都没有（CI / 别人的机器）→ build.gradle 的 flatDir 从 third_party/trellis/ 里
 //    提交的两颗 jar 解析（它们就是 0.2.4 部署产物里嵌套的同两颗，bit 级等于真机验证过的份）。
 // 【为什么必须条件化】0.2.4 险情：includeBuild 写死本机绝对路径，CI 根本构不出 0.2.4。
+// 【为什么用 new File 而不是 file()】project.file() 对含 ':' 的路径按 URL 处理：
+// Windows 本机 'D:/Trellis' 能解析，Linux CI 上直接抛 "Cannot convert URL 'D:/Trellis'
+// to a file"（v0.2.5 首发 run 36676140514 就栽在这）。new File() 在任何平台都只是
+// 构造一个可能不存在的路径，exists() 在 Linux 上对盘符路径必然 false，正好落进 flatDir。
 def trellisDir = providers.gradleProperty('trellisDir').getOrElse('D:/Trellis')
-if (file(trellisDir).exists()) {
+if (new File(trellisDir).isDirectory()) {
     includeBuild(trellisDir)
 }
