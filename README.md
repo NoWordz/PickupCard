@@ -99,6 +99,7 @@
 | 纯客户端（服务器不装） | ✅ 全部功能可用 |
 | 与 [UI Deck](https://github.com/E33EPUS/UIDeck) 同装 | ✅ nanovg 走 JarJar 嵌套供应，无包冲突 |
 | [RarityCore](https://modrinth.com/mod/raritycore) | 🟡 可选联动（稀有度档位与配色） |
+| gnetum | 🟡 它按自己的帧率上限节流 HUD 渲染，拾取动画会因此掉帧 —— 在 gnetum 设置里调高或关闭该上限即可（整合包实测确认） |
 | Minecraft 1.21.1（Fabric / NeoForge / Forge） | ❌ 未实现，见下节 |
 | Minecraft 1.20.1 Fabric / NeoForge | ❌ 未实现 |
 

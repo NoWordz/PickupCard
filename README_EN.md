@@ -99,6 +99,7 @@ The model is "the theme provides defaults, the TOML only overrides what you chan
 | Client only (nothing installed server-side) | ✅ Everything works |
 | Installed alongside [UI Deck](https://github.com/E33EPUS/UIDeck) | ✅ nanovg is supplied through JarJar nesting, so there is no package conflict |
 | [RarityCore](https://modrinth.com/mod/raritycore) | 🟡 Optional integration (rarity tiers and colours) |
+| gnetum | 🟡 Throttles HUD rendering to its own fps cap, which stutters pickup animations — raise or disable the cap in gnetum's settings (confirmed on a real modpack) |
 | Minecraft 1.21.1 (Fabric / NeoForge / Forge) | ❌ Not implemented — see below |
 | Minecraft 1.20.1 Fabric / NeoForge | ❌ Not implemented |
 
