@@ -5,7 +5,6 @@ import dev.e33.trellis.ui.widget.Button;
 import dev.e33.trellis.ui.widget.TextField;
 import dev.e33.trellis.ui.widget.Widget;
 import net.minecraft.client.resources.language.I18n;
-import net.minecraftforge.common.ForgeConfigSpec;
 
 import java.util.List;
 
@@ -64,7 +63,7 @@ public final class FilterPageBuilder {
         ConfigPageSpec.changed();
     }
 
-    private static void filterList(String title, ForgeConfigSpec.ConfigValue<List<? extends String>> config,
+    private static void filterList(String title, ConfigValue<List<? extends String>> config,
                                    String what, String inputHint, Host host) {
         List<String> rules = rules(config);
         // 表头这一行：标签是名单名，右边那颗只读钮报"现在几条"——只读控件的底更暗、不画描边，
@@ -89,12 +88,12 @@ public final class FilterPageBuilder {
                 .placeholder(I18n.get("pickupcard.config.filter.placeholder")), inputHint);
     }
 
-    private static List<String> rules(ForgeConfigSpec.ConfigValue<List<? extends String>> config) {
+    private static List<String> rules(ConfigValue<List<? extends String>> config) {
         List<? extends String> raw = config.get();
         return raw == null ? List.of() : List.copyOf(raw);
     }
 
-    private static void writeRules(ForgeConfigSpec.ConfigValue<List<? extends String>> config,
+    private static void writeRules(ConfigValue<List<? extends String>> config,
                                    List<String> rules, Host host) {
         config.set(List.copyOf(rules));
         ConfigPageSpec.changed();
@@ -103,7 +102,7 @@ public final class FilterPageBuilder {
         host.requestRebuild(true);
     }
 
-    private static void addRule(ForgeConfigSpec.ConfigValue<List<? extends String>> config,
+    private static void addRule(ConfigValue<List<? extends String>> config,
                                 String title, String text, Host host) {
         RuleListEdit.Result r = RuleListEdit.add(rules(config), text);
         if (r.ok()) {

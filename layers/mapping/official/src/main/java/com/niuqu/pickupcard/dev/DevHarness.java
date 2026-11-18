@@ -12,12 +12,8 @@ import net.minecraft.client.resources.language.I18n;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.Screenshot;
 import net.minecraft.commands.Commands;
-import net.minecraftforge.client.event.RegisterClientCommandsEvent;
-import net.minecraftforge.client.event.RegisterKeyMappingsEvent;
-import net.minecraftforge.common.MinecraftForge;
-import net.minecraftforge.event.TickEvent;
-import net.minecraftforge.eventbus.api.IEventBus;
-import net.minecraftforge.eventbus.api.SubscribeEvent;
+import net.minecraft.commands.CommandSourceStack;
+import com.mojang.brigadier.CommandDispatcher;
 import org.lwjgl.glfw.GLFW;
 
 import java.util.List;
@@ -26,9 +22,7 @@ import java.util.List;
  * 调试屏的入口：一个按键（F9）、一条客户端命令（{@code /pickupcarddev}），
  * 以及一条无人值守的自动驱动（{@code -Dpickupcard.harness.auto=shot}）。
  * <p>
- * 【为什么只在开发环境注册】{@link #register} 只被开发环境分支调用（见 mod 入口）。
- * 这里的内部类<b>刻意不用</b> {@code @Mod.EventBusSubscriber} —— 那个注解会被
- * 自动扫描注册，做不到"只在 dev 生效"；手工 register 才真的把玩家端挡在外面。
+ * 只在开发环境由平台入口接入。
  * <p>
  * 【为什么要有自动驱动】"编译过、单测绿"对渲染层是零证据——这个项目已经用三个真机
  * bug 换过这条教训。而"要有人坐在机器前按键才能验"同样是个瓶颈：它让验证没法进 CI，
@@ -42,41 +36,21 @@ public final class DevHarness {
     private DevHarness() {
     }
 
-    /** 只在 {@code !FMLEnvironment.production} 时调用。 */
-    public static void register(IEventBus modBus) {
-        modBus.register(ModEvents.class);
-        MinecraftForge.EVENT_BUS.register(ForgeEvents.class);
-    }
-
-    static final class ModEvents {
-
-        @SubscribeEvent
-        static void onRegisterKeys(RegisterKeyMappingsEvent event) {
-            event.register(OPEN);
-        }
-    }
-
-    static final class ForgeEvents {
-
-        @SubscribeEvent
-        static void onClientTick(TickEvent.ClientTickEvent event) {
-            if (event.phase != TickEvent.Phase.END) return;
-            Minecraft mc = Minecraft.getInstance();
-            AutoDrive.tick(mc);
-            while (OPEN.consumeClick()) {
-                if (mc.screen == null) {
-                    mc.setScreen(new DevCardScreen());
-                }
+    public static void tick() {
+        Minecraft mc = Minecraft.getInstance();
+        AutoDrive.tick(mc);
+        while (OPEN.consumeClick()) {
+            if (mc.screen == null) {
+                mc.setScreen(new DevCardScreen());
             }
         }
+    }
 
-        @SubscribeEvent
-        static void onClientCommands(RegisterClientCommandsEvent event) {
-            event.getDispatcher().register(Commands.literal("pickupcarddev").executes(ctx -> {
-                Minecraft.getInstance().setScreen(new DevCardScreen());
-                return 1;
-            }));
-        }
+    public static void registerCommands(CommandDispatcher<CommandSourceStack> dispatcher) {
+        dispatcher.register(Commands.literal("pickupcarddev").executes(ctx -> {
+            Minecraft.getInstance().setScreen(new DevCardScreen());
+            return 1;
+        }));
     }
 
     /**

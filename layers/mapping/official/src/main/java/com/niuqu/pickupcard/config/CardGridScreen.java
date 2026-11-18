@@ -14,6 +14,7 @@ import dev.e33.trellis.tokens.Units;
 import dev.e33.trellis.ui.widget.Widget;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
+import com.niuqu.pickupcard.client.PickupCardScrollScreen;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.resources.language.I18n;
 import net.minecraft.world.item.ItemStack;
@@ -40,7 +41,7 @@ import java.util.List;
  * <b>A-21 做掉了</b>（{@code scrollIntoView}）。两条都留着原文划掉，免得下一个人
  * 读着旧结论去推新问题。
  */
-public final class CardGridScreen extends Screen {
+public final class CardGridScreen extends PickupCardScrollScreen {
 
     /** 样例项目数（玩家的卡列表接上来之前，这一屏显示这一组）。24 = guiScale 1 下正好 6 行 × 4 列。 */
     private static final int SAMPLE_ITEMS = 24;
@@ -179,13 +180,13 @@ public final class CardGridScreen extends Screen {
     }
 
     @Override
-    public boolean mouseScrolled(double mouseX, double mouseY, double delta) {
+    protected boolean scrollVertically(double mouseX, double mouseY, double delta) {
         // 【传真指针，不传"列中心"】UiTree.scrollAt 本来就是"指哪滚哪"；配置屏为了保留旧手感
         // 用的是列中心，网格没有那份历史包袱。
         if (grid.tree().scrollAt((float) mouseX, (float) mouseY, delta)) {
             return true;
         }
-        return super.mouseScrolled(mouseX, mouseY, delta);
+        return false;
     }
 
     @Override
@@ -318,6 +319,6 @@ public final class CardGridScreen extends Screen {
      */
     public void scrollForHarness(double delta) {
         Rect view = grid.viewport();
-        mouseScrolled(view.x() + view.width() / 2f, view.y() + view.height() / 2f, delta);
+        scrollVertically(view.x() + view.width() / 2f, view.y() + view.height() / 2f, delta);
     }
 }

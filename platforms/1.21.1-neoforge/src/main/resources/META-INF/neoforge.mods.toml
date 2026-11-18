@@ -1,0 +1,36 @@
+modLoader = "javafml"
+loaderVersion = "[4,)"
+license = "${mod_license}"
+# 仓库地址只在 gradle.properties 里写一次（mod_repo_url），这里拼出来用
+issueTrackerURL = "${mod_repo_url}/issues"
+
+[[mods]]
+    modId = "${mod_id}"
+    version = "${mod_version}"
+    displayName = "${mod_name}"
+    authors = "${mod_authors}"
+    # credits 与 displayURL 都是 mod 列表详细信息里会显示的两行（Forge 的 ModListScreen 读它们）
+    credits = '''${mod_credits}'''
+    displayURL = "${mod_repo_url}"
+    # 图标：logo.png 在资源根，由 design/icon.py 从 design/logo.png 派生 ——
+    # 它是唯一一处没有门禁盯着的视觉资产，所以至少要能一键重来。
+    logoFile = "logo.png"
+    description = '''${mod_description}'''
+    # 纯客户端：这个 mod 不注册任何服务端内容，装了也不会让服务器拒绝原版客户端
+
+[[dependencies."${mod_id}"]]
+    modId = "neoforge"
+    type = "required"
+    versionRange = "[21.1.1,21.2)"
+    ordering = "NONE"
+    side = "CLIENT"
+
+[[dependencies."${mod_id}"]]
+    modId = "minecraft"
+    type = "required"
+    versionRange = "[1.21.1]"
+    ordering = "NONE"
+    side = "CLIENT"
+
+[[mixins]]
+config = "pickupcard.mixins.json"

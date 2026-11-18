@@ -100,12 +100,13 @@
 | 与 [UI Deck](https://github.com/E33EPUS/UIDeck) 同装 | ✅ nanovg 走 JarJar 嵌套供应，无包冲突 |
 | [RarityCore](https://modrinth.com/mod/raritycore) | 🟡 可选联动（稀有度档位与配色） |
 | gnetum | 🟡 它按自己的帧率上限节流 HUD 渲染，拾取动画会因此掉帧 —— 在 gnetum 设置里调高或关闭该上限即可（整合包实测确认） |
-| Minecraft 1.21.1（Fabric / NeoForge / Forge） | ❌ 未实现，见下节 |
+| Minecraft 1.21.1 + NeoForge 21.1.x | Java 21，从 21.1.1 起，实测 21.1.228 |
+| Minecraft 1.21.1（Fabric / Forge） | ❌ 未实现 |
 | Minecraft 1.20.1 Fabric / NeoForge | ❌ 未实现 |
 
 ## 已知限制
 
-- **只有 1.20.1 Forge 这一个目标在产。** 1.21.1 的三个目标在 `versions/targets.json` 里显式记着 `buildable: false`：矩阵是规则，没做的那几格要在文件里看得见，而不是想不起来。
+- 公开版本目前支持 1.20.1 Forge。NeoForge 1.21.1 构建产物可供本地测试。
 - **窄画布上的英文标签会缩字。** 320×180 那一档（`guiScale` 拉到最大）英文芯片标签会缩得偏小 —— 不重叠，但不好读。
 - **很长的过滤规则要靠悬停看全文。** 规则行只显示一行，全文在那行底部的说明条里。
 - **没有服务端组件，所以拿不到只有服务端知道的信息。** 物品改名与 NBT 走的是"实体移除之前捞真身"这条路，绝大多数情况够用。
@@ -137,11 +138,12 @@
 本仓库是**单分支多目标**结构：`shared/` 放与平台无关的逻辑，`layers/` 放按映射 / 加载器 / 版本切分的代码，`platforms/<目标>/` 是各自的 Gradle 工程；有什么目标、各挂哪些层全部声明在 `versions/*.json`。
 
 ```bash
-cd platforms/1.20.1-forge && ./gradlew build    # 编译 + 单测
+./platforms/1.20.1-forge/gradlew -p platforms/1.20.1-forge build
+./platforms/1.21.1-neoforge/gradlew -p platforms/1.21.1-neoforge build
 python tools/verify_targets.py                   # 结构自洽性（CI 第一道闸）
 ```
 
-产物在 `platforms/1.20.1-forge/build/libs/`。
+产物在各目标的 `build/libs/` 目录。
 
 ## 许可证
 

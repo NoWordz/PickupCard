@@ -14,7 +14,13 @@ native 加载失败意味着 HUD 整个不画。
   「打包：nanovg 走 JarJar 嵌套」一节）
 - 版本：3.3.1 —— 与 Minecraft 1.20.1 实际加载的 LWJGL 同版本，区间钉死为 `[3.3.1]`
   （开区间会解析到 3.3.6，错版本 = 首次调用 `UnsatisfiedLinkError`）
+- NeoForge 1.21.1 使用 Minecraft 自带的 LWJGL 3.3.3，主包通过 JarJar 内嵌对应的 `lwjgl-nanovg-3.3.3.jar`。
 - 许可：BSD-3-Clause — <https://www.lwjgl.org/license>
+
+## TrellisUI（内嵌 UI 架构）
+
+- 两端均内嵌 `dev.e33.trellis:core` 和 `dev.e33.trellis:nvg`（0.1.0-SNAPSHOT）。
+- Forge 1.20.1 使用原发行包中的构件。NeoForge 1.21.1 使用 `third_party/trellis/neoforge/` 中与 TBBK Shop 0.1.0 相同的构件，匹配 LWJGL 3.3.3。
 
 ## NanoVG / NanoSVG（C 侧，已编译进 native）
 

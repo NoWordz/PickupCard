@@ -25,13 +25,13 @@ class PickupCardConfigTomlTest {
 
     /** 把一段 TOML 解析后挂到真 spec 上 —— 生产里由 FML 在 loadConfig 时做同一件事。 */
     private static void load(String toml) {
-        PickupCardConfig.SPEC.acceptConfig(TomlFormat.instance().createParser().parse(toml));
+        PickupCardConfig.STORAGE.spec().acceptConfig(TomlFormat.instance().createParser().parse(toml));
     }
 
     @AfterEach
     void resetTouchedKeys() {
         // 挂上的配置会留在 JVM 里影响同一轮的其它测试 —— 走前把碰过的键放回出厂值
-        if (PickupCardConfig.SPEC.isLoaded()) {
+        if (PickupCardConfig.STORAGE.spec().isLoaded()) {
             PickupCardConfig.VALUES.appearMode.set(PickupCardConfig.VALUES.appearMode.getDefault());
             PickupCardConfig.VALUES.exitMode.set(PickupCardConfig.VALUES.exitMode.getDefault());
             PickupCardConfig.VALUES.swayEnabled.set(PickupCardConfig.VALUES.swayEnabled.getDefault());

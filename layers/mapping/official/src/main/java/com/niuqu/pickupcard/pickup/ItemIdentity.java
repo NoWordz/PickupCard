@@ -1,5 +1,6 @@
 package com.niuqu.pickupcard.pickup;
 
+import com.niuqu.pickupcard.compat.MinecraftItemData;
 import com.niuqu.pickupcard.notice.MergeMode;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.world.item.ItemStack;
@@ -25,18 +26,17 @@ public final class ItemIdentity {
     }
 
     /**
-     * 最细的身份键：物品 id + 完整 NBT。两个用处 —— SAME_NBT 档的键，以及
+     * 最细的身份键：物品 id + 完整物品数据。两个用处 —— SAME_NBT 档的键，以及
      * <b>「第一次见这个物品」的判据</b>（放宽的档位下它固定用这把键，否则刷屏的 NEW
      * 角标会天天报到：那角标问的是物品，不是这一次拾取）。
      * <p>
-     * 改名、附魔、自定义数据都会体现在 NBT 里，所以"我的钻石剑"和"你的钻石剑"
+     * 改名、附魔、自定义数据都会体现在物品数据里，所以"我的钻石剑"和"你的钻石剑"
      * 是两件不同的东西 —— 这是想要的语义。
      */
     public static String strictKeyOf(ItemStack stack) {
         if (stack.isEmpty()) return "minecraft:air";
         String id = BuiltInRegistries.ITEM.getKey(stack.getItem()).toString();
-        // ItemStack#getTag 在 1.20.1 与 1.21.1 上都在（1.21.1 起是组件，但方法仍在）
-        return stack.getTag() == null ? id : id + '#' + stack.getTag();
+        return MinecraftItemData.strictKey(stack, id);
     }
 
     /**
@@ -47,7 +47,7 @@ public final class ItemIdentity {
     public static String keyOf(ItemStack stack, MergeMode mode) {
         if (stack.isEmpty()) return "minecraft:air";
         String id = BuiltInRegistries.ITEM.getKey(stack.getItem()).toString();
-        if (mode.uniquePerPickup(stack.hasCustomHoverName())) {
+        if (mode.uniquePerPickup(MinecraftItemData.hasCustomName(stack))) {
             // 每次拾取都要一张自己的卡：渲染层按账本的键建档，键相同就只能有一张
             return id + "#@" + (++sequence);
         }

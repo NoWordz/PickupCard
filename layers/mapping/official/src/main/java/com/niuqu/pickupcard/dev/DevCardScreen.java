@@ -78,12 +78,6 @@ public final class DevCardScreen extends Screen {
         // 刻意不加任何 widget：这个屏不是给玩家用的界面
     }
 
-    /** 盖掉原版背景（默认是模糊+暗化），换成我们能控制的底。 */
-    @Override
-    public void renderBackground(GuiGraphics gui) {
-        // 故意空白：背景由本类自己铺，见 render
-    }
-
     @Override
     public void render(GuiGraphics gui, int mouseX, int mouseY, float partialTick) {
         paintBackground(gui);
@@ -94,7 +88,6 @@ public final class DevCardScreen extends Screen {
             if (guides) paintGuides(gui);
         }
         if (stats) paintStats(gui);
-        super.render(gui, mouseX, mouseY, partialTick);
     }
 
     // ------------------------------------------------------------------

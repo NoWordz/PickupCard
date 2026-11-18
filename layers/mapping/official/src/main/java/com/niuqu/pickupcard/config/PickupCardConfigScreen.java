@@ -32,6 +32,7 @@ import com.niuqu.pickupcard.style.StyleModel;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.resources.language.I18n;
 import net.minecraft.client.gui.GuiGraphics;
+import com.niuqu.pickupcard.client.PickupCardScrollScreen;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
 import org.lwjgl.glfw.GLFW;
@@ -61,7 +62,7 @@ import dev.e33.trellis.ui.widget.WidgetPalette;
  * <p>【换页没有动画（2026-09-19 用户拍板）】切页就是瞬间换内容，留下来的动画只有悬停与
  * 强调条这两种"指哪是哪"的反馈。
  */
-public final class PickupCardConfigScreen extends Screen {
+public final class PickupCardConfigScreen extends PickupCardScrollScreen {
 
     // ---- 界面尺度 ----
     private static final int PAD = 6;
@@ -94,7 +95,7 @@ public final class PickupCardConfigScreen extends Screen {
 
     /** 给 harness 用：让配置项那一列滚一格（走的是和真人滚轮同一条路）。 */
     public boolean scrollForHarness(double delta) {
-        return mouseScrolled(this.width / 2.0, this.height / 2.0, delta);
+        return scrollVertically(this.width / 2.0, this.height / 2.0, delta);
     }
 
     /** 给 harness 用：当前滚动偏移 —— 唯一来源是滚动容器（A-16）。 */
@@ -1813,7 +1814,7 @@ public final class PickupCardConfigScreen extends Screen {
     // 悬停状态统一在 render() 开头按当前鼠标位置刷（与真实调用路径一致）。
 
     @Override
-    public boolean mouseScrolled(double mouseX, double mouseY, double delta) {
+    protected boolean scrollVertically(double mouseX, double mouseY, double delta) {
         // 【模态独占滚轮】开着时不滚底下的配置列（模态面板本身不滚 —— 它按自然尺寸长到刚好）。
         if (modal != null) {
             return true;
@@ -1828,7 +1829,7 @@ public final class PickupCardConfigScreen extends Screen {
         // 框架那条路（{@code UiTree.scrollAt} + 冒泡）本来就支持。
         ConfigLayout.Rect items = layout().items();
         if (!tree.scrollAt(items.x() + items.w() / 2f, items.y() + items.h() / 2f, delta)) {
-            return super.mouseScrolled(mouseX, mouseY, delta);
+            return false;
         }
         layoutRows();       // 偏移变了，行模型那份 y 要跟上
         return true;

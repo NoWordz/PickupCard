@@ -4,7 +4,6 @@ import com.niuqu.pickupcard.PickupCard;
 import com.niuqu.pickupcard.rarity.LinkedRarity;
 import com.niuqu.pickupcard.rarity.RarityAccent;
 import net.minecraft.world.item.ItemStack;
-import net.minecraftforge.fml.ModList;
 
 import java.lang.invoke.MethodHandle;
 import java.lang.invoke.MethodHandles;
@@ -40,8 +39,8 @@ public final class RarityCoreBridge implements LinkedRarity {
     }
 
     /** 装了 RarityCore 才注入；没装时什么都不发生（vanilla 主题色就是兜底）。 */
-    public static void install() {
-        if (!ModList.get().isLoaded("raritycore")) {
+    public static void install(boolean present) {
+        if (!present) {
             PickupCard.LOGGER.info("[联动] 未安装 RarityCore，稀有度色走主题（无联动）");
             return;
         }
@@ -56,8 +55,8 @@ public final class RarityCoreBridge implements LinkedRarity {
      * {@code [落点] → [nvg 建立] → [桥已就绪]} 三行挤在 54ms 里）。进世界时先解析掉，
      * 拾取那一帧就只剩画卡的事。解析失败与懒路径完全同款（解联回落主题色）。
      */
-    public static void warmUp() {
-        if (!ModList.get().isLoaded("raritycore")) {
+    public static void warmUp(boolean present) {
+        if (!present) {
             return;
         }
         ensureResolved();

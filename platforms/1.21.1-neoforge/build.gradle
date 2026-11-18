@@ -1,0 +1,114 @@
+plugins {
+    id 'java-library'
+    id 'net.neoforged.moddev' version '2.0.141'
+}
+
+apply from: '../../gradle/pickupcard-layers.gradle'
+
+version = mod_version
+group = mod_group_id
+base.archivesName = "${mod_id}-NeoForge-1.21.1"
+java.toolchain.languageVersion = JavaLanguageVersion.of(21)
+
+neoForge {
+    version = project.neoforge_version
+    mods {
+        "${mod_id}" { sourceSet sourceSets.main }
+    }
+    unitTest {
+        enable()
+        testedMod = mods."${mod_id}"
+    }
+    runs {
+        client {
+            client()
+            systemProperty 'pickupcard.harness.auto', providers.gradleProperty('harnessAuto').getOrElse('off')
+            if (providers.gradleProperty('quickPlayWorld').isPresent()) {
+                programArguments.addAll('--quickPlaySingleplayer', providers.gradleProperty('quickPlayWorld').get())
+            }
+        }
+    }
+}
+
+repositories {
+    mavenCentral()
+    exclusiveContent {
+        forRepository {
+            ivy {
+                url = new File(pickupcardRepoRoot, 'third_party/trellis/neoforge')
+                patternLayout { artifact '[artifact]-[revision].[ext]' }
+                metadataSources { artifact() }
+            }
+        }
+        filter { includeGroup 'dev.e33.trellis' }
+    }
+}
+
+def nvgVersion = '3.3.3'
+def trellisVersion = '0.1.0-SNAPSHOT'
+def nvgNatives = configurations.create('nvgNatives') {
+    canBeResolved = true
+    canBeConsumed = false
+    transitive = false
+}
+def unpackNvgNatives = tasks.register('unpackNvgNatives', Sync) {
+    from({ nvgNatives.files.collect { zipTree(it) } }) {
+        include 'windows/**', 'linux/**', 'macos/**'
+    }
+    into layout.buildDirectory.dir('generated/nvgNatives')
+}
+sourceSets.main.resources.srcDir(unpackNvgNatives)
+
+dependencies {
+    // Match Minecraft's LWJGL. Keep binding classes nested so other mods can share them.
+    jarJar(implementation("org.lwjgl:lwjgl-nanovg:${nvgVersion}") { transitive = false }) {
+        version { strictly "[${nvgVersion}]"; prefer nvgVersion }
+    }
+    additionalRuntimeClasspath("org.lwjgl:lwjgl-nanovg:${nvgVersion}") { transitive = false }
+    ['windows', 'linux', 'macos', 'macos-arm64'].each { platform ->
+        add('nvgNatives', "org.lwjgl:lwjgl-nanovg:${nvgVersion}:natives-${platform}")
+    }
+
+    // Match the TBBK Shop binaries at these JarJar coordinates. Its NanoVG adapter uses LWJGL 3.3.3.
+    ['core', 'nvg'].each { module ->
+        def coordinates = "dev.e33.trellis:${module}:${trellisVersion}"
+        jarJar(implementation(coordinates)) {
+            version { strictly "[${trellisVersion}]"; prefer trellisVersion }
+        }
+        additionalRuntimeClasspath coordinates
+    }
+
+    testImplementation platform('org.junit:junit-bom:5.11.4')
+    testImplementation 'org.junit.jupiter:junit-jupiter'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+}
+
+tasks.withType(JavaCompile).configureEach {
+    options.encoding = 'UTF-8'
+    options.release = 21
+}
+
+tasks.named('processResources', ProcessResources) {
+    filteringCharset = 'UTF-8'
+    from(new File(pickupcardRepoRoot, 'LICENSE'))
+    from(new File(pickupcardRepoRoot, 'THIRD_PARTY_NOTICES.md'))
+    from(new File(pickupcardRepoRoot, 'design/icon.png')) { rename 'icon.png', 'logo.png' }
+    def metadata = ['mod_id', 'mod_name', 'mod_version', 'mod_license', 'mod_authors',
+                    'mod_description', 'mod_repo_url', 'mod_credits']
+            .collectEntries { [(it): project.property(it)] }
+    inputs.properties metadata
+    filesMatching('META-INF/neoforge.mods.toml') { expand metadata }
+}
+
+tasks.named('jar', Jar) {
+    manifest.attributes(
+            'Specification-Title': mod_id,
+            'Specification-Vendor': mod_authors,
+            'Implementation-Version': mod_version,
+            'Implementation-Vendor': mod_authors
+    )
+}
+
+tasks.named('test', Test) {
+    useJUnitPlatform()
+}

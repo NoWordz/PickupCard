@@ -15,7 +15,6 @@ import com.niuqu.pickupcard.style.StyleOverrides;
 import com.niuqu.pickupcard.text.CountFormat;
 import com.niuqu.pickupcard.text.CountMode;
 import net.minecraft.client.resources.language.I18n;
-import net.minecraftforge.common.ForgeConfigSpec;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -318,7 +317,7 @@ public final class ConfigPageSpec {
     }
 
     /** 恢复 = 写回键定义时的默认值。手抄字面量的那条路（漂出过 FADE）到此封死。 */
-    private static <T> Runnable restore(ForgeConfigSpec.ConfigValue<T> value) {
+    private static <T> Runnable restore(ConfigValue<T> value) {
         return () -> value.set(value.getDefault());
     }
 
@@ -330,7 +329,7 @@ public final class ConfigPageSpec {
         CardStage.INSTANCE.refreshStyle();
     }
 
-    private static Toggle bool(ForgeConfigSpec.BooleanValue config, boolean shown) {
+    private static Toggle bool(ConfigValue<Boolean> config, boolean shown) {
         return new Toggle("", config::get, on -> {
             config.set(on);
             changed();
@@ -338,14 +337,14 @@ public final class ConfigPageSpec {
     }
 
     /** 外观开关：配置里是 -1/0/1，界面只显示"开/关"，点了就写死 1/0。 */
-    private static Toggle styleSwitch(ForgeConfigSpec.IntValue config, boolean shown) {
+    private static Toggle styleSwitch(ConfigValue<Integer> config, boolean shown) {
         return new Toggle("", () -> config.get() < 0 ? shown : config.get() == 1, on -> {
             config.set(on ? 1 : 0);
             changed();
         }, () -> I18n.get("pickupcard.config.toggle.on"), () -> I18n.get("pickupcard.config.toggle.off"));
     }
 
-    private static Slider number(ForgeConfigSpec.IntValue config, int shown, int min, int max, int step,
+    private static Slider number(ConfigValue<Integer> config, int shown, int min, int max, int step,
                                     String suffix) {
         return new Slider("", min, max, step,
                 () -> (double) currentInt(config, shown), value -> {
@@ -355,12 +354,12 @@ public final class ConfigPageSpec {
                 value -> Integer.toString((int) Math.round(value)) + suffix);
     }
 
-    private static Slider styleNumber(ForgeConfigSpec.IntValue config, int shown, int min, int max,
+    private static Slider styleNumber(ConfigValue<Integer> config, int shown, int min, int max,
                                          int step, String suffix) {
         return number(config, shown, min, max, step, suffix);
     }
 
-    private static Slider decimal(ForgeConfigSpec.DoubleValue config, double shown, double min, double max) {
+    private static Slider decimal(ConfigValue<Double> config, double shown, double min, double max) {
         return new Slider("", min, max, 1,
                 () -> currentDouble(config, shown),
                 value -> {
@@ -376,7 +375,7 @@ public final class ConfigPageSpec {
      * <p>【没有 -1 哨兵】半径不存在"跟随主题/自动"的第三态，{@code shown} 因此不传 ——
      * 与 separation 那行实际行为一致（它的 {@code shown} 也永远用不到）。
      */
-    private static Slider radius(ForgeConfigSpec.DoubleValue config, double min, double max) {
+    private static Slider radius(ConfigValue<Double> config, double min, double max) {
         return new Slider("", min, max, 0.5,
                 () -> config.get(),
                 value -> {
@@ -390,7 +389,7 @@ public final class ConfigPageSpec {
      * 时间滑条：底层一律 ms（TOML 兼容），<b>显示一律秒</b>（2026-09-25 用户反馈：
      * 玩家对 2600ms 没有直觉）。两位小数同时照顾 holdMs（3.20s）与 exitMs（0.32s）。
      */
-    private static Slider time(ForgeConfigSpec.LongValue config, long shown, long min, long max, long step) {
+    private static Slider time(ConfigValue<Long> config, long shown, long min, long max, long step) {
         return new Slider("", min, max, step,
                 () -> (double) currentLong(config, shown), value -> {
             config.set(Math.round(value));
@@ -399,7 +398,7 @@ public final class ConfigPageSpec {
                 value -> String.format(java.util.Locale.ROOT, "%.2fs", value / 1000.0));
     }
 
-    private static Slider styleTime(ForgeConfigSpec.LongValue config, long shown, long min, long max, long step) {
+    private static Slider styleTime(ConfigValue<Long> config, long shown, long min, long max, long step) {
         return time(config, shown, min, max, step);
     }
 
@@ -408,7 +407,7 @@ public final class ConfigPageSpec {
      * <p>滑条上 0 是"自动"，1..49 是空档 —— 不夹的话界面会显示 "10%" 而生效的是 50%
      * （sanitized 会夹），那就是"设了等于没设"。
      */
-    private static Slider percent(ForgeConfigSpec.IntValue config, int shown) {
+    private static Slider percent(ConfigValue<Integer> config, int shown) {
         return new Slider("", LayoutSettings.AUTO_SCALE, LayoutSettings.MAX_SCALE_PERCENT, 5,
                 () -> (double) config.get(),
                 value -> {
@@ -420,7 +419,7 @@ public final class ConfigPageSpec {
                 value -> value <= LayoutSettings.AUTO_SCALE ? tr("pickupcard.config.value.auto") : Math.round(value) + "%");
     }
 
-    private static <E extends Enum<E>> Button cycle(ForgeConfigSpec.EnumValue<E> config, E[] values,
+    private static <E extends Enum<E>> Button cycle(ConfigValue<E> config, E[] values,
                                                        Function<E, String> name) {
         return new Button("", () -> name.apply(config.get()), () -> {
             E current = config.get();
@@ -436,7 +435,7 @@ public final class ConfigPageSpec {
     }
 
     /** 颜色 = 色块循环；精确色值的出路在 TOML，行说明里有写。 */
-    private static ColorChip color(ForgeConfigSpec.ConfigValue<String> config, int effectiveArgb) {
+    private static ColorChip color(ConfigValue<String> config, int effectiveArgb) {
         return new ColorChip("", () -> effectiveArgb(config, effectiveArgb), config::get, text -> {
             config.set(text);
             changed();
@@ -445,20 +444,20 @@ public final class ConfigPageSpec {
     }
 
     /** 色块画的生效色：配置里解析得动就用解析值（含手写 hex），否则回主题生效值。 */
-    private static int effectiveArgb(ForgeConfigSpec.ConfigValue<String> config, int effective) {
+    private static int effectiveArgb(ConfigValue<String> config, int effective) {
         return StyleOverrides.parseArgb(config.get()).orElseGet(() -> effective);
     }
 
     /** 显示用的当前值：配置里"没改过"（-1）时给生效值，界面因此永远不显示第三态。 */
-    private static int currentInt(ForgeConfigSpec.IntValue config, int effective) {
+    private static int currentInt(ConfigValue<Integer> config, int effective) {
         return config.get() < 0 ? effective : config.get();
     }
 
-    private static long currentLong(ForgeConfigSpec.LongValue config, long effective) {
+    private static long currentLong(ConfigValue<Long> config, long effective) {
         return config.get() < 0 ? effective : config.get();
     }
 
-    private static double currentDouble(ForgeConfigSpec.DoubleValue config, double effective) {
+    private static double currentDouble(ConfigValue<Double> config, double effective) {
         return config.get() < 0 ? effective : config.get();
     }
 

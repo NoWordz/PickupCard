@@ -4,9 +4,8 @@ import com.google.gson.Gson;
 import com.google.gson.reflect.TypeToken;
 import org.junit.jupiter.api.Test;
 
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.util.List;
+import java.io.InputStreamReader;
+import java.nio.charset.StandardCharsets;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -22,20 +21,15 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  */
 class LangKeyConsistencyTest {
 
-    private static Path langDir() {
-        // gradle test 的工作目录是模块目录；从仓库根跑时回退一级
-        for (Path p : List.of(Path.of("src/main/resources/assets/pickupcard/lang"),
-                Path.of("../src/main/resources/assets/pickupcard/lang"))) {
-            if (Files.isDirectory(p)) {
-                return p;
-            }
-        }
-        throw new AssertionError("找不到语言文件目录（工作目录 = " + Path.of(".") .toAbsolutePath() + "）");
-    }
-
     private static Map<String, String> load(String file) throws Exception {
-        return new Gson().fromJson(Files.readString(langDir().resolve(file)),
-                new TypeToken<Map<String, String>>() { }.getType());
+        String path = "/assets/pickupcard/lang/" + file;
+        var resource = LangKeyConsistencyTest.class.getResourceAsStream(path);
+        if (resource == null) {
+            throw new AssertionError("找不到语言文件 " + path);
+        }
+        try (var reader = new InputStreamReader(resource, StandardCharsets.UTF_8)) {
+            return new Gson().fromJson(reader, new TypeToken<Map<String, String>>() { }.getType());
+        }
     }
 
     @Test

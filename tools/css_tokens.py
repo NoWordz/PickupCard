@@ -27,7 +27,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 SOURCE = ROOT / "design" / "tokens.css"
-OUT_DIR = ROOT / "platforms" / "1.20.1-forge" / "src" / "main" / "resources" / "assets" / "pickupcard" / "styles"
+OUT_DIR = ROOT / "shared" / "src" / "main" / "resources" / "assets" / "pickupcard" / "styles"
 
 # 自定义属性 -> (JSON 段, JSON 键, 类型)
 # 没登记在这里的名字一律视为错误。加新参数时必须同时改这里，这正是想要的手续。

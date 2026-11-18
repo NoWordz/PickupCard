@@ -6,7 +6,7 @@ import com.niuqu.pickupcard.pickup.Inbox;
 import com.niuqu.pickupcard.render.CardStage;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.chat.Component;
-import net.minecraft.world.item.enchantment.Enchantments;
+import com.niuqu.pickupcard.compat.MinecraftItemData;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
@@ -75,7 +75,7 @@ public final class CardFixtures {
         // 没有真附魔组件就没有 glint，这条验收是空的。
         ItemStack enchantedSword =
                 named(Items.DIAMOND_SWORD, "被铁砧改了名字的附魔钻石剑（超长名字边界测试）");
-        enchantedSword.enchant(Enchantments.SHARPNESS, 1);
+        MinecraftItemData.addPreviewGlint(enchantedSword);
         list.add(new Fixture("long-name", enchantedSword, 1));
         // 【为什么用钻石而不是圆石】内置忽略表已经删掉了，现在圆石也会弹卡。
         // 留着钻石是因为它认得出、数量大、而且不会被任何默认规则牵动 ——
@@ -164,14 +164,14 @@ public final class CardFixtures {
         return BuiltInRegistries.ITEM.stream()
                 .filter(item -> item != Items.AIR)
                 .filter(item -> !exclude.contains(item))
-                .filter(item -> item.getRarity(new ItemStack(item)) == rarity)
+                .filter(item -> new ItemStack(item).getRarity() == rarity)
                 .findFirst()
                 .orElse(Items.STONE);
     }
 
     private static ItemStack named(Item item, String name) {
         ItemStack stack = new ItemStack(item);
-        stack.setHoverName(Component.literal(name));
+        MinecraftItemData.setCustomName(stack, Component.literal(name));
         return stack;
     }
 }

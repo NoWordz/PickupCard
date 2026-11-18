@@ -7,7 +7,8 @@ import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.VertexConsumer;
 import com.mojang.blaze3d.vertex.VertexFormat;
 import com.niuqu.pickupcard.PickupCard;
-import com.niuqu.pickupcard.style.Easing;import net.minecraft.client.Minecraft;
+import com.niuqu.pickupcard.style.Easing;
+import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.renderer.LightTexture;
 import net.minecraft.client.renderer.MultiBufferSource;
@@ -20,7 +21,6 @@ import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.inventory.InventoryMenu;
 import net.minecraft.world.item.ItemDisplayContext;
 import net.minecraft.world.item.ItemStack;
-import org.joml.Matrix4f;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -52,9 +52,6 @@ public final class FadingItemBuffers implements MultiBufferSource {
     private static final ResourceLocation ATLAS = InventoryMenu.BLOCK_ATLAS;
     private static final FadingItemBuffers INSTANCE = new FadingItemBuffers();
 
-    /** 图标的 y 翻转矩阵（原版 renderItem 同款）。mulPoseMatrix 只读它，静态一份免每帧分配。 */
-    private static final Matrix4f FLIP_Y = new Matrix4f().scaling(1.0F, -1.0F, 1.0F);
-
     /** 无混合实体层 -> 开混合等价层。键按结构相等构造（与 ItemBlockRenderTypes 同一构造调用）。 */
     private static final Map<RenderType, RenderType> BLENDED = new HashMap<>();
 
@@ -64,7 +61,8 @@ public final class FadingItemBuffers implements MultiBufferSource {
         // 剪裁层（有透明像素的贴图）：目标层就是平贴图物品一直用的那一个
         BLENDED.put(RenderType.entityCutout(ATLAS), RenderType.entityTranslucentCull(ATLAS));
         // 无剔除剪裁层（交叉面片，草/花类）：没有现成目标，静态自造一个（见 Shards）
-        BLENDED.put(RenderType.entityCutoutNoCull(ATLAS), translucentNoCull(ATLAS));
+        BLENDED.put(RenderType.entityCutoutNoCull(ATLAS), translucent(ATLAS, false, false));
+        MinecraftGui.addFadingLayers(BLENDED, () -> translucent(ATLAS, true, true));
     }
 
     private FadingItemBuffers() {
@@ -114,10 +112,8 @@ public final class FadingItemBuffers implements MultiBufferSource {
             try {
                 // —— 从这里起与 GuiGraphics.renderItem 逐字对齐 ——
                 pose.translate(centerX, centerY, 150f);
-                // y 翻转矩阵只读不存（mulPoseMatrix 把值乘进 pose 栈），共享一份免每帧分配
-                pose.mulPoseMatrix(FLIP_Y);
-                float scale = iconSize / CardMetrics.ICON_PX;
-                pose.scale(16.0F * scale, 16.0F * scale, 16.0F * scale);
+                float scale = iconSize * 16f / CardMetrics.ICON_PX;
+                MinecraftGui.flipAndScaleItem(pose, scale);
                 flatLight = !model.usesBlockLight();
                 if (flatLight) {
                     Lighting.setupForFlatItems();
@@ -163,14 +159,15 @@ public final class FadingItemBuffers implements MultiBufferSource {
      * 原版没有现成等价物（entityTranslucent 系都开剔除，会把交叉面片的背面整片剔没）。
      * 状态逐项对齐 entityTranslucent，只把剔除换成 NO_CULL。
      */
-    private static RenderType translucentNoCull(ResourceLocation atlas) {
-        return RenderType.create("pickupcard_entity_translucent_no_cull",
+    private static RenderType translucent(ResourceLocation atlas, boolean cull, boolean mipmap) {
+        String name = cull ? "pickupcard_entity_translucent_mipped" : "pickupcard_entity_translucent_no_cull";
+        return RenderType.create(name,
                 DefaultVertexFormat.NEW_ENTITY, VertexFormat.Mode.QUADS, 256, false, true,
                 RenderType.CompositeState.builder()
                         .setShaderState(Shards.ENTITY_TRANSLUCENT)
-                        .setTextureState(Shards.texture(atlas))
+                        .setTextureState(Shards.texture(atlas, mipmap))
                         .setTransparencyState(Shards.TRANSLUCENT)
-                        .setCullState(Shards.NO_CULLING)
+                        .setCullState(cull ? Shards.CULLING : Shards.NO_CULLING)
                         .setLightmapState(Shards.LIGHTMAP_SHARD)
                         .setOverlayState(Shards.OVERLAY_SHARD)
                         .createCompositeState(false));
@@ -183,12 +180,13 @@ public final class FadingItemBuffers implements MultiBufferSource {
     private static final class Shards extends RenderStateShard {
         static final ShaderStateShard ENTITY_TRANSLUCENT = RENDERTYPE_ENTITY_TRANSLUCENT_SHADER;
         static final TransparencyStateShard TRANSLUCENT = TRANSLUCENT_TRANSPARENCY;
+        static final CullStateShard CULLING = CULL;
         static final CullStateShard NO_CULLING = NO_CULL;
         static final LightmapStateShard LIGHTMAP_SHARD = LIGHTMAP;
         static final OverlayStateShard OVERLAY_SHARD = OVERLAY;
 
-        static TextureStateShard texture(ResourceLocation atlas) {
-            return new TextureStateShard(atlas, false, false);
+        static TextureStateShard texture(ResourceLocation atlas, boolean mipmap) {
+            return new TextureStateShard(atlas, false, mipmap);
         }
 
         private Shards() {

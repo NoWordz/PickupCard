@@ -100,12 +100,13 @@ The model is "the theme provides defaults, the TOML only overrides what you chan
 | Installed alongside [UI Deck](https://github.com/E33EPUS/UIDeck) | ✅ nanovg is supplied through JarJar nesting, so there is no package conflict |
 | [RarityCore](https://modrinth.com/mod/raritycore) | 🟡 Optional integration (rarity tiers and colours) |
 | gnetum | 🟡 Throttles HUD rendering to its own fps cap, which stutters pickup animations — raise or disable the cap in gnetum's settings (confirmed on a real modpack) |
-| Minecraft 1.21.1 (Fabric / NeoForge / Forge) | ❌ Not implemented — see below |
+| Minecraft 1.21.1 + NeoForge 21.1.x | Java 21, minimum 21.1.1, tested on 21.1.228 |
+| Minecraft 1.21.1 (Fabric / Forge) | ❌ Not implemented |
 | Minecraft 1.20.1 Fabric / NeoForge | ❌ Not implemented |
 
 ## Known limitations
 
-- **1.20.1 Forge is the only shipping target.** The three 1.21.1 targets are explicitly recorded as `buildable: false` in `versions/targets.json`: the matrix is a rule, so cells we have not done have to be visible in the file rather than forgotten.
+- The public release supports 1.20.1 Forge. The NeoForge 1.21.1 build is available for local testing.
 - **English labels shrink on very narrow canvases.** At 320×180 (largest `guiScale`) English chip labels get noticeably small — no overlap, but not pleasant to read.
 - **Long filter rules need a hover to read in full.** A rule row shows one line; the whole rule is in the hint bar along the bottom.
 - **No server component, so server-only information is out of reach.** Renamed items and NBT come from grabbing the entity just before it is removed, which covers the vast majority of cases.
@@ -137,11 +138,12 @@ The model is "the theme provides defaults, the TOML only overrides what you chan
 This repository is **single-branch, multi-target**: `shared/` holds platform-independent logic, `layers/` holds code split by mappings / loader / version, and `platforms/<target>/` holds one Gradle project per target; which targets exist and which layers each one mounts is declared entirely in `versions/*.json`.
 
 ```bash
-cd platforms/1.20.1-forge && ./gradlew build    # compile + unit tests
+./platforms/1.20.1-forge/gradlew -p platforms/1.20.1-forge build
+./platforms/1.21.1-neoforge/gradlew -p platforms/1.21.1-neoforge build
 python tools/verify_targets.py                   # structural consistency (CI's first gate)
 ```
 
-Artifacts land in `platforms/1.20.1-forge/build/libs/`.
+Artifacts land in each target’s `build/libs/` directory.
 
 ## License
 

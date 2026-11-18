@@ -1,6 +1,7 @@
 package com.niuqu.pickupcard.pickup;
 
 import com.niuqu.pickupcard.PickupCard;
+import com.niuqu.pickupcard.compat.MinecraftItemData;
 import com.niuqu.pickupcard.filter.FilterRules;
 import com.niuqu.pickupcard.notice.MergeMode;
 import com.niuqu.pickupcard.filter.FilterSettings;
@@ -160,7 +161,10 @@ public final class Inbox {
 
         String key;
         String look;
+        String seenKey;
         boolean emphasized;
+        PickupCardSettings settings = settings();
+        MergeMode mode = settings.mergeMode();
         // 经验卡与未知内容不走过滤表：先给一个"照常弹、不静音"的判定，让出口只剩一处
         FilterRules.Decision decision = FilterRules.Decision.PLAIN;
         if (content instanceof CardContent.Item item) {
@@ -170,30 +174,28 @@ public final class Inbox {
                 dropReporter.accept(item);
                 return decision;
             }
-            MergeMode mode = settings().mergeMode();
             key = ItemIdentity.keyOf(item.stack(), mode);
             look = ItemIdentity.lookOf(item.stack(), mode);
+            // NEW uses strict identity in every merge mode, including separate cards for named items.
+            seenKey = mode.usesNbt() ? key : ItemIdentity.strictKeyOf(item.stack());
             emphasized = decision.emphasized();
         } else if (content instanceof CardContent.Experience) {
             // 经验不过滤：它是正反馈本身，也没有"捡错一堆"的刷屏问题
             key = XP_KEY;
             look = XP_KEY;
+            seenKey = XP_KEY;
             emphasized = false;
         } else {
             // 密封接口上不该有别的实现；真有就当作"什么都不弹、也不压音"
             return FilterRules.Decision.DROP;
         }
 
-        // 【第一次见的判据固定用最细的键】NONE / 改名件每一张的身份键都不同，
-        // 拿它去问「第一次见」会天天报 NEW —— 那个角标问的是物品，不是这一次拾取。
-        String seenKey = content instanceof CardContent.Item item
-                ? ItemIdentity.strictKeyOf(item.stack()) : key;
         boolean firstTime = seen.markAndCheckFirst(seenKey);
         Card card = new Card(content, emphasized);
         // 【闸门 = min(意愿, 物理)】几何放不下的不上屏，走同一条排队/溢出路径
-        int capacity = Math.min(settings().maxOnScreen(), geometryCapacity);
+        int capacity = Math.min(settings.maxOnScreen(), geometryCapacity);
         NoticeQueue.Outcome<Card> outcome = queue.absorb(key, look, card, count, firstTime, now,
-                settings().mergeMode(), capacity, settings().queueSize(), settings().fullPolicy());
+                mode, capacity, settings.queueSize(), settings.fullPolicy());
 
         for (Notice<Card> evicted : outcome.evicted()) {
             pending.add(new Event.Evicted(evicted));
@@ -272,6 +274,7 @@ public final class Inbox {
     public void reset() {
         queue.clear();
         seen.clear();
+        MinecraftItemData.clearIdentityKeys();
         pending.clear();
         // 静音闸门也算"这一次拾取"的在途状态：换世界时清零，免得残留跨越世界边界
         PickupSoundGate.arm(false);

@@ -4,7 +4,7 @@ import com.niuqu.pickupcard.style.StyleModel;
 import com.niuqu.pickupcard.style.StyleOverrides;
 import com.niuqu.pickupcard.style.Theme;
 import net.minecraft.client.Minecraft;
-import net.minecraft.resources.ResourceLocation;
+import com.niuqu.pickupcard.compat.MinecraftItemData;
 
 import java.nio.charset.StandardCharsets;
 import java.util.function.Supplier;
@@ -73,7 +73,7 @@ public final class StyleSource {
     private static StyleModel read(Theme theme) {
         try {
             var resource = Minecraft.getInstance().getResourceManager()
-                    .getResource(new ResourceLocation("pickupcard", theme.assetPath()));
+                    .getResource(MinecraftItemData.resource("pickupcard", theme.assetPath()));
             if (resource.isEmpty()) {
                 return StyleModel.defaults();
             }

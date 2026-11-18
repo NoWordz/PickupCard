@@ -54,15 +54,14 @@
   "1.21.1-neoforge": {
     "minecraft": "1.21.1",
     "loader": "NeoForge",
-    "loader_version": null,
+    "loader_version": "21.1.228",
     "mappings": "official",
     "java": 21,
     "gradle": "9.2.1",
     "project": "platforms/1.21.1-neoforge",
     "buildable": false,
     "layers": ["1.21+", "official", "neoforge"],
-    "unverified": ["loader_version", "java", "gradle"],
-    "note": "M2 目标。ModDevGradle；与 Forge 共用 official 映射层，差异收在 neoforge 加载器层。"
+    "note": "ModDevGradle，Java 21；与 Forge 共用 official 映射层。先纳入 CI 构建，待发版决定后纳入 Release。"
   },
 
   "1.21.1-forge": {

@@ -11,6 +11,7 @@
 
 from __future__ import annotations
 
+import json
 import re
 import sys
 import zipfile
@@ -20,7 +21,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 # 与 build.gradle 里 jarJar 的版本区间必须一致：钉死单元素区间，否则会解析到别的版本
 # （错版本 = 首次调用 UnsatisfiedLinkError，见 docs/architecture.md 的「打包」一节）
-NANOVG_VERSION = "3.3.1"
+NANOVG_VERSIONS = {"Forge": "3.3.1", "NeoForge": "3.3.3"}
 # Trellis（dev.e33.trellis）与 gradle 的 jarJar 区间 / third_party 提交的文件名三处同源这一份
 TRELLIS_VERSION = "0.1.0-SNAPSHOT"
 
@@ -55,6 +56,13 @@ def read_root_version() -> str:
 
 def main() -> int:
     project = sys.argv[1] if len(sys.argv) > 1 else "platforms/1.20.1-forge"
+    targets = json.loads((ROOT / "versions" / "targets.json").read_text(encoding="utf-8"))
+    target = next((v for v in targets.values() if isinstance(v, dict) and v.get("project") == project), None)
+    if target is None or target["loader"] not in NANOVG_VERSIONS:
+        fail(f"未知打包目标 {project}")
+        return report()
+    forge = target["loader"] == "Forge"
+    nvg_version = NANOVG_VERSIONS[target["loader"]]
     libs = ROOT / project / "build" / "libs"
     if not libs.is_dir():
         print(f"verify_jars: {libs} 不存在 —— 先构建", file=sys.stderr)
@@ -77,14 +85,18 @@ def main() -> int:
             fail(f"主 jar 里有 {len(leaked)} 个摊平的 org/lwjgl/nanovg 类（例：{leaked[0]}）"
                  f" —— 与 UI Deck 同装会 JPMS ResolutionException")
 
-        # 2. JarJar 嵌套必须成对且同版（三颗库都由构建期的 jarJar 任务嵌：nanovg 与
-        #    Trellis core/nvg，嵌套文件名按 FG 规则 = <artifact>-<version>.jar）
-        for nested in (f"META-INF/jarjar/lwjgl-{NANOVG_VERSION}.jar",
-                       f"META-INF/jarjar/lwjgl-nanovg-{NANOVG_VERSION}.jar",
-                       f"META-INF/jarjar/core-{TRELLIS_VERSION}.jar",
-                       f"META-INF/jarjar/nvg-{TRELLIS_VERSION}.jar"):
-            if nested not in names:
-                fail(f"缺少 JarJar 嵌套产物 {nested}")
+        # ForgeGradle also emits an undeclared LWJGL core jar. NeoForge uses its own core directly.
+        core_jar = f"META-INF/jarjar/lwjgl-{nvg_version}.jar"
+        if forge and core_jar not in names:
+            fail(f"缺少 ForgeGradle 的 {core_jar}")
+        if not forge and core_jar in names:
+            fail(f"NeoForge 包重复嵌入了 Minecraft 自带的 LWJGL：{core_jar}")
+
+        required_libraries = {
+            ("org.lwjgl", "lwjgl-nanovg"): nvg_version,
+            ("dev.e33.trellis", "core"): TRELLIS_VERSION,
+            ("dev.e33.trellis", "nvg"): TRELLIS_VERSION,
+        }
 
         # 3. 四平台 native 都还在主 jar 里
         for native in NATIVE_FILES:
@@ -102,7 +114,7 @@ def main() -> int:
         # 5. mixin 配置与 refmap 都要在（缺了 = mixin 不加载、拾取事件整个哑掉）
         if "pickupcard.mixins.json" not in names:
             fail("缺少 pickupcard.mixins.json")
-        if not any(n.endswith(".refmap.json") for n in names):
+        if forge and not any(n.endswith(".refmap.json") for n in names):
             fail("缺少 mixin refmap（client 侧 SRG 名对不上，运行时才炸）")
 
         # 6. 许可与第三方声明要随产物走（宽松许可的条件就是把声明带上）
@@ -123,13 +135,15 @@ def main() -> int:
         # 【为什么这条要有】processResources 的 expand 是"缺键就抛"，但**值写错**它一声不响：
         # 作者写错、仓库地址还指着旧账号、致谢漏了某个组件 —— 全都会打出一个构建绿灯的 jar，
         # 而拿到它的人只会在 mod 列表里看到错的东西（pointing 一个打不开的链接）。
-        toml_name = "META-INF/mods.toml"
+        toml_name = "META-INF/mods.toml" if forge else "META-INF/neoforge.mods.toml"
         if toml_name not in names:
-            fail("jar 里没有 META-INF/mods.toml —— Forge 读不到这个 mod 的身份")
+            fail(f"jar 里缺少 {toml_name}")
         else:
             toml = zf.read(toml_name).decode("utf-8", "replace")
             if "${" in toml:
                 fail("mods.toml 里还有没展开的 ${...} —— 身份没进产物")
+            if not forge and 'config = "pickupcard.mixins.json"' not in toml:
+                fail("neoforge.mods.toml 没有注册拾取 Mixin")
             authors = read_root_identity("mod_authors")
             repo_url = read_root_identity("mod_repo_url")
             for key, needle in (
@@ -157,13 +171,12 @@ def main() -> int:
         # schema 关键字段（path/artifactVersion）非空。2026-09-25 两次真机 NoClassDefFoundError
         # （手拼 schema 错字段 / deploy 脚本丢 nanovg 嵌套）全发生在"嵌套文件在但 metadata 说错"
         # 或反过来 —— 文件数对不上≠条目对得上，所以两边都查。
-        import json as _json
         meta_name = "META-INF/jarjar/metadata.json"
         if meta_name not in names:
-            fail("缺少 META-INF/jarjar/metadata.json —— Forge 读不到任何嵌套库")
+            fail("缺少 META-INF/jarjar/metadata.json")
         else:
             try:
-                meta = _json.loads(zf.read(meta_name))
+                meta = json.loads(zf.read(meta_name))
                 entries = meta.get("jars", [])
                 declared = set()
                 for j in entries:
@@ -175,15 +188,16 @@ def main() -> int:
                         fail(f"JarJar metadata 声明了 {path}，但 jar 里没有这个文件")
                 nested_jars = {n for n in names
                                if n.startswith("META-INF/jarjar/") and n.endswith(".jar")}
-                # 【只查"声明→文件"，不查"文件→声明"】FG 的 jarJar 产物里一直有一颗没进
-                # metadata 的 lwjgl-3.3.1.jar（MC 自带 LWJGL，它不加载，0.2.2 起的原生形态）。
-                for n in sorted(nested_jars - declared):
-                    if "lwjgl" not in n:
-                        fail(f"嵌套 jar {n} 没有对应的 metadata 条目 —— Forge 会静默不加载它")
-                for must in ("lwjgl-nanovg", "core", "nvg"):
-                    if not any(j.get("identifier", {}).get("artifact") == must
+                allowed_undeclared = {core_jar} if forge else set()
+                for path in sorted(nested_jars - declared - allowed_undeclared):
+                    fail(f"嵌套 jar {path} 没有对应的 metadata 条目")
+                for (group, artifact), version in required_libraries.items():
+                    path = f"META-INF/jarjar/{artifact}-{version}.jar"
+                    if not any(j.get("identifier") == {"group": group, "artifact": artifact}
+                               and j.get("path") == path
+                               and j.get("version", {}).get("artifactVersion") == version
                                for j in entries):
-                        fail(f"JarJar metadata 里没有 {must} 的条目")
+                        fail(f"JarJar metadata 里没有正确声明 {group}:{artifact}:{version}")
             except ValueError as e:
                 fail(f"JarJar metadata.json 解析失败：{e}")
 
@@ -198,7 +212,7 @@ def report() -> int:
             print(f"  ✗ {p}", file=sys.stderr)
         return 1
     print("  全绿：无摊平类残留 / 嵌套成对同版 / 四平台 native 在主 jar / 构建戳与身份一致 / "
-          "mixin 与 refmap 齐 / 许可随产物 / 图标与设计正本一致 / mods.toml 与 manifest 身份如实")
+          "Mixin 配置与目标匹配 / 许可随产物 / 图标与设计正本一致 / mods.toml 与 manifest 身份如实")
     return 0
 
 

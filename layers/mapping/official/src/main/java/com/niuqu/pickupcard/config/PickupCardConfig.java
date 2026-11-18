@@ -8,11 +8,6 @@ import com.niuqu.pickupcard.style.StyleOverrides;
 import com.niuqu.pickupcard.style.Theme;
 import com.niuqu.pickupcard.text.CountFormat;
 import com.niuqu.pickupcard.text.CountMode;
-import net.minecraftforge.common.ForgeConfigSpec;
-import net.minecraftforge.fml.ModLoadingContext;
-import net.minecraftforge.fml.config.ModConfig;
-import net.minecraftforge.fml.javafmlmod.FMLJavaModLoadingContext;
-import org.apache.commons.lang3.tuple.Pair;
 
 import java.util.List;
 
@@ -31,24 +26,10 @@ import java.util.List;
  */
 public final class PickupCardConfig {
 
-    /** 包级可见：同 {@link #VALUES} 的理由 —— 离线单测要把解析出的 TOML 挂到 spec 上（acceptConfig）
-     *  才能钉住"未知档名回落默认、sway 往返保真"这些读写行为；生产代码只经 {@link #register} 走 FML。 */
-    static final ForgeConfigSpec SPEC;
-    /** 包级可见：配置界面在同一个包里直接读写它 —— 界面不另存一份值，否则迟早出现
-     *  "界面显示 5、实际画 9"这种两处都"对"的 bug。 */
-    static final Values VALUES;
-
-    static {
-        Pair<Values, ForgeConfigSpec> pair = new ForgeConfigSpec.Builder().configure(Values::new);
-        VALUES = pair.getLeft();
-        SPEC = pair.getRight();
-    }
+    static final ConfigStorage STORAGE = new ConfigStorage();
+    static final Values VALUES = new Values(STORAGE);
 
     private PickupCardConfig() {
-    }
-
-    public static void register(FMLJavaModLoadingContext context) {
-        context.registerConfig(ModConfig.Type.CLIENT, SPEC);
     }
 
     /** 采样一份当前值。热路径上每次读几个内存字段，代价可忽略，换来的是改配置不用重启。 */
@@ -197,7 +178,7 @@ public final class PickupCardConfig {
     }
 
     /** 外观项一律"−1 = 没改过"，所以范围从 -1 起。 */
-    private static ForgeConfigSpec.IntValue styleInt(ForgeConfigSpec.Builder builder, String name,
+    private static ConfigValue<Integer> styleInt(ConfigStorage builder, String name,
                                                     String comment, int max) {
         return builder.comment(comment, "-1 = 没改过（用主题里的值，也就是「跟随主题」）。")
                 .defineInRange(name, -1, -1, max);
@@ -208,7 +189,7 @@ public final class PickupCardConfig {
      * <p>【为什么不用 -1 那套】颜色是 32 位数，没有"负数"这种哨兵可用；空串既不会和任何
      * 合法颜色撞车，手改 TOML 时也一眼看得出"这项没设过"。
      */
-    private static ForgeConfigSpec.ConfigValue<String> styleColor(ForgeConfigSpec.Builder builder,
+    private static ConfigValue<String> styleColor(ConfigStorage builder,
                                                                   String name, String comment) {
         return builder.comment(comment, "格式 #AARRGGBB（#RRGGBB 当作不透明）；留空 = 没改过，用主题里的颜色。")
                 .define(name, "");
@@ -217,54 +198,54 @@ public final class PickupCardConfig {
     /** 配置项的定义。行为偏好与 {@link PickupCardSettings}/{@link FilterSettings} 对应。 */
     static final class Values {
 
-        final ForgeConfigSpec.BooleanValue enabled;
-        final ForgeConfigSpec.BooleanValue showItemName;
-        final ForgeConfigSpec.BooleanValue showItemId;
-        final ForgeConfigSpec.IntValue nameMaxWidth;
-        final ForgeConfigSpec.LongValue holdMs;
-        final ForgeConfigSpec.LongValue exitMs;
-        final ForgeConfigSpec.EnumValue<com.niuqu.pickupcard.notice.MergeMode> mergeMode;
-        final ForgeConfigSpec.IntValue maxOnScreen;
-        final ForgeConfigSpec.IntValue queueSize;
-        final ForgeConfigSpec.EnumValue<FullPolicy> fullPolicy;
-        final ForgeConfigSpec.EnumValue<CountFormat> countFormat;
-        final ForgeConfigSpec.EnumValue<CountMode> countMode;
-        final ForgeConfigSpec.BooleanValue magnetEnabled;
-        final ForgeConfigSpec.DoubleValue magnetRadius;
-        final ForgeConfigSpec.ConfigValue<List<? extends String>> blacklist;
-        final ForgeConfigSpec.ConfigValue<List<? extends String>> whitelist;
-        final ForgeConfigSpec.ConfigValue<List<? extends String>> muteList;
-        final ForgeConfigSpec.EnumValue<LayoutSettings.Appear> appearMode;
-        final ForgeConfigSpec.EnumValue<LayoutSettings.Exit> exitMode;
-        final ForgeConfigSpec.BooleanValue swayEnabled;
-        final ForgeConfigSpec.EnumValue<LayoutSettings.Side> align;
-        final ForgeConfigSpec.BooleanValue mirrorCard;
-        final ForgeConfigSpec.DoubleValue separation;
-        final ForgeConfigSpec.IntValue scalePercent;
-        final ForgeConfigSpec.DoubleValue anchorX;
-        final ForgeConfigSpec.DoubleValue anchorY;
+        final ConfigValue<Boolean> enabled;
+        final ConfigValue<Boolean> showItemName;
+        final ConfigValue<Boolean> showItemId;
+        final ConfigValue<Integer> nameMaxWidth;
+        final ConfigValue<Long> holdMs;
+        final ConfigValue<Long> exitMs;
+        final ConfigValue<com.niuqu.pickupcard.notice.MergeMode> mergeMode;
+        final ConfigValue<Integer> maxOnScreen;
+        final ConfigValue<Integer> queueSize;
+        final ConfigValue<FullPolicy> fullPolicy;
+        final ConfigValue<CountFormat> countFormat;
+        final ConfigValue<CountMode> countMode;
+        final ConfigValue<Boolean> magnetEnabled;
+        final ConfigValue<Double> magnetRadius;
+        final ConfigValue<List<? extends String>> blacklist;
+        final ConfigValue<List<? extends String>> whitelist;
+        final ConfigValue<List<? extends String>> muteList;
+        final ConfigValue<LayoutSettings.Appear> appearMode;
+        final ConfigValue<LayoutSettings.Exit> exitMode;
+        final ConfigValue<Boolean> swayEnabled;
+        final ConfigValue<LayoutSettings.Side> align;
+        final ConfigValue<Boolean> mirrorCard;
+        final ConfigValue<Double> separation;
+        final ConfigValue<Integer> scalePercent;
+        final ConfigValue<Double> anchorX;
+        final ConfigValue<Double> anchorY;
 
         // ---- [style] 外观：全部用 -1 表示"跟随主题" ----
-        final ForgeConfigSpec.EnumValue<Theme> theme;
-        final ForgeConfigSpec.IntValue stCornerRadius;
-        final ForgeConfigSpec.IntValue stPaddingH;
-        final ForgeConfigSpec.IntValue stPaddingV;
-        final ForgeConfigSpec.IntValue stGap;
-        final ForgeConfigSpec.IntValue stIconSize;
-        final ForgeConfigSpec.IntValue stBarWidth;
-        final ForgeConfigSpec.IntValue stBarInsetY;
-        final ForgeConfigSpec.IntValue stBorderWidth;
-        final ForgeConfigSpec.ConfigValue<String> stFillTop;
-        final ForgeConfigSpec.ConfigValue<String> stFillBottom;
-        final ForgeConfigSpec.ConfigValue<String> stBorder;
-        final ForgeConfigSpec.ConfigValue<String> stNameColor;
-        final ForgeConfigSpec.LongValue stEnterMs;
-        final ForgeConfigSpec.LongValue stBumpMs;
-        final ForgeConfigSpec.LongValue stReviveMs;
-        final ForgeConfigSpec.IntValue stEnterEnabled;
-        final ForgeConfigSpec.IntValue stBumpEnabled;
+        final ConfigValue<Theme> theme;
+        final ConfigValue<Integer> stCornerRadius;
+        final ConfigValue<Integer> stPaddingH;
+        final ConfigValue<Integer> stPaddingV;
+        final ConfigValue<Integer> stGap;
+        final ConfigValue<Integer> stIconSize;
+        final ConfigValue<Integer> stBarWidth;
+        final ConfigValue<Integer> stBarInsetY;
+        final ConfigValue<Integer> stBorderWidth;
+        final ConfigValue<String> stFillTop;
+        final ConfigValue<String> stFillBottom;
+        final ConfigValue<String> stBorder;
+        final ConfigValue<String> stNameColor;
+        final ConfigValue<Long> stEnterMs;
+        final ConfigValue<Long> stBumpMs;
+        final ConfigValue<Long> stReviveMs;
+        final ConfigValue<Integer> stEnterEnabled;
+        final ConfigValue<Integer> stBumpEnabled;
 
-        Values(ForgeConfigSpec.Builder builder) {
+        Values(ConfigStorage builder) {
             builder.comment("Pickup Card —— 拾取卡片提示（纯客户端）").push("notice");
 
             enabled = builder
@@ -460,15 +441,15 @@ public final class PickupCardConfig {
             blacklist = builder
                     .comment("黑名单：命中则不弹卡。默认是空的 —— 也就是说默认每一次拾取都会弹卡，",
                             "包括泥土、圆石、沙子。嫌刷屏就往这里加（例如 minecraft:cobblestone）。")
-                    .defineList("blacklist", List.of(), o -> o instanceof String);
+                    .defineList("blacklist", List.of());
 
             whitelist = builder
                     .comment("白名单：命中则永远弹卡并强调。优先级最高，压过黑名单。")
-                    .defineList("whitelist", List.of(), o -> o instanceof String);
+                    .defineList("whitelist", List.of());
 
             muteList = builder
                     .comment("静音名单：命中照常弹卡，但不强调，原版那声拾取音也不响。")
-                    .defineList("muteList", List.of(), o -> o instanceof String);
+                    .defineList("muteList", List.of());
             builder.pop();
         }
     }

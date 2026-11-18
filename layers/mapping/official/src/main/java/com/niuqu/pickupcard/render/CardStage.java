@@ -14,11 +14,6 @@ import com.niuqu.pickupcard.style.StyleModel;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
-import net.minecraft.world.scores.Objective;
-import net.minecraft.world.scores.Score;
-import net.minecraftforge.client.event.RenderGuiEvent;
-import net.minecraftforge.event.TickEvent;
-import net.minecraftforge.eventbus.api.SubscribeEvent;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -159,18 +154,15 @@ public final class CardStage {
     }
 
     // ------------------------------------------------------------------
-    // Forge 总线
+    // 客户端 tick 与 HUD
     // ------------------------------------------------------------------
 
-    @SubscribeEvent
-    public void onClientTick(TickEvent.ClientTickEvent event) {
-        if (event.phase != TickEvent.Phase.END) return;
+    public void tick() {
         // 只在这里取事件：拾取发生在包处理时，而卡的生命周期按 tick 走。
         pending.addAll(Inbox.INSTANCE.tick());
     }
 
-    @SubscribeEvent
-    public void onHudRender(RenderGuiEvent.Post event) {
+    public void renderHud(GuiGraphics gui) {
         Minecraft mc = Minecraft.getInstance();
         if (mc.options.hideGui || suspended) return;
         // 【进世界后的前几帧：把引擎的账分摊付掉】见 NvgCardPainter#warmUpStep —— 这笔钱
@@ -180,16 +172,16 @@ public final class CardStage {
         if (mc.level != null) {
             if (warming) {
                 StyleModel warmStyle = styles.current(System.currentTimeMillis());
-                warming = NvgCardPainter.warmUpStep(event.getGuiGraphics(), warmStyle);
+                warming = NvgCardPainter.warmUpStep(gui, warmStyle);
             } else if (!textWarmed) {
                 // 【与引擎预热差开一帧】引擎预热的首帧本来就要 30ms 上下，文本这一笔再叠上去
                 // 只会让那一帧更长。它自己占紧随其后的一帧（那时世界还在加载区块）。
                 textWarmed = true;
-                warmTextAndLayout(event.getGuiGraphics(),
+                warmTextAndLayout(gui,
                         styles.current(System.currentTimeMillis()), mc.font);
             }
         }
-        renderInto(event.getGuiGraphics(), mc);
+        renderInto(gui, mc);
     }
 
     /** 引擎预热还没走完（进世界后的头几帧分摊付账；每进程一次）。 */
@@ -708,21 +700,16 @@ public final class CardStage {
             return 0f;
         }
 
-        // 1 = 侧栏槽位（原版 Gui#render 里就是这么取的：getDisplayObjective(1)）
-        Objective sidebar = mc.level.getScoreboard().getDisplayObjective(1);
-        HudSafeZone.Rect sidebarRect = null;
-        float sidebarWidth = 0f;
-        if (sidebar != null) {
-            sidebarWidth = scoreboardWidth(mc.font, sidebar);
-            sidebarRect = HudSafeZone.sidebar(canvas.guiWidth(), canvas.guiHeight(),
-                    sidebarWidth, scoreboardLines(sidebar));
-        }
+        MinecraftGui.Sidebar sidebar = MinecraftGui.sidebar(mc);
+        HudSafeZone.Rect sidebarRect = sidebar == null ? null
+                : HudSafeZone.sidebar(canvas.guiWidth(), canvas.guiHeight(), sidebar.width(), sidebar.lines());
+        float sidebarWidth = sidebar == null ? 0f : sidebar.width();
 
         int beneficial = 0;
         int harmful = 0;
         if (mc.player != null) {
             for (var effect : mc.player.getActiveEffects()) {
-                if (effect.getEffect().isBeneficial()) {
+                if (MinecraftGui.isBeneficial(effect)) {
                     beneficial++;
                 } else {
                     harmful++;
@@ -742,33 +729,4 @@ public final class CardStage {
 
         return HudSafeZone.reserve(cards, sidebarRect, sidebarWidth, effectRect, effectWidth);
     }
-
-    /** 侧栏会画几行（原版最多 15 行 —— 它决定那一竖条的纵向范围）。 */
-    private static int scoreboardLines(Objective objective) {
-        int lines = 0;
-        for (Score ignored : objective.getScoreboard().getPlayerScores(objective)) {
-            if (++lines >= 15) {
-                break;
-            }
-        }
-        return Math.max(1, lines);
-    }
-
-    /** 侧栏一行的实测宽度（原版是按"标题 / 条目+分数"的最宽那行算的，这里取个上界就够）。 */
-    private static int scoreboardWidth(Font font, Objective objective) {
-        int widest = font.width(objective.getDisplayName());
-        int seen = 0;
-        for (Score score : objective.getScoreboard().getPlayerScores(objective)) {
-            if (++seen > 15) {
-                break;      // 原版也只显示前 15 行
-            }
-            String owner = score.getOwner();
-            if (owner == null || owner.startsWith("#")) {
-                continue;
-            }
-            widest = Math.max(widest, font.width(owner) + 8 + font.width(Integer.toString(score.getScore())));
-        }
-        return widest;
-    }
-
 }
