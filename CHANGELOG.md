@@ -2,6 +2,10 @@
 
 ## v0.2.5
 
+**新增**
+
+- 新增 NeoForge 1.21.1 支持，随包提供 Trellis 和 NanoVG。
+
 **修复**
 
 - 修复 0.2.4 部分包体缺少内置组件、一按配置键就崩溃的问题；发布包的组件完整性现在由构建自动补齐并逐项校验
@@ -15,6 +19,10 @@
 - 卡片停留时长默认 4→5 秒（已保存的配置不受影响）
 
 ----
+
+**Added**
+
+- Added NeoForge 1.21.1 support with bundled Trellis and NanoVG.
 
 **Fixed**
 

@@ -72,6 +72,7 @@ if (targetEntry == null) {
 }
 def targetName = targetEntry.key.toString()
 def targetDef = targetEntry.value as Map
+ext.pickupcardTarget = targetDef
 
 def layers = new JsonSlurper().parse(layersFile)
 def mounted = (targetDef.layers ?: []) as List

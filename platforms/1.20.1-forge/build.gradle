@@ -418,78 +418,8 @@ publishing {
     }
 }
 
-// ---------------------------------------------------------------------------
-// Release publishing (Modrinth + CurseForge)
-// ---------------------------------------------------------------------------
-
-def storeVersion = "Forge-${project.minecraft_version}-${project.mod_version}"
-
-def changelogFor(version) {
-    // 单仓库之后 RELEASE_NOTES.md 只有仓库根那一份，各平台不再各存一份
-    def notes = new File(pickupcardRepoRoot, 'RELEASE_NOTES.md')
-    if (!notes.isFile()) {
-        return "Pickup Card ${version}"
-    }
-    def text = notes.getText('UTF-8')
-    def start = text.indexOf("## v${version}")
-    if (start < 0) {
-        return "Pickup Card ${version}"
-    }
-    def end = text.indexOf('\n## ', start + 1)
-    def section = end > start ? text.substring(start, end) : text.substring(start)
-    // Store changelog convention: the trailing English block of the version
-    // section in RELEASE_NOTES.md (Chinese summary first, English last).
-    def trimmed = section.trim()
-    // Store changelog = 分隔线 `----` **之后**的英文块（格式与写法见 skill `changelog-format`）。
-    // 【为什么不用"最后一个空行"】英文块自己也会分段（`**Fixed**` + 空行 + 条目），按空行取
-    // 只会取到最后一段、把前面几段一起丢掉，而且构建照样是绿的 —— 静默丢失。
-    // 用 `-{3,}` 而不是写死三个/四个横线：本仓库历史上两种都写过，不想被横线根数绑架。
-    def sep = trimmed =~ /(?m)^-{3,}$/
-    return sep.find() ? trimmed.substring(sep.end()).trim() : trimmed
-}
-
-modrinth {
-    token = System.getenv("MODRINTH_TOKEN") ?: ""
-    projectId = (project.findProperty('modrinth_project_id') ?: '').toString()
-    versionNumber = storeVersion
-    versionType = "release"
-    uploadFile = tasks.named('jarJar').get()
-    gameVersions = [project.minecraft_version]
-    loaders = ["forge"]
-    changelog = changelogFor(project.version)
-}
-
-def mrProjectId = (project.findProperty('modrinth_project_id') ?: '').toString()
-tasks.named('modrinth') {
-    onlyIf { System.getenv("MODRINTH_TOKEN") && !mrProjectId.isEmpty() && mrProjectId != 'UNSET' }
-}
-
-def cfProjectId = (project.findProperty('curseforge_project_id') ?: '').toString()
-def cfConfigured = cfProjectId ==~ /\d+/
-
-tasks.register('curseforge', net.darkhax.curseforgegradle.TaskPublishCurseForge) {
-    apiToken = System.getenv("CURSEFORGE_TOKEN") ?: ""
-    onlyIf { cfConfigured && System.getenv("CURSEFORGE_TOKEN") }
-
-    if (cfConfigured) {
-        def main = upload(cfProjectId as int, tasks.named('jarJar').get())
-        main.changelogType = 'markdown'
-        main.changelog = changelogFor(project.version)
-        main.releaseType = 'release'
-        main.displayName = storeVersion
-        main.addGameVersion project.minecraft_version
-        main.addModLoader 'Forge'
-        main.addJavaVersion 'Java 17'
-        // CurseForge rejects uploads without an environment tag (error 1021).
-        main.addEnvironment 'Client', 'Server'
-    }
-}
-
-tasks.register('publishMods') {
-    group = 'publishing'
-    description = 'Publish the mod to Modrinth and CurseForge.'
-    dependsOn 'modrinth', 'curseforge'
-}
+tasks.register('curseforge', net.darkhax.curseforgegradle.TaskPublishCurseForge)
+apply from: '../../gradle/publish-mods.gradle'
 
 // Trellis 试点（分支 trellis-pilot）：core = 纯 Java 零依赖的布局/文本层；
 // nvg = Canvas 契约 + NanoVG 后端（LWJGL 是它的 compileOnly，运行期由本工程提供，

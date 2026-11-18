@@ -106,7 +106,7 @@ The model is "the theme provides defaults, the TOML only overrides what you chan
 
 ## Known limitations
 
-- The public release supports 1.20.1 Forge. The NeoForge 1.21.1 build is available for local testing.
+- The public release supports Forge 1.20.1 and NeoForge 1.21.1.
 - **English labels shrink on very narrow canvases.** At 320×180 (largest `guiScale`) English chip labels get noticeably small — no overlap, but not pleasant to read.
 - **Long filter rules need a hover to read in full.** A rule row shows one line; the whole rule is in the hint bar along the bottom.
 - **No server component, so server-only information is out of reach.** Renamed items and NBT come from grabbing the entity just before it is removed, which covers the vast majority of cases.

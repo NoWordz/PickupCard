@@ -1,0 +1,73 @@
+def target = pickupcardTarget
+def storeVersion = "${target.loader}-${target.minecraft}-${mod_version}"
+def notes = new File(pickupcardRepoRoot, 'RELEASE_NOTES.md')
+def englishChangelog = englishNotes(notes, mod_version)
+def verifiedArtifact = providers.gradleProperty('publishArtifact').map { file(it) }.getOrNull()
+if (verifiedArtifact != null && !verifiedArtifact.isFile()) {
+    throw new GradleException("Missing verified upload artifact: ${verifiedArtifact}")
+}
+def uploadSource = verifiedArtifact ?: tasks.named(target.loader == 'Forge' ? 'jarJar' : 'jar').get()
+
+def modrinthId = findProperty('modrinth_project_id')?.toString() ?: ''
+def modrinthToken = providers.environmentVariable('MODRINTH_TOKEN').getOrElse('')
+modrinth {
+    token = modrinthToken
+    projectId = modrinthId
+    versionNumber = storeVersion
+    versionType = 'release'
+    uploadFile = uploadSource
+    autoAddDependsOn = verifiedArtifact == null
+    gameVersions = [target.minecraft]
+    loaders = [target.loader.toLowerCase(Locale.ROOT)]
+    changelog = englishChangelog
+}
+tasks.named('modrinth') {
+    if (verifiedArtifact != null) {
+        // Minotaur 2.8.7 adds assemble even for uploads backed by an existing file.
+        setDependsOn([])
+    }
+    onlyIf('Modrinth project ID and token are configured') {
+        modrinthId && modrinthId != 'UNSET' && modrinthToken
+    }
+}
+
+def curseforgeId = findProperty('curseforge_project_id')?.toString() ?: ''
+def curseforgeToken = providers.environmentVariable('CURSEFORGE_TOKEN').getOrElse('')
+def curseforgeConfigured = curseforgeId ==~ /[0-9]+/
+tasks.named('curseforge') {
+    apiToken = curseforgeToken
+    onlyIf('CurseForge project ID and token are configured') {
+        curseforgeConfigured && curseforgeToken
+    }
+    if (curseforgeConfigured) {
+        def artifact = upload(curseforgeId as int, uploadSource)
+        artifact.changelogType = 'markdown'
+        artifact.changelog = englishChangelog
+        artifact.releaseType = 'release'
+        artifact.displayName = storeVersion
+        artifact.addGameVersion(target.minecraft)
+        artifact.addModLoader(target.loader)
+        artifact.addJavaVersion("Java ${target.java}")
+        artifact.addEnvironment('Client')
+    }
+}
+
+tasks.register('publishMods') {
+    group = 'publishing'
+    description = 'Publish the mod to Modrinth and CurseForge.'
+    dependsOn 'modrinth', 'curseforge'
+}
+
+String englishNotes(File notes, String version) {
+    if (notes.isFile()) {
+        def lines = notes.readLines('UTF-8')
+        int start = lines.indexOf("## v${version}".toString())
+        if (start >= 0) {
+            int end = lines.findIndexOf(start + 1) { it.startsWith('## ') }
+            def section = lines.subList(start + 1, end < 0 ? lines.size() : end)
+            int divider = section.findIndexOf { it ==~ /-{3,}/ }
+            return section.subList(divider + 1, section.size()).join('\n').trim()
+        }
+    }
+    return "Pickup Card ${version}"
+}

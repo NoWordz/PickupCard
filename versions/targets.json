@@ -1,6 +1,6 @@
 {
   "_comment": [
-    "【支持哪些目标，一处声明】CI 遍历这里所有 buildable 的条目逐个构建，把全部 jar 挂在同一个 Release 上。",
+    "【支持哪些目标，一处声明】CI 构建所有有工程目录的目标。Release 和商店只使用 buildable 为 true 的目标。",
     "",
     "【矩阵是规则，不是清单】每个 Minecraft 版本都要有 Fabric / NeoForge / Forge 三个条目。缺了哪个",
     "应该在这里看得见（buildable: false + note 写明卡在哪儿或为什么不做），而不是想不起来。这条由 CI 校验。",
@@ -59,9 +59,9 @@
     "java": 21,
     "gradle": "9.2.1",
     "project": "platforms/1.21.1-neoforge",
-    "buildable": false,
+    "buildable": true,
     "layers": ["1.21+", "official", "neoforge"],
-    "note": "ModDevGradle，Java 21；与 Forge 共用 official 映射层。先纳入 CI 构建，待发版决定后纳入 Release。"
+    "note": "ModDevGradle，Java 21；与 Forge 共用 official 映射层，纳入 Release 和商店发布矩阵。"
   },
 
   "1.21.1-forge": {

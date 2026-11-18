@@ -35,7 +35,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: 校验 versions/ 与各平台的身份来源
-        run: python3 tools/verify_targets.py --matrix-out "$RUNNER_TEMP/matrix.json"
+        run: python3 tools/verify_targets.py --release-only --matrix-out "$RUNNER_TEMP/matrix.json"
 
       - name: 导出矩阵
         id: matrix
@@ -120,6 +120,14 @@ jobs:
             exit 1
           fi
 
+      - name: 演练商店任务
+        if: github.event_name == 'workflow_dispatch'
+        working-directory: ${{ matrix.project }}
+        run: |
+          set -euo pipefail
+          jars=("$GITHUB_WORKSPACE/dist/"*.jar)
+          ./gradlew publishMods --dry-run --no-daemon --no-configuration-cache "-PpublishArtifact=${jars[0]}"
+
       - name: 上传产物
         uses: actions/upload-artifact@v4
         with:
@@ -130,12 +138,8 @@ jobs:
   # 建 Release 与"发到商店"刻意拆成两个 job：Release 建坏了可以重发，
   # 而商店那边手滑点一次就是一次真上传 —— 让它们的重跑代价不一样。
   release:
-    name: 建 Release
+    name: 汇总 Release 附件
     needs: [targets, build]
-    # 【needs 里必须有 targets】这个 job 读了 needs.targets.outputs.list —— 只写 needs: build
-    # 不会报错，而是整个 job 被 GitHub 丢掉（run 是红的、日志是空的、jobs 列表少一个）。
-    # 预发布演练看不见这个错（if 先跳过、矩阵不求值），只有真发版才撞上（AtomChat 0.2.10 撞过）。
-    if: startsWith(github.ref, 'refs/tags/v') && inputs.dry_run != true
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -146,18 +150,21 @@ jobs:
           path: release-out
           merge-multiple: true
 
-      - name: 汇总产物
+      - name: 校验发布附件
+        env:
+          RELEASE_MATRIX: ${{ needs.targets.outputs.list }}
         run: |
           set -euo pipefail
           ls -la release-out
+          expected=$(python3 -c 'import json, os; print(len(json.loads(os.environ["RELEASE_MATRIX"])))')
           count=$(find release-out -name "*.jar" | wc -l)
-          if [ "$count" -lt 1 ]; then
-            echo "::error::没有拿到任何产物"
+          if [ "$count" -ne "$expected" ]; then
+            echo "::error::期望 $expected 个发布附件，实际 $count 个"
             exit 1
           fi
-          echo "共 $count 个 jar"
 
       - name: 取出本版本的 Release 正文
+        if: startsWith(github.ref, 'refs/tags/v') && inputs.dry_run != true
         run: |
           python3 - <<'PY'
           import os, pathlib, re
@@ -179,16 +186,18 @@ jobs:
           PY
 
       - name: 建 Release 并挂产物
+        if: startsWith(github.ref, 'refs/tags/v') && inputs.dry_run != true
         uses: softprops/action-gh-release@v2
         with:
           files: release-out/*.jar
+          fail_on_unmatched_files: true
           body_path: release-notes.md
           # 带后缀的标签（vX.Y.Z-rc1）自动标成预发布
           prerelease: ${{ contains(github.ref_name, '-') }}
 
   publish:
     name: 发布到商店
-    needs: [targets, build]
+    needs: [targets, release]
     # 预发布标签不发商店；dry_run 也不发。
     if: startsWith(github.ref, 'refs/tags/v') && !contains(github.ref_name, '-') && inputs.dry_run != true
     runs-on: ubuntu-latest
@@ -209,13 +218,24 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
 
-      # 【token 或项目 id 没配 = 静默 SKIPPED，不红】各平台的 onlyIf 会跳过它。
-      # 所以"绿了"不等于"发出去了"：发版后要去商店页面确认（或看这一步的日志里有没有 SKIPPED）。
+      - name: 下载已校验的发布包
+        uses: actions/download-artifact@v4
+        with:
+          name: pickupcard-${{ matrix.target }}
+          path: store-out
+
       - name: 发布（Modrinth + CurseForge）
         working-directory: ${{ matrix.project }}
         env:
           MODRINTH_TOKEN: ${{ secrets.MODRINTH_TOKEN }}
           CURSEFORGE_TOKEN: ${{ secrets.CURSEFORGE_TOKEN }}
         run: |
+          set -euo pipefail
           chmod +x ./gradlew
-          ./gradlew publishMods --no-daemon
+          shopt -s nullglob
+          jars=("$GITHUB_WORKSPACE/store-out/"*.jar)
+          if [ "${#jars[@]}" -ne 1 ]; then
+            echo "::error::在 CI 产物中找不到唯一的发布 JAR"
+            exit 1
+          fi
+          ./gradlew publishMods --no-daemon --no-configuration-cache "-PpublishArtifact=${jars[0]}"

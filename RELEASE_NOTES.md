@@ -4,6 +4,10 @@
 
 **这一版把 0.2.4 的崩溃修干净，mod 列表从此能一键打开配置界面，卡片动画也更流畅。**
 
+**新增**
+
+- 新增 Minecraft 1.21.1 NeoForge 支持，最低 NeoForge 21.1.1。
+
 **修复**
 
 - 修复 0.2.4 部分包体一按配置键就崩溃的问题（组件完整性由构建自动补齐并校验）
@@ -17,6 +21,10 @@
 ----
 
 **This release fixes the 0.2.4 crash for good, makes the mod list config button open our own screen, and smooths the animations.**
+
+**Added**
+
+- Added Minecraft 1.21.1 NeoForge support, starting with NeoForge 21.1.1.
 
 **Fixed**
 

@@ -400,8 +400,10 @@ def main() -> int:
     return 0
 
 
-def matrix_entries(raw_targets: dict) -> list[dict]:
+def matrix_entries(raw_targets: dict, *, release_only: bool = False) -> list[dict]:
     """给 CI 用的构建矩阵：**有工程目录的目标才编**（所以工作流里没有目标名）。
+
+    发版矩阵仅包含 buildable 为 true 的目标。
 
     后缀也在这里算好放进矩阵，不在 workflow 里拼表达式 —— GitHub 表达式里
     `a && '' || b` 会因为空串是 falsy 而静默取到 b，那种错只有真发版时才看得见
@@ -409,6 +411,8 @@ def matrix_entries(raw_targets: dict) -> list[dict]:
     """
     out = []
     for name, t in sorted(entries(raw_targets).items()):
+        if release_only and t.get("buildable") is not True:
+            continue
         project = t.get("project")
         if not project or not (ROOT / project).is_dir():
             continue
@@ -433,7 +437,11 @@ if __name__ == "__main__":
     code = main()
     if code == 0 and matrix_out:
         raw = json.loads((ROOT / "versions/targets.json").read_text(encoding="utf-8"))
-        payload = matrix_entries(raw)
+        release_only = "--release-only" in argv
+        payload = matrix_entries(raw, release_only=release_only)
+        if release_only and not payload:
+            print("verify_targets: 没有 buildable 为 true 的发布目标", file=sys.stderr)
+            sys.exit(1)
         Path(matrix_out).write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
         print("  构建矩阵 -> {}（{} 个目标：{}）".format(
             matrix_out, len(payload), ", ".join(e["target"] + e["suffix"] for e in payload)))
