@@ -5,12 +5,12 @@ name: Build
 
 on:
   push:
-    branches: ["trellis-pilot", "codex/**"]
+    branches: ["main", "trellis-pilot"]
     paths-ignore:
       - "**.md"
       - "docs/**"
   pull_request:
-    branches: ["trellis-pilot"]
+    branches: ["main", "trellis-pilot"]
     paths-ignore:
       - "**.md"
       - "docs/**"
