@@ -164,7 +164,7 @@ jobs:
           fi
 
       - name: 取出本版本的 Release 正文
-        if: startsWith(github.ref, 'refs/tags/v') && inputs.dry_run != true
+        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') && inputs.dry_run != true
         run: |
           python3 - <<'PY'
           import os, pathlib, re
@@ -186,7 +186,7 @@ jobs:
           PY
 
       - name: 建 Release 并挂产物
-        if: startsWith(github.ref, 'refs/tags/v') && inputs.dry_run != true
+        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') && inputs.dry_run != true
         uses: softprops/action-gh-release@v2
         with:
           files: release-out/*.jar
@@ -199,7 +199,7 @@ jobs:
     name: 发布到商店
     needs: [targets, release]
     # 预发布标签不发商店；dry_run 也不发。
-    if: startsWith(github.ref, 'refs/tags/v') && !contains(github.ref_name, '-') && inputs.dry_run != true
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') && !contains(github.ref_name, '-') && inputs.dry_run != true
     runs-on: ubuntu-latest
     timeout-minutes: 30
     strategy:
@@ -238,4 +238,4 @@ jobs:
             echo "::error::在 CI 产物中找不到唯一的发布 JAR"
             exit 1
           fi
-          ./gradlew publishMods --no-daemon --no-configuration-cache "-PpublishArtifact=${jars[0]}"
+          ./gradlew publishMods --no-daemon --no-configuration-cache -PrequireStoreTokens "-PpublishArtifact=${jars[0]}"

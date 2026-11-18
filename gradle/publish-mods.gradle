@@ -10,6 +10,7 @@ def uploadSource = verifiedArtifact ?: tasks.named(target.loader == 'Forge' ? 'j
 
 def modrinthId = findProperty('modrinth_project_id')?.toString() ?: ''
 def modrinthToken = providers.environmentVariable('MODRINTH_TOKEN').getOrElse('')
+def modrinthConfigured = !modrinthId.isEmpty() && modrinthId != 'UNSET'
 modrinth {
     token = modrinthToken
     projectId = modrinthId
@@ -27,13 +28,21 @@ tasks.named('modrinth') {
         setDependsOn([])
     }
     onlyIf('Modrinth project ID and token are configured') {
-        modrinthId && modrinthId != 'UNSET' && modrinthToken
+        modrinthConfigured && modrinthToken
     }
 }
 
 def curseforgeId = findProperty('curseforge_project_id')?.toString() ?: ''
 def curseforgeToken = providers.environmentVariable('CURSEFORGE_TOKEN').getOrElse('')
 def curseforgeConfigured = curseforgeId ==~ /[0-9]+/
+if (providers.gradleProperty('requireStoreTokens').isPresent()) {
+    def missingTokens = []
+    if (modrinthConfigured && !modrinthToken) missingTokens.add('MODRINTH_TOKEN')
+    if (curseforgeConfigured && !curseforgeToken) missingTokens.add('CURSEFORGE_TOKEN')
+    if (!missingTokens.isEmpty()) {
+        throw new GradleException("Missing configured store tokens: ${missingTokens.join(', ')}")
+    }
+}
 tasks.named('curseforge') {
     apiToken = curseforgeToken
     onlyIf('CurseForge project ID and token are configured') {
