@@ -5,12 +5,12 @@ name: Build
 
 on:
   push:
-    branches: ["main"]
+    branches: ["trellis-pilot", "codex/**"]
     paths-ignore:
       - "**.md"
       - "docs/**"
   pull_request:
-    branches: ["main"]
+    branches: ["trellis-pilot"]
     paths-ignore:
       - "**.md"
       - "docs/**"
@@ -58,7 +58,7 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
-          # PR 只读缓存；推 main 才刷新它。
+          # PR 只读缓存；分支构建可写入各自的缓存。
           cache-read-only: ${{ github.event_name == 'pull_request' }}
 
       - name: 构建并测试
