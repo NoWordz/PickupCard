@@ -1,0 +1,13 @@
+{
+  "required": true,
+  "minVersion": "0.8",
+  "package": "com.niuqu.pickupcard.mixin",
+  "compatibilityLevel": "JAVA_17",
+  "refmap": "mixins.pickupcard.refmap.json",
+  "client": [
+    "ClientPacketListenerMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}

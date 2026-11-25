@@ -151,6 +151,8 @@ if (sharedTestRes.isDirectory()) { testRes << sharedTestRes.path }
 mounted.each { name ->
     def d = layerDir(name as String)
     collect(d, mainJava, mainRes)
+    def versionJava = new File(d, "src/${targetDef.minecraft}/java")
+    if (versionJava.isDirectory()) { mainJava << versionJava.path }
     def tj = new File(d, 'src/test/java')
     def tr = new File(d, 'src/test/resources')
     if (tj.isDirectory()) { testJava << tj.path }

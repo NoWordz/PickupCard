@@ -6,7 +6,7 @@ def verifiedArtifact = providers.gradleProperty('publishArtifact').map { file(it
 if (verifiedArtifact != null && !verifiedArtifact.isFile()) {
     throw new GradleException("Missing verified upload artifact: ${verifiedArtifact}")
 }
-def uploadSource = verifiedArtifact ?: tasks.named(target.loader == 'Forge' ? 'jarJar' : 'jar').get()
+def uploadSource = verifiedArtifact ?: tasks.named(['Forge': 'jarJar', 'Fabric': 'remapJar'].get(target.loader, 'jar')).get()
 
 def modrinthId = findProperty('modrinth_project_id')?.toString() ?: ''
 def modrinthToken = providers.environmentVariable('MODRINTH_TOKEN').getOrElse('')
@@ -21,6 +21,12 @@ modrinth {
     gameVersions = [target.minecraft]
     loaders = [target.loader.toLowerCase(Locale.ROOT)]
     changelog = englishChangelog
+    if (target.loader == 'Fabric') {
+        dependencies {
+            required.project 'fabric-api'
+            required.project 'forge-config-api-port'
+        }
+    }
 }
 tasks.named('modrinth') {
     if (verifiedArtifact != null) {
@@ -58,6 +64,9 @@ tasks.named('curseforge') {
         artifact.addModLoader(target.loader)
         artifact.addJavaVersion("Java ${target.java}")
         artifact.addEnvironment('Client')
+        if (target.loader == 'Fabric') {
+            artifact.addRequirement('fabric-api', 'forge-config-api-port')
+        }
     }
 }
 

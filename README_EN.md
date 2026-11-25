@@ -11,8 +11,8 @@
 </p>
 
 <p align="center">
-  <img alt="MC" src="https://img.shields.io/badge/MC-1.20.1-green">
-  <img alt="Loader" src="https://img.shields.io/badge/Loader-Forge-red">
+  <img alt="MC" src="https://img.shields.io/badge/MC-1.20.1%20%7C%201.21.1-green">
+  <img alt="Loader" src="https://img.shields.io/badge/Loader-Forge%20%7C%20Fabric%20%7C%20NeoForge-red">
   <img alt="Side" src="https://img.shields.io/badge/Side-Client-blue">
   <img alt="Java" src="https://img.shields.io/badge/Java-17%2B-yellow">
   <img alt="Version" src="https://img.shields.io/github/v/release/NoWordz/PickupCard?sort=semver">
@@ -23,7 +23,7 @@
   <a href="https://github.com/NoWordz/PickupCard/actions/workflows/build.yml"><img alt="Build" src="https://github.com/NoWordz/PickupCard/actions/workflows/build.yml/badge.svg?branch=main"></a>
 </p>
 
-> Latest release on [Releases](https://github.com/NoWordz/PickupCard/releases) · [Changelog](CHANGELOG.md) · Client-side only, no required dependencies.
+> Latest release on [Releases](https://github.com/NoWordz/PickupCard/releases) · [Changelog](CHANGELOG.md) · Client-side only.
 
 ## What it is
 
@@ -36,11 +36,11 @@ Everything is drawn as vectors with [NanoVG](https://github.com/memononen/nanovg
 | Dependency | Requirement |
 | --- | --- |
 | Minecraft | 1.20.1 |
-| Forge | 47.4.x (the ForgeGradle 6 line) |
-| Required dependencies | **None** |
+| Forge | 47.4.x (no additional dependencies) |
+| Fabric | Java 17, Fabric Loader 0.16.10+, Fabric API 0.92.6+, Forge Config API Port 8.0.3+ |
 | Optional integration | [RarityCore](https://modrinth.com/mod/raritycore): if present, its seven rarity tiers and custom colours take over; otherwise vanilla's four tiers are used |
 
-Drop the jar into `mods/` and you are done.
+Drop the JAR for your loader into `mods/`. On Fabric, optional Mod Menu adds a config button to the mod list.
 
 ## Quick start
 
@@ -102,7 +102,8 @@ The model is "the theme provides defaults, the TOML only overrides what you chan
 | gnetum | 🟡 Throttles HUD rendering to its own fps cap, which stutters pickup animations — raise or disable the cap in gnetum's settings (confirmed on a real modpack) |
 | Minecraft 1.21.1 + NeoForge 21.1.x | Java 21, minimum 21.1.1, tested on 21.1.228 |
 | Minecraft 1.21.1 (Fabric / Forge) | ❌ Not implemented |
-| Minecraft 1.20.1 Fabric / NeoForge | ❌ Not implemented |
+| Minecraft 1.20.1 + Fabric | Supported from source |
+| Minecraft 1.20.1 + NeoForge | ❌ Not implemented |
 
 ## Known limitations
 
@@ -139,6 +140,7 @@ This repository is **single-branch, multi-target**: `shared/` holds platform-ind
 
 ```bash
 ./platforms/1.20.1-forge/gradlew -p platforms/1.20.1-forge build
+./platforms/1.20.1-fabric/gradlew -p platforms/1.20.1-fabric build
 ./platforms/1.21.1-neoforge/gradlew -p platforms/1.21.1-neoforge build
 python tools/verify_targets.py                   # structural consistency (CI's first gate)
 ```

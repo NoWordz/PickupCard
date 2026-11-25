@@ -11,6 +11,7 @@
 
 from __future__ import annotations
 
+import io
 import json
 import re
 import sys
@@ -21,7 +22,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 # 与 build.gradle 里 jarJar 的版本区间必须一致：钉死单元素区间，否则会解析到别的版本
 # （错版本 = 首次调用 UnsatisfiedLinkError，见 docs/architecture.md 的「打包」一节）
-NANOVG_VERSIONS = {"Forge": "3.3.1", "NeoForge": "3.3.3"}
+NANOVG_VERSIONS = {"Fabric": "3.3.1", "Forge": "3.3.1", "NeoForge": "3.3.3"}
 # Trellis（dev.e33.trellis）与 gradle 的 jarJar 区间 / third_party 提交的文件名三处同源这一份
 TRELLIS_VERSION = "0.1.0-SNAPSHOT"
 
@@ -62,6 +63,7 @@ def main() -> int:
         fail(f"未知打包目标 {project}")
         return report()
     forge = target["loader"] == "Forge"
+    fabric = target["loader"] == "Fabric"
     nvg_version = NANOVG_VERSIONS[target["loader"]]
     libs = ROOT / project / "build" / "libs"
     if not libs.is_dir():
@@ -90,7 +92,7 @@ def main() -> int:
         if forge and core_jar not in names:
             fail(f"缺少 ForgeGradle 的 {core_jar}")
         if not forge and core_jar in names:
-            fail(f"NeoForge 包重复嵌入了 Minecraft 自带的 LWJGL：{core_jar}")
+            fail(f"{target['loader']} 包重复嵌入了 Minecraft 自带的 LWJGL：{core_jar}")
 
         required_libraries = {
             ("org.lwjgl", "lwjgl-nanovg"): nvg_version,
@@ -114,8 +116,8 @@ def main() -> int:
         # 5. mixin 配置与 refmap 都要在（缺了 = mixin 不加载、拾取事件整个哑掉）
         if "pickupcard.mixins.json" not in names:
             fail("缺少 pickupcard.mixins.json")
-        if forge and not any(n.endswith(".refmap.json") for n in names):
-            fail("缺少 mixin refmap（client 侧 SRG 名对不上，运行时才炸）")
+        if (forge or fabric) and not any(n.endswith(".refmap.json") for n in names):
+            fail("缺少 mixin refmap，运行时无法定位拾取注入点")
 
         # 6. 许可与第三方声明要随产物走（宽松许可的条件就是把声明带上）
         for doc in ("LICENSE", "THIRD_PARTY_NOTICES.md"):
@@ -130,6 +132,20 @@ def main() -> int:
                 fail("jar 里没有 logo.png，而 mods.toml 的 logoFile 指着它")
             elif zf.read("logo.png") != icon.read_bytes():
                 fail("jar 里的 logo.png 与 design/icon.png 不一致 —— 重跑 design/icon.py 之后要重新构建")
+
+        # 9. 作者署名里带中文，而 MANIFEST 是另一条编码路径。Gradle 按 UTF-8 写，但这条
+        # 一旦漂了，表现是 mod 列表/jar 信息里一串乱码 —— 那种错没人会去查构建。
+        if "META-INF/MANIFEST.MF" in names:
+            manifest = zf.read("META-INF/MANIFEST.MF").decode("utf-8", "replace")
+            authors = read_root_identity("mod_authors")
+            if authors and authors not in manifest:
+                fail(f"MANIFEST.MF 里的 Vendor 对不上 mod_authors（{authors}）—— "
+                     f"署名没写进去，或者编码写成了非 UTF-8")
+
+        if fabric:
+            check_fabric(zf, names, nvg_version, target["minecraft"])
+            print(f"verify_jars: {jar.name}（{len(names)} 个条目）")
+            return report()
 
         # 8. 身份必须真的展开进产物，而且要跟仓库根一字不差。
         # 【为什么这条要有】processResources 的 expand 是"缺键就抛"，但**值写错**它一声不响：
@@ -157,15 +173,6 @@ def main() -> int:
             ):
                 if needle and needle not in toml:
                     fail(f"jar 里的 mods.toml 对不上仓库根 {key} —— 找不到 {needle!r}")
-
-        # 9. 作者署名里带中文，而 MANIFEST 是另一条编码路径。Gradle 按 UTF-8 写，但这条
-        # 一旦漂了，表现是 mod 列表/jar 信息里一串乱码 —— 那种错没人会去查构建。
-        if "META-INF/MANIFEST.MF" in names:
-            manifest = zf.read("META-INF/MANIFEST.MF").decode("utf-8", "replace")
-            authors = read_root_identity("mod_authors")
-            if authors and authors not in manifest:
-                fail(f"MANIFEST.MF 里的 Vendor 对不上 mod_authors（{authors}）—— "
-                     f"署名没写进去，或者编码写成了非 UTF-8")
 
         # 10. JarJar metadata 必须如实：解析得了、每个嵌套 jar 都有条目、每个条目的文件都在、
         # schema 关键字段（path/artifactVersion）非空。2026-09-25 两次真机 NoClassDefFoundError
@@ -205,6 +212,92 @@ def main() -> int:
     return report()
 
 
+def check_fabric(zf: zipfile.ZipFile, names: set[str], nvg_version: str, minecraft: str) -> None:
+    metadata = read_json(zf, "fabric.mod.json")
+    if metadata is None:
+        return
+    repo_url = read_root_identity("mod_repo_url")
+    expected = {
+        "id": read_root_identity("mod_id"),
+        "version": read_root_version(),
+        "name": read_root_identity("mod_name"),
+        "description": read_root_identity("mod_description"),
+        "authors": [read_root_identity("mod_authors")],
+        "contributors": [read_root_identity("mod_credits")],
+        "contact": {"homepage": repo_url, "sources": repo_url, "issues": f"{repo_url}/issues"},
+        "license": read_root_identity("mod_license"),
+        "icon": "logo.png",
+        "environment": "client",
+    }
+    for key, value in expected.items():
+        if metadata.get(key) != value:
+            fail(f"fabric.mod.json 的 {key} 应为 {value!r}")
+
+    entrypoints = metadata.get("entrypoints", {})
+    for name, entry in (
+        ("client", "com.niuqu.pickupcard.PickupCard"),
+        ("modmenu", "com.niuqu.pickupcard.client.PickupCardModMenu"),
+    ):
+        if entry not in entrypoints.get(name, []) or entry.replace(".", "/") + ".class" not in names:
+            fail(f"Fabric 缺少 {name} 入口 {entry}")
+
+    depends = metadata.get("depends", {})
+    if depends.get("minecraft") != minecraft or not {"fabricloader", "fabric-api", "forgeconfigapiport"} <= depends.keys():
+        fail("fabric.mod.json 缺少 Minecraft 版本或 Fabric 运行依赖")
+
+    if "pickupcard.mixins.json" not in metadata.get("mixins", []):
+        fail("fabric.mod.json 未注册拾取 Mixin")
+    access_widener = metadata.get("accessWidener")
+    if access_widener not in names or zf.read(access_widener).split(b"\n", 1)[0].split() != [
+        b"accessWidener", b"v2", b"intermediary"
+    ]:
+        fail("Fabric 渲染访问声明缺失或未转换到 Intermediary")
+
+    mixin = read_json(zf, "pickupcard.mixins.json")
+    if mixin is not None:
+        mixin_class = "com/niuqu/pickupcard/mixin/ClientPacketListenerMixin"
+        if ("ClientPacketListenerMixin" not in mixin.get("client", [])
+                or mixin_class + ".class" not in names):
+            fail("Fabric 包缺少客户端拾取 Mixin")
+        refmap = read_json(zf, mixin.get("refmap", ""))
+        if refmap is not None:
+            mapping = refmap.get("mappings", {}).get(mixin_class, {})
+            for method in ("handleTakeItemEntity", "handleSetEntityData", "handleContainerSetSlot", "handleContainerContent"):
+                if not mapping.get(method, "").startswith("Lnet/minecraft/class_634;method_"):
+                    fail(f"Fabric refmap 缺少拾取注入点 {method}")
+            for method, owner in (("playLocalSound", "class_638"), ("ensureRunningOnSameThread", "class_2600")):
+                if not any(f";{method}(" in source and target.startswith(f"Lnet/minecraft/{owner};method_")
+                           for source, target in mapping.items()):
+                    fail(f"Fabric refmap 缺少调用注入点 {method}")
+
+    nested = {
+        f"META-INF/jars/lwjgl-nanovg-{nvg_version}.jar": "org/lwjgl/nanovg/NanoVG.class",
+        f"META-INF/jars/core-{TRELLIS_VERSION}.jar": "dev/e33/trellis/geom/Insets.class",
+        f"META-INF/jars/nvg-{TRELLIS_VERSION}.jar": "dev/e33/trellis/render/nanovg/NvgCanvas.class",
+    }
+    actual = {path for path in names if path.startswith("META-INF/jars/") and path.endswith(".jar")}
+    declared = {item.get("file") for item in metadata.get("jars", [])}
+    if set(nested) != actual or set(nested) != declared:
+        fail(f"Fabric 嵌套库不一致，声明={sorted(str(path) for path in declared)}，文件={sorted(actual)}")
+    for path, expected_class in nested.items():
+        if path not in actual:
+            continue
+        try:
+            with zipfile.ZipFile(io.BytesIO(zf.read(path))) as library:
+                if not {"fabric.mod.json", expected_class} <= set(library.namelist()):
+                    fail(f"Fabric 嵌套库缺少元数据或绑定类：{path}")
+        except zipfile.BadZipFile:
+            fail(f"Fabric 嵌套库损坏：{path}")
+
+
+def read_json(zf: zipfile.ZipFile, name: str) -> dict | None:
+    try:
+        return json.loads(zf.read(name))
+    except (KeyError, ValueError) as error:
+        fail(f"无法读取 {name!r}：{error}")
+        return None
+
+
 def report() -> int:
     if problems:
         print(f"verify_jars: {len(problems)} 个问题", file=sys.stderr)
@@ -212,7 +305,7 @@ def report() -> int:
             print(f"  ✗ {p}", file=sys.stderr)
         return 1
     print("  全绿：无摊平类残留 / 嵌套成对同版 / 四平台 native 在主 jar / 构建戳与身份一致 / "
-          "Mixin 配置与目标匹配 / 许可随产物 / 图标与设计正本一致 / mods.toml 与 manifest 身份如实")
+          "Mixin 配置与目标匹配 / 许可随产物 / 图标与设计正本一致 / 加载器元数据正确")
     return 0
 
 

@@ -7,6 +7,7 @@
 **新增**
 
 - 新增 Minecraft 1.21.1 NeoForge 支持，最低 NeoForge 21.1.1。
+- 新增 Minecraft 1.20.1 Fabric 支持，需要 Fabric API 和 Forge Config API Port。
 
 **修复**
 
@@ -25,6 +26,7 @@
 **Added**
 
 - Added Minecraft 1.21.1 NeoForge support, starting with NeoForge 21.1.1.
+- Added Minecraft 1.20.1 Fabric support, requiring Fabric API and Forge Config API Port.
 
 **Fixed**
 

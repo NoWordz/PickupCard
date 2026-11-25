@@ -24,12 +24,12 @@
   "official": {
     "mappings": "official",
     "populated": true,
-    "note": "映射层：写给 Mojang 官方名的那一份。拾取嗅探要 Mixin 进 ClientPacketListener#handleTakeItemEntity，这个类名/方法名在 Yarn 里不一样，所以那份 Mixin 进这一层 —— 由 Forge / NeoForge 目标挂载，Fabric 不挂、保留自己那份 Yarn 名副本。两边的文件路径一一对应，由 tools/verify_targets.py 的孪生副本检查盯着（少一个就红）。"
+    "note": "Mojang 官方编译名下的客户端逻辑与拾取 Mixin。原版 API 随版本变化的适配可置于本层 src/<Minecraft 版本>/java。"
   },
   "fabric": {
     "loader": "Fabric",
-    "populated": false,
-    "note": "加载器层：Fabric API / loader 专有（入口、fabric.mod.json、mixin 注册方式）。M2 待填。"
+    "populated": true,
+    "note": "Fabric 客户端入口、Mod Menu 和 TOML 配置接线。"
   },
   "neoforge": {
     "loader": "NeoForge",

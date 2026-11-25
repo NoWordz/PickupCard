@@ -1,5 +1,7 @@
 package com.niuqu.pickupcard.dev;
 
+import com.mojang.brigadier.CommandDispatcher;
+import com.mojang.brigadier.builder.LiteralArgumentBuilder;
 import com.niuqu.pickupcard.PickupCard;
 import com.niuqu.pickupcard.config.AnchorEditScreen;
 import com.niuqu.pickupcard.config.CardGridScreen;
@@ -11,9 +13,6 @@ import net.minecraft.client.KeyMapping;
 import net.minecraft.client.resources.language.I18n;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.Screenshot;
-import net.minecraft.commands.Commands;
-import net.minecraft.commands.CommandSourceStack;
-import com.mojang.brigadier.CommandDispatcher;
 import org.lwjgl.glfw.GLFW;
 
 import java.util.List;
@@ -46,8 +45,8 @@ public final class DevHarness {
         }
     }
 
-    public static void registerCommands(CommandDispatcher<CommandSourceStack> dispatcher) {
-        dispatcher.register(Commands.literal("pickupcarddev").executes(ctx -> {
+    public static <S> void registerCommands(CommandDispatcher<S> dispatcher) {
+        dispatcher.register(LiteralArgumentBuilder.<S>literal("pickupcarddev").executes(ctx -> {
             Minecraft.getInstance().setScreen(new DevCardScreen());
             return 1;
         }));

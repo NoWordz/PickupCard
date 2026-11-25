@@ -5,6 +5,7 @@
 **新增**
 
 - 新增 NeoForge 1.21.1 支持，随包提供 Trellis 和 NanoVG。
+- 新增 Fabric 1.20.1 支持，Mod Menu 可打开配置界面。
 
 **修复**
 
@@ -23,6 +24,7 @@
 **Added**
 
 - Added NeoForge 1.21.1 support with bundled Trellis and NanoVG.
+- Added Fabric 1.20.1 support with a configuration screen entry in Mod Menu.
 
 **Fixed**
 

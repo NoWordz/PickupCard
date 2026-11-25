@@ -11,8 +11,8 @@
 </p>
 
 <p align="center">
-  <img alt="MC" src="https://img.shields.io/badge/MC-1.20.1-green">
-  <img alt="Loader" src="https://img.shields.io/badge/Loader-Forge-red">
+  <img alt="MC" src="https://img.shields.io/badge/MC-1.20.1%20%7C%201.21.1-green">
+  <img alt="Loader" src="https://img.shields.io/badge/Loader-Forge%20%7C%20Fabric%20%7C%20NeoForge-red">
   <img alt="Side" src="https://img.shields.io/badge/Side-Client-blue">
   <img alt="Java" src="https://img.shields.io/badge/Java-17%2B-yellow">
   <img alt="Version" src="https://img.shields.io/github/v/release/NoWordz/PickupCard?sort=semver">
@@ -23,7 +23,7 @@
   <a href="https://github.com/NoWordz/PickupCard/actions/workflows/build.yml"><img alt="Build" src="https://github.com/NoWordz/PickupCard/actions/workflows/build.yml/badge.svg?branch=main"></a>
 </p>
 
-> 最新版见 [Releases](https://github.com/NoWordz/PickupCard/releases) · [更新日志](CHANGELOG.md) · 纯客户端，零必需前置。
+> 最新版见 [Releases](https://github.com/NoWordz/PickupCard/releases) · [更新日志](CHANGELOG.md) · 纯客户端。
 
 ## 这是什么
 
@@ -36,11 +36,11 @@
 | 依赖 | 要求 |
 | --- | --- |
 | Minecraft | 1.20.1 |
-| Forge | 47.4.x（ForgeGradle 6 线） |
-| 其他前置 | **无** |
+| Forge | 47.4.x（无额外前置） |
+| Fabric | Java 17，Fabric Loader 0.16.10+，Fabric API 0.92.6+，Forge Config API Port 8.0.3+ |
 | 可选联动 | [RarityCore](https://modrinth.com/mod/raritycore)：装了就用它的七档稀有度与自定义配色，没装回退原版四档 |
 
-把 jar 丢进 `mods/` 即可。
+把对应加载器的 JAR 放进 `mods/`。Fabric 可选装 Mod Menu，从模组列表打开配置。
 
 ## 快速开始
 
@@ -102,7 +102,8 @@
 | gnetum | 🟡 它按自己的帧率上限节流 HUD 渲染，拾取动画会因此掉帧 —— 在 gnetum 设置里调高或关闭该上限即可（整合包实测确认） |
 | Minecraft 1.21.1 + NeoForge 21.1.x | Java 21，从 21.1.1 起，实测 21.1.228 |
 | Minecraft 1.21.1（Fabric / Forge） | ❌ 未实现 |
-| Minecraft 1.20.1 Fabric / NeoForge | ❌ 未实现 |
+| Minecraft 1.20.1 + Fabric | 已移植，源码构建支持 |
+| Minecraft 1.20.1 + NeoForge | ❌ 未实现 |
 
 ## 已知限制
 
@@ -139,6 +140,7 @@
 
 ```bash
 ./platforms/1.20.1-forge/gradlew -p platforms/1.20.1-forge build
+./platforms/1.20.1-fabric/gradlew -p platforms/1.20.1-fabric build
 ./platforms/1.21.1-neoforge/gradlew -p platforms/1.21.1-neoforge build
 python tools/verify_targets.py                   # 结构自洽性（CI 第一道闸）
 ```

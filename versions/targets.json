@@ -8,10 +8,8 @@
     "【目标的可行性由原版 GUI API 决定，不再由第三方前置决定】渲染走自己的插槽",
     "（render/CardPainter），所以一个目标能不能做，看的是它那一版的原版绘制 API 面，",
     "而不是某个渲染 mod 有没有发版。渲染方案本身待定，见 docs/decision-rendering.md。",
-    "",
-    "【mappings：本仓刻意保留两个家族】Fabric 用 Yarn，NeoForge / Forge 用 Mojang 官方名。",
-    "拾取嗅探要 Mixin 进 ClientPacketListener，那个类名/方法名在两套映射里不一样，所以那份 Mixin",
-    "进 layers/mapping/official/，Fabric 侧留一份同路径的 Yarn 名副本，由 CI 盯着两边一一对应。",
+    "【映射按目标声明】Forge、NeoForge 和 Fabric 1.20.1 使用 Mojang 官方编译名，可共享拾取 Mixin。",
+    "Fabric Loom 将发行包从官方编译名转换为 Intermediary 运行时名。",
     "",
     "【buildable 管的是「发不发」，不是「编不编」】工程目录存在 = CI 就编它。代码进了仓库却没有任何",
     "地方编，等于躺着一份没人验证的源码 —— 正是这套结构要消掉的静默。buildable: true 另外表示产物进 Release。",
@@ -48,7 +46,7 @@
     "buildable": false,
     "layers": ["1.21+", "fabric"],
     "unverified": ["loader_version", "java", "gradle"],
-    "note": "M2 目标。唯一用 Yarn 映射的目标 —— 不挂 layers/mapping/official/，自己保留同路径的 Yarn 名副本（ClientPacketListener 在 Yarn 里是另一个名字）。"
+    "note": "预留目标；映射与构建工具在移植时核实。"
   },
 
   "1.21.1-neoforge": {
@@ -81,15 +79,14 @@
   "1.20.1-fabric": {
     "minecraft": "1.20.1",
     "loader": "Fabric",
-    "loader_version": null,
-    "mappings": "yarn",
+    "loader_version": "0.18.1",
+    "mappings": "official",
     "java": 17,
     "gradle": "8.8",
     "project": "platforms/1.20.1-fabric",
-    "buildable": false,
-    "layers": ["fabric"],
-    "unverified": ["loader_version", "java", "gradle"],
-    "note": "备选：排在 1.21.1 两格之后 —— 1.20.1 的玩家主要走 Forge。它同样走 Yarn 家族，因此也不挂 official 映射层。"
+    "buildable": true,
+    "layers": ["official", "fabric"],
+    "note": "Fabric Loom，Java 17；共用 1.20.1 的原版 API 适配，发布包重映射到 Intermediary。"
   },
 
   "1.20.1-neoforge": {

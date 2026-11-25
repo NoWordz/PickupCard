@@ -20,7 +20,7 @@ tools/verify_targets.py    ← 结构守卫（CI 第一道闸）
 | 想加的代码 | 放哪 | 判据 |
 | --- | --- | --- |
 | 队列规则、合并窗口、数量格式 | `shared/` | 不 import `net.minecraft` 就能编过 |
-| Mixin 进原版类、读写 ItemStack | `layers/mapping/official/` | 用到官方名（Yarn 里名字不同） |
+| Mixin 进原版类、读写 ItemStack | `layers/mapping/official/` | Forge、NeoForge 和 Fabric 1.20.1 共用官方编译名 |
 | 自绘控件（按钮/开关/滑条/输入框） | `layers/mapping/official/render/nvg/ui/` | 形状走 NanoVG、文字借 `GuiGraphics`，不绑加载器；只在"长得跟原版控件不一样"时才加新的 |
 | 配置定义、事件总线、mod 入口 | `platforms/<目标>/` | 绑加载器，且目前量少不够成层 |
 
@@ -32,7 +32,7 @@ tools/verify_targets.py    ← 结构守卫（CI 第一道闸）
 `NoticeQueue` 的载荷是泛型 `T`，队列本身只认 `key` 与 `lookKey` 两个字符串。这样：
 
 - 合并规则的**全部测试都不需要启动游戏** —— 载荷用 `String` 就够了（见 `NoticeQueueTest`）；
-- 物品类型只出现在映射层，将来 Fabric 那份 Yarn 名副本不必重写队列；
+- 物品类型只出现在映射层。1.20.1 的 GUI 与物品 API 适配放在 `layers/mapping/official/src/1.20.1/java`，由同版本 Forge 和 Fabric 共用；
 - "队列说该有哪些卡"与"卡片怎么画"彻底解耦。
 
 ## 静音名单：判定与放音之间的接力棒
