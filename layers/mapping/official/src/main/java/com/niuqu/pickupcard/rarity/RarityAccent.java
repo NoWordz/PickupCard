@@ -45,7 +45,10 @@ public final class RarityAccent {
         if (link != null) {
             int tier = link.tierOf(stack);
             if (tier >= 1) {
-                return link.colorOf(tier);
+                int color = link.colorOf(tier);
+                if (color != 0) {
+                    return color;
+                }
             }
         }
         return switch (stack.getRarity()) {

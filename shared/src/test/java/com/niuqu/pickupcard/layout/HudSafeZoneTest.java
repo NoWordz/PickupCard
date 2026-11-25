@@ -20,6 +20,17 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  */
 class HudSafeZoneTest {
 
+    @Test
+    void collisionOnAnUpperCardDoesNotMoveTheBottomCardFromItsAnchor() {
+        var sidebar = HudSafeZone.sidebar(640f, 360f, 144f, 5);
+        var upper = new HudSafeZone.Rect(490f, 173f, 134f, 21f);
+        var bottom = new HudSafeZone.Rect(490f, 264f, 134f, 21f);
+        assertTrue(upper.intersects(sidebar));
+        assertEquals(sidebar.x() - HudSafeZone.PAD - upper.w(),
+                HudSafeZone.cardLeft(upper, List.of(sidebar)), 0.01f);
+        assertEquals(bottom.x(), HudSafeZone.cardLeft(bottom, List.of(sidebar)), 0.01f);
+    }
+
     /**
      * 反例对照：旧的底部留白（写死的 52）在那一带<b>必然相交</b>（先撞动作栏提示语、再撞手持物品名）。
      * <p>这就是用户第三次报的那个 bug —— 如果哪天有人把底部留白又改回一个拍脑袋的数，

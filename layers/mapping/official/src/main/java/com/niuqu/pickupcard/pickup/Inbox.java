@@ -3,6 +3,7 @@ package com.niuqu.pickupcard.pickup;
 import com.niuqu.pickupcard.PickupCard;
 import com.niuqu.pickupcard.compat.MinecraftItemData;
 import com.niuqu.pickupcard.filter.FilterRules;
+import com.niuqu.pickupcard.notice.FullPolicy;
 import com.niuqu.pickupcard.notice.MergeMode;
 import com.niuqu.pickupcard.filter.FilterSettings;
 import com.niuqu.pickupcard.filter.FilterSubject;
@@ -69,6 +70,10 @@ public final class Inbox {
     private final NoticeQueue<Card> queue = new NoticeQueue<>();
     private final SeenItems seen = new SeenItems();
     private final List<Event> pending = new ArrayList<>();
+    private OverflowBatch waitingOverflow;
+
+    private record OverflowBatch(CardContent.Overflow content, int count) {
+    }
 
     private Supplier<PickupCardSettings> settingsSource = PickupCardSettings::defaults;
     private Supplier<FilterSettings> filterSource = FilterSettings::defaults;
@@ -98,18 +103,19 @@ public final class Inbox {
      * {@link CardContent} 的这一层做：读回当前那张溢出卡的成员、追加、把新列表交回去。
      * 只留 {@link CardContent.Overflow#MAX_ICONS} 个 —— 再多也看不出区别，白占内存。
      */
-    private CardContent.Overflow overflowWith(CardContent dropped) {
-        List<net.minecraft.world.item.ItemStack> stacks = new ArrayList<>();
-        queue.find(OVERFLOW_KEY).ifPresent(notice -> {
-            if (notice.payload().content() instanceof CardContent.Overflow old) {
-                stacks.addAll(old.stacks());
-            }
-        });
+    private static CardContent.Overflow overflowWith(CardContent.Overflow previous, CardContent dropped) {
+        var stacks = previous == null ? new ArrayList<ItemStack>() : new ArrayList<>(previous.stacks());
         if (dropped instanceof CardContent.Item item
                 && stacks.size() < CardContent.Overflow.MAX_ICONS) {
             stacks.add(item.stack());
         }
         return new CardContent.Overflow(List.copyOf(stacks));
+    }
+
+    private Event showOverflow(CardContent.Overflow summary, int count, long now) {
+        var result = queue.absorbOverflow(OVERFLOW_KEY, OVERFLOW_KEY, new Card(summary, false), count, now);
+        return result.change() == NoticeQueue.Change.ADDED
+                ? new Event.Added(result.notice()) : new Event.Merged(result.notice());
     }
 
     /**
@@ -193,9 +199,11 @@ public final class Inbox {
         boolean firstTime = seen.markAndCheckFirst(seenKey);
         Card card = new Card(content, emphasized);
         // 【闸门 = min(意愿, 物理)】几何放不下的不上屏，走同一条排队/溢出路径
-        int capacity = Math.min(settings.maxOnScreen(), geometryCapacity);
+        int capacity = normalCapacity(settings);
+        int limit = pendingLimit(settings);
+        queue.limitPending(limit);
         NoticeQueue.Outcome<Card> outcome = queue.absorb(key, look, card, count, firstTime, now,
-                mode, capacity, settings.queueSize(), settings.fullPolicy());
+                mode, capacity, limit, settings.fullPolicy());
 
         for (Notice<Card> evicted : outcome.evicted()) {
             pending.add(new Event.Evicted(evicted));
@@ -212,16 +220,19 @@ public final class Inbox {
             case QUEUED -> PickupCard.LOGGER.info("[排队] key={} 屏上已经 {} 张，等位子",
                     outcome.notice().key(), capacity);
             case DROPPED -> {
-                // 屏满 + 队满：并进"还有 N 项"那张卡，而不是静默丢掉
-                CardContent.Overflow overflow = overflowWith(content);
-                NoticeQueue.Outcome<Card> spilled = queue.absorbOverflow(OVERFLOW_KEY, OVERFLOW_KEY,
-                        new Card(overflow, false), 1, now);
-                pending.add(spilled.change() == NoticeQueue.Change.ADDED
-                        ? new Event.Added(spilled.notice())
-                        : new Event.Merged(spilled.notice()));
-                PickupCard.LOGGER.info("[溢出] key={}：屏满且队满（同屏 {} / 排队 {}），并进溢出卡（第 {} 项）",
-                        outcome.notice().key(), capacity, settings().queueSize(),
-                        spilled.notice().count());
+                // 排队模式里超额的拾取合成一张摘要，等画布有空位时再显示。
+                if (settings.fullPolicy() == FullPolicy.QUEUE) {
+                    Notice<Card> visible = queue.find(OVERFLOW_KEY).orElse(null);
+                    if (visible != null) {
+                        var previous = (CardContent.Overflow) visible.payload().content();
+                        pending.add(showOverflow(overflowWith(previous, content), 1, now));
+                    } else {
+                        var previous = waitingOverflow;
+                        waitingOverflow = new OverflowBatch(
+                                overflowWith(previous == null ? null : previous.content(), content),
+                                previous == null ? 1 : previous.count() + 1);
+                    }
+                }
             }
         }
         return decision;
@@ -235,20 +246,17 @@ public final class Inbox {
         queue.forgetLeft(key);
     }
 
-    /**
-     * 渲染层量出来"几何上放不下"的那几张：退回排队<b>队头</b>，位子一空第一个回来。
-     * <p>【为什么取代了硬切】从前这里直接摘卡 + forgetLeft —— 拾取在屏幕上无声蒸发，
-     * 连排队都不进（第四批反馈"锚定错乱"的根因之一）。退回排队后行为与"屏满排队"
-     * 完全同一条路：先来先上屏，回来时重播入场、重新起算停留期。
-     */
-    public void requeue(List<Notice<Card>> notices) {
-        if (notices.isEmpty()) {
-            return;
-        }
-        queue.requeueFront(notices);
-        for (Notice<Card> notice : notices) {
-            PickupCard.LOGGER.info("[退回排队] key={}：几何上放不下，等位子（先回先上）", notice.key());
-        }
+    /** 画布变小时摘下已放不下的在屏卡，由当前的屏满策略决定是否排队。 */
+    public void removeForLayout(List<Notice<Card>> notices, PickupCardSettings settings) {
+        queue.requeueFront(notices, pendingLimit(settings));
+    }
+
+    private int normalCapacity(PickupCardSettings settings) {
+        return Math.min(settings.maxOnScreen(), geometryCapacity);
+    }
+
+    private static int pendingLimit(PickupCardSettings settings) {
+        return settings.fullPolicy() == FullPolicy.QUEUE ? settings.queueSize() : 0;
     }
 
     /**
@@ -257,15 +265,24 @@ public final class Inbox {
      */
     public List<Event> tick() {
         long now = System.currentTimeMillis();
+        PickupCardSettings settings = settings();
         List<Event> events = new ArrayList<>(pending);
         pending.clear();
 
-        for (Notice<Card> expired : queue.sweep(now, settings().holdMs())) {
+        for (Notice<Card> expired : queue.sweep(now, settings.holdMs())) {
             events.add(new Event.Expired(expired));
         }
         // 空出位子就补位（先来先上屏）。补上的那张算"新的卡"：入场动画照播。
-        for (Notice<Card> promoted : queue.promote(now, settings().maxOnScreen())) {
+        queue.limitPending(pendingLimit(settings));
+        for (Notice<Card> promoted : queue.promote(now, normalCapacity(settings))) {
             events.add(new Event.Added(promoted));
+        }
+        if (settings.fullPolicy() == FullPolicy.REPLACE) {
+            waitingOverflow = null;
+        } else if (waitingOverflow != null && queue.size() < geometryCapacity) {
+            // 正常卡先补位。画布还有空间时，才开始显示并计时这一张摘要。
+            events.add(showOverflow(waitingOverflow.content(), waitingOverflow.count(), now));
+            waitingOverflow = null;
         }
         return events;
     }
@@ -273,6 +290,7 @@ public final class Inbox {
     /** 换世界/退出/总开关关掉：队列、NEW 账本、未取走的事件、在途的静音判定一起回到"什么都没发生"。 */
     public void reset() {
         queue.clear();
+        waitingOverflow = null;
         seen.clear();
         MinecraftItemData.clearIdentityKeys();
         pending.clear();

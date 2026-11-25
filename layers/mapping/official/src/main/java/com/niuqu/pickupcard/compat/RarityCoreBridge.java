@@ -3,6 +3,9 @@ package com.niuqu.pickupcard.compat;
 import com.niuqu.pickupcard.PickupCard;
 import com.niuqu.pickupcard.rarity.LinkedRarity;
 import com.niuqu.pickupcard.rarity.RarityAccent;
+import net.minecraft.client.Minecraft;
+import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.item.ItemStack;
 
 import java.lang.invoke.MethodHandle;
@@ -13,12 +16,11 @@ import java.lang.invoke.MethodHandles;
  *
  * <p>【为什么反射】RarityCore 是可选环境：本仓的 CI 与开发机都没有它的 jar，编译期引依赖
  * 直接断构建；反射的失败模式也最干净——解析失败 = 永远回 vanilla 主题色，行为与没装一样。
- * 对面是稳定的静态门面（{@code org.yanbwe.raritycore.api.RarityCoreAPI}，1.20.1 v13.4 实测），
- * 两个签名各一个 MethodHandle，缓存在静态字段。
+ * Forge 与 NeoForge 提供 RarityCoreAPI。Fabric 1.20.1 使用自己的注册表、服务端同步数据和颜色表。
  *
  * <p>【为什么懒解析】构造期 RarityCore 可能还没把自己的配置/注册表装完（mod 构造顺序
  * 不由我们定）；第一次真的要问档位（玩家捡起第一件东西，进世界之后）时它的世界早就稳了。
- * {@link #install()} 只做"装没装"的判断与注入。
+ * {@link #install(boolean)} 只做"装没装"的判断与注入。
  *
  * <p>【解除方式】不注入即完整解除：{@code RarityAccent} 回落 vanilla 四档主题映射，
  * 渲染路径没有任何一行知道 RarityCore 存在过。
@@ -32,8 +34,12 @@ public final class RarityCoreBridge implements LinkedRarity {
     private static final RarityCoreBridge INSTANCE = new RarityCoreBridge();
 
     private static volatile boolean resolved;
-    private static MethodHandle getRarity;   // (ItemStack) -> int，1~7 / 0=无档位
-    private static MethodHandle getColor;    // (int) -> int，RGB
+    private static MethodHandle getRarity;
+    private static MethodHandle getColor;
+    private static FabricSync fabricSync;
+
+    private record FabricSync(MethodHandle getRarity, MethodHandle clear) {
+    }
 
     private RarityCoreBridge() {
     }
@@ -62,17 +68,41 @@ public final class RarityCoreBridge implements LinkedRarity {
         ensureResolved();
     }
 
+    /** Fabric 在新连接接收同步数据前清掉上一个服务器的档位。 */
+    public static void clearSyncedRarities(boolean present) {
+        if (!present || !ensureResolved() || fabricSync == null) {
+            return;
+        }
+        try {
+            fabricSync.clear().invokeExact();
+        } catch (Throwable t) {
+            bridgeFailed(t);
+        }
+    }
+
     @Override
     public int tierOf(ItemStack stack) {
         if (stack.isEmpty() || !ensureResolved()) {
             return 0;
         }
         try {
-            int tier = (int) getRarity.invokeExact(stack);
+            int tier = lookupTier(stack);
             return tier >= MIN_TIER && tier <= MAX_TIER ? tier : 0;
         } catch (Throwable t) {
             return bridgeFailed(t);
         }
+    }
+
+    private static int lookupTier(ItemStack stack) throws Throwable {
+        if (fabricSync != null) {
+            Minecraft client = Minecraft.getInstance();
+            if (client.getConnection() != null && client.getSingleplayerServer() == null) {
+                // 服务端发送完整表。缺项由它的客户端接口返回普通档。
+                ResourceLocation itemId = BuiltInRegistries.ITEM.getKey(stack.getItem());
+                return (int) fabricSync.getRarity().invokeExact(itemId);
+            }
+        }
+        return (int) getRarity.invokeExact(stack);
     }
 
     @Override
@@ -92,37 +122,58 @@ public final class RarityCoreBridge implements LinkedRarity {
         return 5;
     }
 
-    /** 第一次使用时解析两个 MethodHandle；失败过就不再试（每帧渲染路径上不许反复抛类装载）。 */
+    /** 缓存已解析的入口。桥失效时解除联动，避免渲染路径反复解析。 */
     private static boolean ensureResolved() {
         if (resolved) {
-            return true;
+            return getRarity != null;
         }
         synchronized (RarityCoreBridge.class) {
             if (resolved) {
-                return true;
+                return getRarity != null;
             }
             try {
-                Class<?> api = Class.forName("org.yanbwe.raritycore.api.RarityCoreAPI");
-                getRarity = MethodHandles.lookup()
-                        .unreflect(api.getMethod("getRarity", ItemStack.class));
-                getColor = MethodHandles.lookup()
-                        .unreflect(api.getMethod("getRarityColor", int.class));
-                resolved = true;
-                PickupCard.LOGGER.info("[联动] RarityCore 桥已就绪（7 档 + 玩家自定义色）");
-                return true;
+                resolveMethods();
+                PickupCard.LOGGER.info("[联动] RarityCore 桥已就绪（{}）",
+                        fabricSync == null ? "公共 API" : "Fabric 1.20.1");
             } catch (Throwable t) {
                 PickupCard.LOGGER.warn("[联动] RarityCore 桥解析失败，稀有度色回落主题", t);
+                getRarity = null;
                 RarityAccent.setLinked(null);
-                return false;
+            } finally {
+                resolved = true;
             }
+            return getRarity != null;
         }
+    }
+
+    private static void resolveMethods() throws ReflectiveOperationException {
+        Class<?> api;
+        try {
+            api = Class.forName("org.yanbwe.raritycore.api.RarityCoreAPI");
+        } catch (ClassNotFoundException ignored) {
+            Class<?> registry = Class.forName("org.yanbwe.raritycore.registry.RarityRegistry");
+            Class<?> client = Class.forName("org.yanbwe.raritycore.client.RaritycoreClient");
+            Class<?> clientData = Class.forName("org.yanbwe.raritycore.client.RarityClientData");
+            getRarity = publicMethod(registry, "getRarity", ItemStack.class);
+            getColor = publicMethod(client, "getRarityColor", int.class);
+            fabricSync = new FabricSync(publicMethod(clientData, "getRarity", ResourceLocation.class),
+                    publicMethod(clientData, "clearCache"));
+            return;
+        }
+        getRarity = publicMethod(api, "getRarity", ItemStack.class);
+        getColor = publicMethod(api, "getRarityColor", int.class);
+    }
+
+    private static MethodHandle publicMethod(Class<?> type, String name, Class<?>... parameters)
+            throws ReflectiveOperationException {
+        return MethodHandles.publicLookup().unreflect(type.getMethod(name, parameters));
     }
 
     /** 桥在使用中炸了：解除联动并回落，别让一张卡的颜色把渲染帧掀了。 */
     private static int bridgeFailed(Throwable t) {
         PickupCard.LOGGER.warn("[联动] RarityCore 调用失败，回落主题色", t);
         RarityAccent.setLinked(null);
-        resolved = false;
+        getRarity = null;
         return 0;
     }
 }

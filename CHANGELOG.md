@@ -1,5 +1,23 @@
 # Changelog
 
+## v1.0.0
+
+**修复**
+
+- Fabric 1.20.1 接入 RarityCore 的档位、配色和服务端同步数据。
+- 三端在替换模式下会正常移除被顶掉的旧卡，连续拾取结束后不再重新显示旧提示。
+- 排队模式会遵守实际屏幕容量，排队中的同类物品合并后按顺序上屏，溢出提示等有空位再显示。
+- 卡片只在自身与计分板或状态效果重叠时横移，右下角的卡保持原位。
+
+----
+
+**Fixed**
+
+- Fabric 1.20.1 now uses RarityCore tiers, colours, and server-synced rarity data.
+- In Replace mode, displaced cards clear correctly across all three loaders and stay gone after a pickup burst.
+- Queue mode respects the available screen space, merges waiting pickups in place, and shows the overflow summary when room is available.
+- Individual cards move aside when they overlap the scoreboard or status effects, keeping the bottom-right cards anchored.
+
 ## v0.2.5
 
 **新增**

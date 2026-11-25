@@ -17,6 +17,7 @@ import net.minecraft.client.gui.GuiGraphics;
 
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -40,11 +41,8 @@ import java.util.function.Supplier;
  * 【为什么事件消费与每帧推进必须同处】账本"已经删掉了这张卡"与渲染层"该播退场了"
  * 是同一件事的两面，分到两个类里就会出现"A 删了 B 还不知道"的时序空窗。
  * <p>
- * 【2026-09-19 的三条新账】① 几何放不下不再硬切摘卡，改退回排队（[退回排队]）——
- * 从前拾取在这里无声蒸发，连排队都不进；② 自动缩放与卡宽都走 {@link CardMove} 平滑 ——
- * 缩放从前是按张数一档一档跳的阶梯，退场播完那一刻全摞卡瞬间放大一圈，正是用户报的
- * "动画结束时的图标回弹"；③ 几何容量每帧回报给账本（{@link Inbox#setGeometryCapacity}），
- * 放不下的拾取根本不上屏，在队列里等位子。
+ * 自动缩放与卡宽都走 {@link CardMove} 平滑。每帧把几何容量回报给账本
+ * （{@link Inbox#setGeometryCapacity}），作为当前屏满策略的容量上限。
  */
 public final class CardStage {
 
@@ -216,7 +214,7 @@ public final class CardStage {
      * 而上一版正是死在"harness 里没有的东西上了真机才现形"。
      * <p>
      * 【一帧的顺序（2026-09-19 重排）】摘退场播完的 → 量几何（锚线/卡高/容量）→
-     * 放不下的退回排队 → 算自动缩放并平滑 → 排布 → 画。<b>缩放必须在摘卡之后算</b>：
+     * 处理超出容量的卡 → 算自动缩放并平滑 → 排布 → 画。<b>缩放在摘卡之后算</b>：
      * 从前 place() 用摘卡前的张数定缩放，摘完的下一帧才跳到新档 —— "动画结束图标回弹"
      * 就是那慢一拍的跳变。
      */
@@ -258,11 +256,6 @@ public final class CardStage {
                 view.endRevive();
             }
         }
-        if (live.isEmpty()) {
-            endRound();
-            return;
-        }
-
         // ---- 几何三件套：锚线、卡高（未缩放）、几何容量。与排布共用同一组数。----
         LayoutSettings layout = layoutSource.get().sanitized();
         lastBottomMargin = HudSafeZone.bottomInset();
@@ -272,17 +265,25 @@ public final class CardStage {
         int capacity = StackLayout.fittingCount(anchorTop, unscaledH, gap);
         Inbox.INSTANCE.setGeometryCapacity(capacity);
 
-        // 放不下：最老的几张退回排队队头（不再硬切 —— 硬切 = 拾取无声蒸发）
+        // 先让已经退场的卡释放画面空间。只有仍在账本里的卡才需要按屏满策略处理。
         if (live.size() > capacity) {
-            List<CardView> oldestFirst = new ArrayList<>(live.values());    // live 是老到新
-            List<Notice<Inbox.Card>> back = new ArrayList<>();
-            for (int i = 0; i < live.size() - capacity; i++) {
-                back.add(oldestFirst.get(i).notice());
+            List<CardView> oldestFirst = new ArrayList<>(live.values());
+            oldestFirst.sort(Comparator.comparing(CardView::exiting).reversed()
+                    .thenComparing(view -> !Inbox.OVERFLOW_KEY.equals(view.key())));
+            List<Notice<Inbox.Card>> displaced = new ArrayList<>();
+            int excess = live.size() - capacity;
+            for (int i = 0; i < excess; i++) {
+                CardView view = oldestFirst.get(i);
+                live.remove(view.key());
+                if (view.exiting()) {
+                    Inbox.INSTANCE.forgetLeft(view.key());
+                } else {
+                    displaced.add(view.notice());
+                }
             }
-            for (Notice<Inbox.Card> notice : back) {
-                live.remove(notice.key());
+            if (!displaced.isEmpty()) {
+                Inbox.INSTANCE.removeForLayout(displaced, settings);
             }
-            Inbox.INSTANCE.requeue(back);
         }
         if (live.isEmpty()) {
             endRound();
@@ -319,7 +320,7 @@ public final class CardStage {
         lastFirstRise = live.isEmpty() ? 1f : canvas.contentOf(live.values().iterator().next());
 
         long t0 = System.nanoTime();
-        List<CardSlot> slots = layout(gui, mc, canvas, now, gap, anchorTop);
+        List<CardSlot> slots = layout(mc, canvas, now, gap);
         layoutMicros = (System.nanoTime() - t0) / 1_000L;
         lastSlots = List.copyOf(slots);
         long flushesBefore = BatchStats.flushes();
@@ -374,9 +375,8 @@ public final class CardStage {
                     LayoutSettings.defaults(), MARGIN_X, HudSafeZone.bottomInset(), style.gap());
             if (!slots.isEmpty()) {
                 StackLayout.Slot slot = slots.get(0);
-                HudSafeZone.reserve(new HudSafeZone.Rect(slot.x(), slot.y(), slot.width(),
-                        slot.height()), null, 0f, null, 0f);
-                HudSafeZone.shiftLeft(slot.x(), slot.width(), gui.guiWidth(), 0f);
+                HudSafeZone.cardLeft(new HudSafeZone.Rect(slot.x(), slot.y(), slot.width(),
+                        slot.height()), List.of());
             }
             PickupCard.LOGGER.info("[预热] 文本与排布那一路也付掉了（{}ms）：名字与数量度量、"
                             + "字形按需栅格化与图集上传、一次真实排布与让位判据",
@@ -520,11 +520,9 @@ public final class CardStage {
      * 量尺寸 → 排布 → 把两边按序拼起来。
      * <p>【卡宽也走平滑】合并滚动里宽度按"旧值/新值里宽的"占位、滚完收回 —— 从前这一收一放
      * 是瞬间的，右缘对齐时整张卡左缘跳两下。{@code widthMove} 把它变成同一条 340ms 曲线。
-     * <p>【让位矩形跟着底锚长】卡堆向上生长，占的地盘是 {@code [锚线-堆高, 锚线]}，
-     * 侧栏/效果让位的判据矩形也按这个算。
+     * <p>按每张卡在这一帧的位置让开右侧 HUD，卡堆增高时仍保留底部卡的锚点。
      */
-    private List<CardSlot> layout(GuiGraphics gui, Minecraft mc, CardCanvas canvas,
-                                  long now, float gap, float anchorTop) {
+    private List<CardSlot> layout(Minecraft mc, CardCanvas canvas, long now, float gap) {
         // 【index 0 = 最新】live 是插入序（老 -> 新），排布要的是新 -> 老（第 0 张贴着锚线），
         // 所以反转。
         List<CardView> alive = new ArrayList<>(live.values());
@@ -534,30 +532,21 @@ public final class CardStage {
         float cardHeight = CardMetrics.height(canvas, font);
 
         List<StackLayout.Size> sizes = new ArrayList<>(alive.size());
-        float widest = 0f;
         for (CardView view : alive) {
             float target = CardMetrics.width(canvas, font, view);
             float width = widthMove.y(view.notice().key(), target, now);
-            widest = Math.max(widest, width);
             sizes.add(new StackLayout.Size(width, cardHeight));
         }
 
-        // 右侧让位：<b>计分板侧栏</b>与<b>状态效果图标</b>，只在卡堆真的碰到时才让
-        // （判据在 {@link HudSafeZone#reserve}，带单测）。
-        float stackHeight = StackLayout.totalHeight(sizes, gap);
-        float left = Math.max(0f, Math.min(canvas.layout().anchorLeft(canvas.guiWidth()),
-                canvas.guiWidth() - MARGIN_X - widest));
-        float reserve = rightReserve(mc, canvas, new HudSafeZone.Rect(left,
-                anchorTop - stackHeight, widest, stackHeight));
-
+        List<HudSafeZone.Rect> obstacles = rightObstacles(mc, canvas);
         List<CardSlot> slots = new ArrayList<>(alive.size());
         for (StackLayout.Slot slot : StackLayout.stack(sizes, canvas.guiWidth(), canvas.guiHeight(),
                 canvas.layout(), MARGIN_X, lastBottomMargin, gap)) {
             CardView view = alive.get(slot.index());
-            float x = slot.x() - HudSafeZone.shiftLeft(slot.x(), slot.width(),
-                    canvas.guiWidth(), reserve);
-            slots.add(new CardSlot(view, x, move.y(view.notice().key(), slot.y(), now),
-                    slot.width(), slot.height()));
+            float y = move.y(view.key(), slot.y(), now);
+            float x = HudSafeZone.cardLeft(new HudSafeZone.Rect(slot.x(), y, slot.width(), slot.height()),
+                    obstacles);
+            slots.add(new CardSlot(view, x, y, slot.width(), slot.height()));
         }
         retainMoves(live.keySet());
         return slots;
@@ -683,27 +672,17 @@ public final class CardStage {
         return String.format(java.util.Locale.ROOT, pattern, args);
     }
 
-    /**
-     * 右侧要让开多少：<b>计分板侧栏</b>与<b>状态效果图标</b> —— 两者都只在卡堆<b>真的碰到</b>
-     * 它们时才让（判据在 {@link HudSafeZone#reserve}，带单测）。
-     * <p>
-     * 【为什么每一帧现问】它们是"有时才在、而且在屏幕中部"的东西：让多少由它们自己决定，
-     * 就不是又一个魔数。数字与出处见 {@link HudSafeZone}（图标一行 26 高、一列 25 宽；侧栏宽度现量）。
-     * <p>
-     * 【贴底之后撞得少了吗】状态效果图标在屏幕<b>右上</b>，卡堆贴<b>右下</b>—— 小画布上
-     * 高堆（顶到锚线以上）仍可能碰上；侧栏在屏幕中部，堆高时一样要让。判据不变，照旧每帧现问。
-     *
-     * @param cards 卡堆这一帧可能占到的矩形（调用方按本帧真实的落点算，别在这里再算一遍）
-     */
-    private static float rightReserve(Minecraft mc, CardCanvas canvas, HudSafeZone.Rect cards) {
-        if (mc.level == null || cards.h() <= 0f || cards.w() <= 0f) {
-            return 0f;
+    /** 计分板与状态效果的位置，每帧量一次供各卡使用。 */
+    private static List<HudSafeZone.Rect> rightObstacles(Minecraft mc, CardCanvas canvas) {
+        if (mc.level == null) {
+            return List.of();
         }
 
+        List<HudSafeZone.Rect> obstacles = new ArrayList<>(3);
         MinecraftGui.Sidebar sidebar = MinecraftGui.sidebar(mc);
-        HudSafeZone.Rect sidebarRect = sidebar == null ? null
-                : HudSafeZone.sidebar(canvas.guiWidth(), canvas.guiHeight(), sidebar.width(), sidebar.lines());
-        float sidebarWidth = sidebar == null ? 0f : sidebar.width();
+        if (sidebar != null) {
+            obstacles.add(HudSafeZone.sidebar(canvas.guiWidth(), canvas.guiHeight(), sidebar.width(), sidebar.lines()));
+        }
 
         int beneficial = 0;
         int harmful = 0;
@@ -716,17 +695,7 @@ public final class CardStage {
                 }
             }
         }
-        int columns = Math.max(beneficial, harmful);
-        HudSafeZone.Rect effectRect = null;
-        float effectWidth = 0f;
-        if (columns > 0) {
-            // 有害效果会再占一排（图标从 y=27 起）—— 所以图标带的下沿要看有没有那一排
-            float effectsBottom = harmful > 0 ? 51f : 25f;
-            effectWidth = HudSafeZone.EFFECT_COL_W * columns;
-            effectRect = new HudSafeZone.Rect(canvas.guiWidth() - effectWidth, 1f,
-                    effectWidth, effectsBottom - 1f);
-        }
-
-        return HudSafeZone.reserve(cards, sidebarRect, sidebarWidth, effectRect, effectWidth);
+        obstacles.addAll(HudSafeZone.effectIcons(canvas.guiWidth(), beneficial, harmful));
+        return obstacles;
     }
 }

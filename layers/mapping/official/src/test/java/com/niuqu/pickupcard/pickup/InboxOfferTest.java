@@ -2,11 +2,13 @@ package com.niuqu.pickupcard.pickup;
 
 import com.niuqu.pickupcard.filter.FilterRules;
 import com.niuqu.pickupcard.filter.FilterSettings;
+import com.niuqu.pickupcard.notice.FullPolicy;
 import com.niuqu.pickupcard.notice.PickupCardSettings;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -31,6 +33,58 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * 不是这几条单测。改这里时请照旧保持这个边界。
  */
 class InboxOfferTest {
+
+    @Test
+    void queuedPickupsMergeWithoutAppearingUntilThereIsPhysicalRoom() {
+        Inbox inbox = Inbox.INSTANCE;
+        inbox.setSources(InboxOfferTest::queueSettings, FilterSettings::defaults);
+        inbox.reset();
+        try {
+            inbox.setGeometryCapacity(0);
+            inbox.offer(new CardContent.Experience(), 1);
+            inbox.offer(new CardContent.Experience(), 2);
+            assertTrue(inbox.tick().isEmpty(), "没有空间时，排队合并和 tick 都不能把卡送上屏");
+
+            inbox.setGeometryCapacity(1);
+            var events = inbox.tick();
+            assertEquals(1, events.size());
+            assertEquals(3, ((Inbox.Event.Added) events.get(0)).notice().count());
+            assertTrue(inbox.tick().isEmpty());
+        } finally {
+            inbox.reset();
+            inbox.setGeometryCapacity(Integer.MAX_VALUE);
+            inbox.setSources(null, null);
+        }
+    }
+
+    @Test
+    void switchingToReplaceKeepsTheNextPickupOutOfTheFormerQueue() {
+        Inbox inbox = Inbox.INSTANCE;
+        inbox.reset();
+        try {
+            inbox.setSources(InboxOfferTest::queueSettings, FilterSettings::defaults);
+            inbox.setGeometryCapacity(0);
+            inbox.offer(new CardContent.Experience(), 1);
+
+            inbox.setGeometryCapacity(1);
+            inbox.setSources(PickupCardSettings::defaults, FilterSettings::defaults);
+            inbox.offer(new CardContent.Experience(), 5);
+            var events = inbox.tick();
+            assertEquals(1, events.size());
+            assertEquals(5, ((Inbox.Event.Added) events.get(0)).notice().count());
+        } finally {
+            inbox.reset();
+            inbox.setGeometryCapacity(Integer.MAX_VALUE);
+            inbox.setSources(null, null);
+        }
+    }
+
+    private static PickupCardSettings queueSettings() {
+        var defaults = PickupCardSettings.defaults();
+        return new PickupCardSettings(defaults.holdMs(), defaults.exitMs(), defaults.mergeMode(),
+                defaults.maxOnScreen(), defaults.queueSize(), defaults.countFormat(),
+                true, true, false, 0, FullPolicy.QUEUE);
+    }
 
     @Test
     void experienceOfferReturnsAPlainShownDecision() {

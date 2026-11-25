@@ -35,6 +35,8 @@ public final class PickupCard implements ClientModInitializer {
         KeyBindingHelper.registerKeyBinding(PickupCardKeys.GRID);
         ClientTickEvents.END_CLIENT_TICK.register(this::tick);
         HudRenderCallback.EVENT.register((graphics, tickDelta) -> CardStage.INSTANCE.renderHud(graphics));
+        ClientPlayConnectionEvents.INIT.register((handler, client) ->
+                client.execute(() -> RarityCoreBridge.clearSyncedRarities(rarityCorePresent)));
         ClientPlayConnectionEvents.JOIN.register((handler, sender, client) ->
                 RarityCoreBridge.warmUp(rarityCorePresent));
 

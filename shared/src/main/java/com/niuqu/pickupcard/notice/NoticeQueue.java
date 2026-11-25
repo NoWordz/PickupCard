@@ -24,11 +24,11 @@ public final class NoticeQueue<T> {
     public enum Change {
         /** 新开一张卡：需要新建一张卡并播入场。 */
         ADDED,
-        /** 并进了已有卡：把数量与代数写回那张卡；可能<b>同时</b>带着被连带顶掉的卡（见 {@link #EVICTED}）——救回守恒与"不可并的顶替后命中排队合并"都会这样。 */
+        /** 并进了在屏卡，或救回了退场卡：同步屏上的数量与代数。 */
         MERGED,
         /** 已有卡被挤掉（超出同时在屏数量）：需要播退场后移除。 */
         EVICTED,
-        /** 屏上满了：这次拾取排到队尾，等有卡退场再上屏（此刻屏幕上什么都不会发生）。 */
+        /** 进入队列或并进了排队卡，等有空位再上屏。 */
         QUEUED,
         /** 屏上满了、队也排满了：这次拾取被丢掉（屏幕上什么都不会发生）。 */
         DROPPED
@@ -145,7 +145,7 @@ public final class NoticeQueue<T> {
                     && MergeWindow.shouldMerge(true, queued.lookKey().equals(lookKey), mergeMode)) {
                 Notice<T> merged = queued.mergeInto(amount, now);
                 replaceQueued(queued, merged);
-                return new Outcome<>(Change.MERGED, merged, evicted);
+                return new Outcome<>(Change.QUEUED, merged, evicted);
             }
         }
 
@@ -250,21 +250,26 @@ public final class NoticeQueue<T> {
         return promoted;
     }
 
-    /**
-     * 把几张已经在屏上的卡退回排队<b>队头</b>（几何上放不下了；2026-09-19 起，
-     * 渲染层不再硬切摘卡 —— 那会让拾取无声蒸发）。从队头回，先来先上屏的次序不乱：
-     * 最老的回到最前面，位子一空它第一个回来。回队的卡补位时会 {@code reborn}
-     * （重新起算停留期、重播入场）—— "它回来这件事"本来就值得一帧入场。
-     * <p>【活表必须同步摘掉】退回的卡不再算"在屏"：realSize 要降下来（位子才算真的空出），
-     * 同名拾取也该按"排队那张"并进去，而不是往一张已经不在屏上的卡上滚数字。
-     */
-    public void requeueFront(List<Notice<T>> notices) {
+    /** 布局缩小时摘下仍在账本上的卡。排队模式可把它们放回队头，按原顺序补位。 */
+    public void requeueFront(List<Notice<T>> notices, int queueSize) {
         for (int i = notices.size() - 1; i >= 0; i--) {
             Notice<T> notice = notices.get(i);
-            if (alive.remove(notice.key(), notice) && notice.key().equals(overflowKey)) {
-                overflowKey = null;         // 溢出卡也能被退回；走它名额照旧不占
+            if (!alive.remove(notice.key(), notice)) {
+                continue;
             }
-            pending.addFirst(notice);
+            if (notice.key().equals(overflowKey)) {
+                overflowKey = null;
+            } else if (queueSize > 0) {
+                pending.addFirst(notice);
+            }
+        }
+        limitPending(queueSize);
+    }
+
+    public void limitPending(int queueSize) {
+        int limit = Math.max(0, queueSize);
+        while (pending.size() > limit) {
+            pending.removeLast();
         }
     }
 

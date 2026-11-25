@@ -176,4 +176,15 @@ public final class HudSafeZone {
         float overflow = (left + cardWidth) - (guiWidth - PAD - rightReserve);
         return overflow > 0f ? overflow : 0f;
     }
+
+    /** 保留卡片的水平锚点，只避开这张卡实际碰到的右侧 HUD。 */
+    public static float cardLeft(Rect card, List<Rect> obstacles) {
+        float left = card.x();
+        for (Rect obstacle : obstacles) {
+            if (card.intersects(obstacle)) {
+                left = Math.min(left, obstacle.x() - PAD - card.w());
+            }
+        }
+        return Math.max(0f, left);
+    }
 }

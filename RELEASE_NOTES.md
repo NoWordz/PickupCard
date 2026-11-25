@@ -1,5 +1,21 @@
 # Release Notes
 
+## v1.0.0
+
+**修复**
+
+- Fabric 1.20.1 现在能正确显示 RarityCore 的稀有度颜色，包括服务器同步的档位。
+- 大量拾取后旧卡会正常消失，排队模式下「还有 N 项」会等有空位再显示。
+- 计分板或状态效果只会移开与它重叠的卡片，卡堆底部保持在原来的位置。
+
+----
+
+**Fixed**
+
+- Fabric 1.20.1 now displays the correct RarityCore colours, including tiers synced by the server.
+- Old cards clear after large pickup bursts, and Queue mode shows the overflow summary once there is room.
+- Scoreboards and status effects only move overlapping cards, keeping the bottom of the stack anchored.
+
 ## v0.2.5
 
 **这一版把 0.2.4 的崩溃修干净，mod 列表从此能一键打开配置界面，卡片动画也更流畅。**

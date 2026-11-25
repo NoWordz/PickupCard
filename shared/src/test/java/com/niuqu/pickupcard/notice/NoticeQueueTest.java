@@ -1,5 +1,6 @@
 package com.niuqu.pickupcard.notice;
 
+import java.util.ArrayList;
 import java.util.List;
 
 import org.junit.jupiter.api.DisplayName;
@@ -190,7 +191,7 @@ class NoticeQueueTest {
         add(q, "c", 1, 10L, 1, QUEUE);             // 排队
         var merged = add(q, "c", 4, 20L, 1, QUEUE);
 
-        assertEquals(NoticeQueue.Change.MERGED, merged.change());
+        assertEquals(NoticeQueue.Change.QUEUED, merged.change());
         assertEquals(1, q.pendingSize(), "还是队里那一张");
         assertEquals(5, merged.notice().count(), "数量累加到排队那张身上");
 
@@ -338,7 +339,7 @@ class NoticeQueueTest {
         // 几何放不下：最老的两张（a、b）退回 —— 队头顺序保持 a 在 b 前（先回先上）
         var a = q.find("a").orElseThrow();
         var b = q.find("b").orElseThrow();
-        q.requeueFront(List.of(a, b));
+        q.requeueFront(List.of(a, b), QUEUE);
 
         assertEquals(1, q.size(), "活表只剩 c —— realSize 降下来，位子才算真的空出");
         assertEquals(2, q.pendingSize());
@@ -346,7 +347,7 @@ class NoticeQueueTest {
         // 退回的卡不再在活表里：同名新拾取按"排队那张"并进去（与老排队合并同一条路），
         // 而不是在屏幕上凭空表示同一件东西两张卡
         var fresh = add(q, "a", 1, 3L, 1, 9);
-        assertEquals(NoticeQueue.Change.MERGED, fresh.change(),
+        assertEquals(NoticeQueue.Change.QUEUED, fresh.change(),
                 "a 的同名拾取并进排队里那张，数量累加");
         assertEquals(2, fresh.notice().count());
 
@@ -361,6 +362,37 @@ class NoticeQueueTest {
     // ------------------------------------------------------------------
     // 顶卡（FullPolicy.REPLACE）：屏满之后新卡立刻上屏，顶掉最老的正常卡
     // ------------------------------------------------------------------
+
+    @Test
+    void geometryTrimDoesNotRequeueCardsAlreadyEvictedDuringABurst() {
+        NoticeQueue<String> q = queue();
+        List<Notice<String>> exiting = new ArrayList<>();
+        for (int i = 0; i < 250; i++) {
+            exiting.addAll(add(q, "item-" + i, 1, i, 3, QUEUE, FullPolicy.REPLACE).evicted());
+        }
+
+        q.requeueFront(exiting, QUEUE);
+        assertEquals(0, q.pendingSize());
+        assertEquals(List.of("item-247", "item-248", "item-249"),
+                q.snapshot().stream().map(Notice::key).toList());
+        assertEquals(3, q.sweep(6_000L, 5_000L).size());
+        assertTrue(q.promote(6_000L, 3).isEmpty(), "退场之后没有旧卡重新上屏");
+    }
+
+    @Test
+    void geometryTrimRespectsTheQueueLimitIncludingWhenQueuingIsDisabled() {
+        NoticeQueue<String> q = queue();
+        var a = add(q, "a", 1, 0L, 2, QUEUE).notice();
+        var b = add(q, "b", 1, 1L, 2, QUEUE).notice();
+        add(q, "c", 1, 2L, 2, QUEUE);
+
+        q.requeueFront(List.of(a, b), 1);
+        assertEquals(1, q.pendingSize());
+        assertEquals("a", q.promote(3L, 1).get(0).key());
+        q.requeueFront(q.snapshot(), 0);
+        assertEquals(0, q.size());
+        assertEquals(0, q.pendingSize());
+    }
 
     @Test
     @DisplayName("REPLACE 档：屏满之后新卡立刻上屏，顶掉最老的正常卡")
